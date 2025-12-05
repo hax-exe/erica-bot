@@ -102,7 +102,7 @@ export async function addXp(
     const xpGained = Math.floor(xpPerMessage * multiplier);
 
     // Get or create member record
-    let member = await db.query.guildMembers.findFirst({
+    const member = await db.query.guildMembers.findFirst({
         where: and(
             eq(guildMembers.guildId, guildId),
             eq(guildMembers.odId, userId)

@@ -77,7 +77,7 @@ export default new Command({
         }
 
         // Get receiver data
-        let receiverData = await db.query.guildMembers.findFirst({
+        const receiverData = await db.query.guildMembers.findFirst({
             where: and(
                 eq(guildMembers.guildId, guildId),
                 eq(guildMembers.odId, targetUser.id)

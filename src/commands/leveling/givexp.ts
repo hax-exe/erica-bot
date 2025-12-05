@@ -38,7 +38,7 @@ export default new Command({
         const amount = interaction.options.getInteger('amount', true);
 
         // Get or create member record
-        let existing = await db.query.guildMembers.findFirst({
+        const existing = await db.query.guildMembers.findFirst({
             where: and(
                 eq(guildMembers.guildId, interaction.guildId!),
                 eq(guildMembers.odId, targetUser.id)

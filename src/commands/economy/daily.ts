@@ -30,7 +30,7 @@ export default new Command({
         const currencySymbol = settings?.currencySymbol ?? '🪙';
 
         // Get member data
-        let memberData = await db.query.guildMembers.findFirst({
+        const memberData = await db.query.guildMembers.findFirst({
             where: and(
                 eq(guildMembers.guildId, guildId),
                 eq(guildMembers.odId, userId)
