@@ -10,6 +10,8 @@ import {
     hasIgnoredRole,
     getRoleRewardsForLevel,
 } from '../services/leveling.js';
+import { checkMessage, takeAction } from '../services/automod.js';
+import { checkAutoResponders } from '../services/autoResponder.js';
 
 const logger = createLogger('message-xp');
 
@@ -18,6 +20,16 @@ export default new Event({
     async execute(client, message: Message) {
         // Ignore bots, DMs, and system messages
         if (message.author.bot || !message.guild || message.system) return;
+
+        // Run auto-moderation first
+        const automodResult = await checkMessage(message);
+        if (automodResult.shouldDelete) {
+            await takeAction(message, automodResult);
+            return; // Don't process XP for deleted messages
+        }
+
+        // Check auto-responders
+        await checkAutoResponders(message);
 
         // Check if leveling is enabled
         const guild = await db.query.guilds.findFirst({
