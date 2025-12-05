@@ -94,7 +94,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dashboard-dist
-          path: dashboard/.next/
+          path: |
+            dashboard/.next/standalone/
+            dashboard/.next/static/
+            dashboard/public/
+          if-no-files-found: error
 
   deploy:
     name: Deploy
@@ -116,7 +120,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dashboard-dist
-          path: dashboard/.next/
+          path: dashboard/
 
       # Deploy to your server - example with SSH
       # Uncomment and configure for your deployment target
