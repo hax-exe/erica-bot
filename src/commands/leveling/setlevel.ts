@@ -7,7 +7,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { getLevelFromXp, getTotalXpForLevel } from '../../services/leveling.js';
+import { getLevelFromXp, getTotalXpForLevel, ensureGuildExists } from '../../services/leveling.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -56,6 +56,7 @@ export default new Command({
                     eq(guildMembers.odId, targetUser.id)
                 ));
         } else {
+            await ensureGuildExists(interaction.guildId!);
             await db.insert(guildMembers).values({
                 guildId: interaction.guildId!,
                 odId: targetUser.id,

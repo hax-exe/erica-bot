@@ -6,6 +6,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers, economySettings } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { ensureGuildExists } from '../../services/leveling.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -107,6 +108,7 @@ export default new Command({
                     eq(guildMembers.odId, targetUser.id)
                 ));
         } else {
+            await ensureGuildExists(guildId);
             await db.insert(guildMembers).values({
                 guildId,
                 odId: targetUser.id,

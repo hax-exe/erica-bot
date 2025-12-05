@@ -6,6 +6,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers, economySettings } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { ensureGuildExists } from '../../services/leveling.js';
 
 const workResponses = [
     'You worked as a programmer and earned',
@@ -90,6 +91,7 @@ export default new Command({
                     eq(guildMembers.odId, userId)
                 ));
         } else {
+            await ensureGuildExists(guildId);
             await db.insert(guildMembers).values({
                 guildId,
                 odId: userId,

@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { guildMembers, levelingSettings, levelRewards } from '../db/schema/index.js';
+import { guilds, guildMembers, levelingSettings, levelRewards } from '../db/schema/index.js';
 import { eq, and, sql, lte } from 'drizzle-orm';
 import { createLogger } from '../utils/logger.js';
 
@@ -7,6 +7,17 @@ const logger = createLogger('leveling');
 
 // XP cooldown map: guildId:userId -> last XP gain timestamp
 const xpCooldowns = new Map<string, number>();
+
+/**
+ * Ensure a guild exists in the database before creating related records.
+ * This prevents foreign key constraint violations when the bot joins a guild
+ * that wasn't properly initialized or if the database was reset.
+ */
+export async function ensureGuildExists(guildId: string): Promise<void> {
+    await db.insert(guilds).values({
+        id: guildId,
+    }).onConflictDoNothing();
+}
 
 /**
  * Calculate XP required for a level
@@ -116,6 +127,8 @@ export async function addXp(
     const leveledUp = newLevel > previousLevel;
 
     if (!member) {
+        // Ensure guild exists before creating member record
+        await ensureGuildExists(guildId);
         // Create new member record
         await db.insert(guildMembers).values({
             guildId,
