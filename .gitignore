@@ -3,11 +3,15 @@ node_modules/
 
 # Build output
 dist/
+.next/
+out/
 
-# Environment files
+# Environment files (NEVER COMMIT THESE)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
 # IDE
 .vscode/
@@ -23,6 +27,7 @@ Thumbs.db
 logs/
 *.log
 npm-debug.log*
+lavalink/logs/
 
 # Testing
 coverage/
@@ -30,5 +35,16 @@ coverage/
 # Drizzle
 drizzle/meta/
 
+# Docker volumes (local data)
+postgres-data/
+
 # Misc
 *.tsbuildinfo
+
+# Dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# Lavalink plugin cache
+lavalink/plugins/

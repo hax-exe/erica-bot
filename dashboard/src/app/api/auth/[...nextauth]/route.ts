@@ -7,7 +7,7 @@ declare module "next-auth" {
     }
 }
 
-export const authOptions = {
+const handler = NextAuth({
     providers: [
         DiscordProvider({
             clientId: process.env.DISCORD_CLIENT_ID!,
@@ -20,18 +20,17 @@ export const authOptions = {
         }),
     ],
     callbacks: {
-        async jwt({ token, account }: any) {
+        async jwt({ token, account }) {
             if (account) {
                 token.accessToken = account.access_token;
             }
             return token;
         },
-        async session({ session, token }: any) {
-            session.accessToken = token.accessToken;
+        async session({ session, token }) {
+            session.accessToken = token.accessToken as string;
             return session;
         },
     },
-};
+});
 
-const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

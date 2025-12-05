@@ -9,6 +9,7 @@ import {
     bigint,
     serial,
     primaryKey,
+    uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -150,7 +151,7 @@ export const guildMembers = pgTable('guild_members', {
     updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
     // Unique constraint on guild + user combination
-    guildUserUnique: primaryKey({ columns: [table.guildId, table.odId] }),
+    guildUserUnique: uniqueIndex('guild_user_idx').on(table.guildId, table.odId),
 }));
 
 // ============================================

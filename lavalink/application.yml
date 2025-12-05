@@ -1,12 +1,14 @@
 server:
   port: 2333
   address: 0.0.0.0
-  
+
 lavalink:
   server:
-    password: "youshallnotpass"
+    password: ${LAVALINK_PASSWORD}
     sources:
-      youtube: true
+      # Disabled - requires authentication
+      youtube: false
+      # Working sources
       bandcamp: true
       soundcloud: true
       twitch: true
@@ -30,9 +32,7 @@ lavalink:
     resamplingQuality: LOW
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
-    youtubePlaylistLoadLimit: 50
     playerUpdateInterval: 5
-    youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
     gc-warnings: true
 
@@ -51,7 +51,3 @@ logging:
   level:
     root: INFO
     lavalink: INFO
-  logback:
-    rollingpolicy:
-      max-file-size: 25MB
-      max-history: 7

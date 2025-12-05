@@ -111,7 +111,7 @@ export default function ServersPage() {
                         <Bot className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <h3 className="text-xl font-semibold text-white mb-2">No Servers Found</h3>
                         <p className="text-gray-400">
-                            You don't have admin access to any servers with the bot.
+                            You don&apos;t have admin access to any servers with the bot.
                         </p>
                     </div>
                 )}

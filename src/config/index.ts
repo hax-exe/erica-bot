@@ -15,7 +15,7 @@ const envSchema = z.object({
     // Lavalink
     LAVALINK_HOST: z.string().default('localhost'),
     LAVALINK_PORT: z.string().default('2333').transform(Number),
-    LAVALINK_PASSWORD: z.string().default('youshallnotpass'),
+    LAVALINK_PASSWORD: z.string().min(1, 'Lavalink password is required'),
 
     // Bot
     BOT_PREFIX: z.string().default('!'),
