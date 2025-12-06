@@ -13,13 +13,11 @@ import type { ExtendedClient } from '../structures/Client.js';
 const logger = createLogger('api');
 
 // Extend Express Request to include our client
-declare global {
-    namespace Express {
-        interface Request {
-            discordClient: ExtendedClient;
-            userId?: string;
-            guildId?: string;
-        }
+declare module 'express-serve-static-core' {
+    interface Request {
+        discordClient: ExtendedClient;
+        userId?: string;
+        guildId?: string;
     }
 }
 
