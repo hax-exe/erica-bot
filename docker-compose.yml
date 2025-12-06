@@ -1,39 +1,20 @@
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/haxkiana/multi-bot-discord/bot:latest
     container_name: discord-bot
     restart: unless-stopped
     depends_on:
       - postgres
       - lavalink
+    ports:
+      - "3002:3002" # Bot API for health checks
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
       - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
       - LAVALINK_HOST=lavalink
       - LAVALINK_PORT=2333
-      - LAVALINK_PASSWORD=${LAVALINK_PASSWORD}
-    networks:
-      - bot-network
-
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    container_name: discord-dashboard
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXTAUTH_URL=${DASHBOARD_URL}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
-      - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
     networks:
       - bot-network
 

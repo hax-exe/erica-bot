@@ -1,6 +1,7 @@
 import { ExtendedClient, loadEvents } from './structures/index.js';
 import { disconnectDatabase } from './db/index.js';
 import { createLogger } from './utils/logger.js';
+import { startApiServer } from './api/index.js';
 
 const logger = createLogger('main');
 
@@ -46,6 +47,9 @@ async function main(): Promise<void> {
     try {
         logger.info('Starting Multi-Bot Discord...');
         await client.start();
+
+        // Start the API server for dashboard communication
+        startApiServer(client);
     } catch (error) {
         logger.fatal({ error }, 'Failed to start bot');
         process.exit(1);

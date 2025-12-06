@@ -17,6 +17,11 @@ const envSchema = z.object({
     LAVALINK_PORT: z.string().default('2333').transform(Number),
     LAVALINK_PASSWORD: z.string().min(1, 'Lavalink password is required'),
 
+    // Bot API
+    BOT_API_PORT: z.string().default('3002').transform(Number),
+    BOT_API_SECRET: z.string().min(32, 'API secret must be at least 32 characters').optional(),
+    DASHBOARD_URL: z.string().url().default('http://localhost:3000'),
+
     // Bot
     BOT_PREFIX: z.string().default('!'),
     BOT_DEFAULT_LANGUAGE: z.string().default('en'),
@@ -60,6 +65,11 @@ export const config = {
         host: env.LAVALINK_HOST,
         port: env.LAVALINK_PORT,
         password: env.LAVALINK_PASSWORD,
+    },
+    api: {
+        port: env.BOT_API_PORT,
+        secret: env.BOT_API_SECRET,
+        dashboardUrl: env.DASHBOARD_URL,
     },
     bot: {
         prefix: env.BOT_PREFIX,
