@@ -3,10 +3,11 @@ import {
     EmbedBuilder,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import { db } from '../../db/index.js';
-import { guildMembers, economySettings } from '../../db/schema/index.js';
-import { eq, and } from 'drizzle-orm';
-import { ensureGuildExists } from '../../services/leveling.js';
+import { atomicTransfer } from '../../db/transactions.js';
+import { getEconomySettings, getDefaultEconomySettings } from '../../services/settingsCache.js';
+
+// Maximum transfer limit per transaction
+const MAX_TRANSFER_LIMIT = 100000;
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,6 +25,7 @@ export default new Command({
                 .setDescription('Amount to pay')
                 .setRequired(true)
                 .setMinValue(1)
+                .setMaxValue(MAX_TRANSFER_LIMIT)
         ),
     category: 'economy',
     cooldown: 5,
@@ -52,68 +54,24 @@ export default new Command({
             return;
         }
 
-        // Get settings
-        const settings = await db.query.economySettings.findFirst({
-            where: eq(economySettings.guildId, guildId),
-        });
-        const currencyName = settings?.currencyName ?? 'coins';
-        const currencySymbol = settings?.currencySymbol ?? '🪙';
+        // Get settings from cache
+        const settings = await getEconomySettings(guildId);
+        const defaults = getDefaultEconomySettings();
+        const currencyName = settings?.currencyName ?? defaults.currencyName;
+        const currencySymbol = settings?.currencySymbol ?? defaults.currencySymbol;
 
-        // Get sender data
-        const senderData = await db.query.guildMembers.findFirst({
-            where: and(
-                eq(guildMembers.guildId, guildId),
-                eq(guildMembers.odId, userId)
-            ),
-        });
+        // Defer reply since transfer might take a moment
+        await interaction.deferReply();
 
-        const senderWallet = senderData?.balance ?? 0;
+        // Use atomic transfer to prevent race conditions
+        // This wraps both debit and credit in a transaction
+        const result = await atomicTransfer(guildId, userId, targetUser.id, amount);
 
-        if (senderWallet < amount) {
-            await interaction.reply({
-                content: `❌ You don't have enough coins. Your wallet: ${senderWallet.toLocaleString()} ${currencyName}`,
-                ephemeral: true,
+        if (!result.success) {
+            await interaction.editReply({
+                content: `❌ ${result.error || 'Transfer failed'}. Please check your balance.`,
             });
             return;
-        }
-
-        // Get receiver data
-        const receiverData = await db.query.guildMembers.findFirst({
-            where: and(
-                eq(guildMembers.guildId, guildId),
-                eq(guildMembers.odId, targetUser.id)
-            ),
-        });
-
-        // Update sender
-        await db.update(guildMembers)
-            .set({
-                balance: senderWallet - amount,
-                updatedAt: new Date(),
-            })
-            .where(and(
-                eq(guildMembers.guildId, guildId),
-                eq(guildMembers.odId, userId)
-            ));
-
-        // Update receiver
-        if (receiverData) {
-            await db.update(guildMembers)
-                .set({
-                    balance: (receiverData.balance ?? 0) + amount,
-                    updatedAt: new Date(),
-                })
-                .where(and(
-                    eq(guildMembers.guildId, guildId),
-                    eq(guildMembers.odId, targetUser.id)
-                ));
-        } else {
-            await ensureGuildExists(guildId);
-            await db.insert(guildMembers).values({
-                guildId,
-                odId: targetUser.id,
-                balance: amount,
-            });
         }
 
         const embed = new EmbedBuilder()
@@ -121,10 +79,10 @@ export default new Command({
             .setTitle(`${currencySymbol} Payment Sent!`)
             .setDescription(`You paid **${amount.toLocaleString()}** ${currencyName} to ${targetUser.tag}`)
             .addFields(
-                { name: 'Your New Balance', value: `${(senderWallet - amount).toLocaleString()} ${currencyName}`, inline: true },
+                { name: 'Your New Balance', value: `${result.senderBalance?.toLocaleString() ?? 0} ${currencyName}`, inline: true },
             )
             .setTimestamp();
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [embed] });
     },
 });

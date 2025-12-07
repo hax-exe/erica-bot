@@ -1,9 +1,7 @@
 import { Events, Collection } from 'discord.js';
 import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
-import { db } from '../db/index.js';
-import { guilds } from '../db/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { getGuildSettings } from '../services/settingsCache.js';
 
 const logger = createLogger('interaction');
 
@@ -28,11 +26,9 @@ export default new Event({
                 return;
             }
 
-            // Check required module
+            // Check required module (using cached settings)
             if (command.requiredModule && interaction.guild) {
-                const guildData = await db.query.guilds.findFirst({
-                    where: eq(guilds.id, interaction.guild.id),
-                });
+                const guildData = await getGuildSettings(interaction.guild.id);
 
                 const moduleEnabled = guildData?.[`${command.requiredModule}Enabled` as keyof typeof guildData];
                 if (guildData && !moduleEnabled) {

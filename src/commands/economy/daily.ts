@@ -4,9 +4,10 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
-import { guildMembers, economySettings } from '../../db/schema/index.js';
-import { eq, and } from 'drizzle-orm';
+import { guildMembers } from '../../db/schema/index.js';
+import { eq, and, sql, or, lt, isNull } from 'drizzle-orm';
 import { ensureGuildExists } from '../../services/leveling.js';
+import { getEconomySettings, getDefaultEconomySettings } from '../../services/settingsCache.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -21,16 +22,54 @@ export default new Command({
         const userId = interaction.user.id;
         const guildId = interaction.guildId!;
 
-        // Get economy settings
-        const settings = await db.query.economySettings.findFirst({
-            where: eq(economySettings.guildId, guildId),
-        });
+        // Get economy settings from cache
+        const settings = await getEconomySettings(guildId);
+        const defaults = getDefaultEconomySettings();
 
-        const dailyAmount = settings?.dailyAmount ?? 100;
-        const currencyName = settings?.currencyName ?? 'coins';
-        const currencySymbol = settings?.currencySymbol ?? '🪙';
+        const dailyAmount = settings?.dailyAmount ?? defaults.dailyAmount;
+        const currencyName = settings?.currencyName ?? defaults.currencyName;
+        const currencySymbol = settings?.currencySymbol ?? defaults.currencySymbol;
 
-        // Get member data
+        const now = new Date();
+        // 24 hours in seconds
+        const cooldownSeconds = 24 * 60 * 60;
+        const cooldownThreshold = new Date(now.getTime() - cooldownSeconds * 1000);
+
+        // Try atomic update with cooldown check
+        // This prevents cooldown exploitation via rapid requests
+        const updateResult = await db.update(guildMembers)
+            .set({
+                balance: sql`${guildMembers.balance} + ${dailyAmount}`,
+                lastDaily: now,
+                updatedAt: now,
+            })
+            .where(and(
+                eq(guildMembers.guildId, guildId),
+                eq(guildMembers.odId, userId),
+                or(
+                    isNull(guildMembers.lastDaily),
+                    lt(guildMembers.lastDaily, cooldownThreshold)
+                )
+            ))
+            .returning({ newBalance: guildMembers.balance });
+
+        if (updateResult.length > 0) {
+            // Success - claimed daily reward
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff00)
+                .setTitle(`${currencySymbol} Daily Reward Claimed!`)
+                .setDescription(`You received **${dailyAmount.toLocaleString()}** ${currencyName}!`)
+                .addFields(
+                    { name: 'New Balance', value: `${(updateResult[0]!.newBalance ?? 0).toLocaleString()} ${currencyName}`, inline: true },
+                )
+                .setFooter({ text: 'Come back in 24 hours for another reward!' })
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+            return;
+        }
+
+        // Check if user doesn't exist yet
         const memberData = await db.query.guildMembers.findFirst({
             where: and(
                 eq(guildMembers.guildId, guildId),
@@ -38,42 +77,8 @@ export default new Command({
             ),
         });
 
-        // Check cooldown (24 hours)
-        const now = new Date();
-        const cooldownMs = 24 * 60 * 60 * 1000;
-
-        if (memberData?.lastDaily) {
-            const lastClaim = new Date(memberData.lastDaily);
-            const timeSince = now.getTime() - lastClaim.getTime();
-
-            if (timeSince < cooldownMs) {
-                const timeLeft = cooldownMs - timeSince;
-                const hours = Math.floor(timeLeft / (60 * 60 * 1000));
-                const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
-
-                await interaction.reply({
-                    content: `⏰ You can claim your daily reward in **${hours}h ${minutes}m**`,
-                    ephemeral: true,
-                });
-                return;
-            }
-        }
-
-        // Give reward
-        const newBalance = (memberData?.balance ?? 0) + dailyAmount;
-
-        if (memberData) {
-            await db.update(guildMembers)
-                .set({
-                    balance: newBalance,
-                    lastDaily: now,
-                    updatedAt: now,
-                })
-                .where(and(
-                    eq(guildMembers.guildId, guildId),
-                    eq(guildMembers.odId, userId)
-                ));
-        } else {
+        if (!memberData) {
+            // First time claiming - create member record
             await ensureGuildExists(guildId);
             await db.insert(guildMembers).values({
                 guildId,
@@ -81,18 +86,31 @@ export default new Command({
                 balance: dailyAmount,
                 lastDaily: now,
             });
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00ff00)
+                .setTitle(`${currencySymbol} Daily Reward Claimed!`)
+                .setDescription(`You received **${dailyAmount.toLocaleString()}** ${currencyName}!`)
+                .addFields(
+                    { name: 'New Balance', value: `${dailyAmount.toLocaleString()} ${currencyName}`, inline: true },
+                )
+                .setFooter({ text: 'Come back in 24 hours for another reward!' })
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+            return;
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x00ff00)
-            .setTitle(`${currencySymbol} Daily Reward Claimed!`)
-            .setDescription(`You received **${dailyAmount.toLocaleString()}** ${currencyName}!`)
-            .addFields(
-                { name: 'New Balance', value: `${newBalance.toLocaleString()} ${currencyName}`, inline: true },
-            )
-            .setFooter({ text: 'Come back in 24 hours for another reward!' })
-            .setTimestamp();
+        // Still on cooldown - calculate remaining time
+        const lastClaim = new Date(memberData.lastDaily!);
+        const timeSince = now.getTime() - lastClaim.getTime();
+        const timeLeft = (cooldownSeconds * 1000) - timeSince;
+        const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+        const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({
+            content: `⏰ You can claim your daily reward in **${hours}h ${minutes}m**`,
+            ephemeral: true,
+        });
     },
 });

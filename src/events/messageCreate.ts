@@ -1,9 +1,6 @@
 import { Events, Message, GuildMember, EmbedBuilder, TextChannel } from 'discord.js';
 import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
-import { db } from '../db/index.js';
-import { guilds, levelingSettings } from '../db/schema/index.js';
-import { eq } from 'drizzle-orm';
 import {
     addXp,
     isChannelIgnored,
@@ -12,6 +9,7 @@ import {
 } from '../services/leveling.js';
 import { checkMessage, takeAction } from '../services/automod.js';
 import { checkAutoResponders } from '../services/autoResponder.js';
+import { getGuildSettings, getLevelingSettings, getDefaultLevelingSettings } from '../services/settingsCache.js';
 
 const logger = createLogger('message-xp');
 
@@ -31,24 +29,22 @@ export default new Event({
         // Check auto-responders
         await checkAutoResponders(message);
 
-        // Check if leveling is enabled
-        const guild = await db.query.guilds.findFirst({
-            where: eq(guilds.id, message.guild.id),
-        });
+        // Check if leveling is enabled (using cached settings)
+        const guild = await getGuildSettings(message.guild.id);
 
         if (!guild?.levelingEnabled) return;
 
-        // Check if channel is ignored
+        // Check if channel is ignored (uses cached settings internally)
         if (await isChannelIgnored(message.guild.id, message.channel.id)) return;
 
-        // Check if user has ignored role
+        // Check if user has ignored role (uses cached settings internally)
         const member = message.member;
         if (!member) return;
 
         const roleIds = member.roles.cache.map((r) => r.id);
         if (await hasIgnoredRole(message.guild.id, roleIds)) return;
 
-        // Add XP
+        // Add XP (uses cached settings internally)
         const result = await addXp(message.guild.id, message.author.id);
         if (!result) return; // On cooldown
 
@@ -66,10 +62,9 @@ async function handleLevelUp(
 ): Promise<void> {
     const guildId = message.guild!.id;
 
-    // Get leveling settings
-    const settings = await db.query.levelingSettings.findFirst({
-        where: eq(levelingSettings.guildId, guildId),
-    });
+    // Get leveling settings from cache
+    const settings = await getLevelingSettings(guildId);
+    const defaults = getDefaultLevelingSettings();
 
     // Apply role rewards
     const rewardRoles = await getRoleRewardsForLevel(guildId, newLevel);
@@ -85,9 +80,10 @@ async function handleLevelUp(
     }
 
     // Send level up announcement if enabled
-    if (!settings?.announceEnabled) return;
+    const announceEnabled = settings?.announceEnabled ?? defaults.announceEnabled;
+    if (!announceEnabled) return;
 
-    const announceMessage = (settings.announceMessage || '🎉 Congratulations {user}! You reached level {level}!')
+    const announceMessage = (settings?.announceMessage || defaults.announceMessage)
         .replace('{user}', `<@${member.id}>`)
         .replace('{level}', String(newLevel))
         .replace('{username}', member.user.username);
@@ -102,7 +98,7 @@ async function handleLevelUp(
     // Determine where to send the announcement
     let targetChannel: TextChannel | null = null;
 
-    if (settings.announceChannelId) {
+    if (settings?.announceChannelId) {
         // Custom channel
         const channel = message.guild!.channels.cache.get(settings.announceChannelId);
         if (channel?.isTextBased() && 'send' in channel) {

@@ -4,8 +4,9 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
-import { guildMembers, economySettings } from '../../db/schema/index.js';
+import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { getEconomySettings, getDefaultEconomySettings } from '../../services/settingsCache.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,13 +25,12 @@ export default new Command({
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
 
-        // Get economy settings
-        const settings = await db.query.economySettings.findFirst({
-            where: eq(economySettings.guildId, interaction.guildId!),
-        });
+        // Get economy settings from cache
+        const settings = await getEconomySettings(interaction.guildId!);
+        const defaults = getDefaultEconomySettings();
 
-        const currencyName = settings?.currencyName ?? 'coins';
-        const currencySymbol = settings?.currencySymbol ?? '🪙';
+        const currencyName = settings?.currencyName ?? defaults.currencyName;
+        const currencySymbol = settings?.currencySymbol ?? defaults.currencySymbol;
 
         // Get member data
         const memberData = await db.query.guildMembers.findFirst({

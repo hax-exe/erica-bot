@@ -1,7 +1,8 @@
 import { db } from '../db/index.js';
-import { guilds, guildMembers, levelingSettings, levelRewards } from '../db/schema/index.js';
+import { guilds, guildMembers, levelRewards } from '../db/schema/index.js';
 import { eq, and, sql, lte } from 'drizzle-orm';
 import { createLogger } from '../utils/logger.js';
+import { getLevelingSettings, getDefaultLevelingSettings } from './settingsCache.js';
 
 const logger = createLogger('leveling');
 
@@ -88,19 +89,18 @@ export async function addXp(
     userId: string,
     baseXp: number = 15
 ): Promise<XpGainResult | null> {
-    // Check cooldown
+    // Check cooldown from in-memory cache (fast path)
     const cooldownKey = `${guildId}:${userId}`;
     const now = Date.now();
     const lastGain = xpCooldowns.get(cooldownKey);
 
-    // Get guild settings for cooldown
-    const settings = await db.query.levelingSettings.findFirst({
-        where: eq(levelingSettings.guildId, guildId),
-    });
+    // Get guild settings from cache (much faster than DB query)
+    const settings = await getLevelingSettings(guildId);
+    const defaults = getDefaultLevelingSettings();
 
-    const cooldownMs = (settings?.xpCooldown ?? 60) * 1000;
-    const xpPerMessage = settings?.xpPerMessage ?? 15;
-    const multiplier = (settings?.xpMultiplier ?? 100) / 100;
+    const cooldownMs = (settings?.xpCooldown ?? defaults.xpCooldown) * 1000;
+    const xpPerMessage = settings?.xpPerMessage ?? defaults.xpPerMessage;
+    const multiplier = (settings?.xpMultiplier ?? defaults.xpMultiplier) / 100;
 
     if (lastGain && now - lastGain < cooldownMs) {
         return null; // Still on cooldown
@@ -181,30 +181,24 @@ export async function getRoleRewardsForLevel(
 }
 
 /**
- * Check if a channel should be ignored for XP
+ * Check if a channel should be ignored for XP (uses cached settings)
  */
 export async function isChannelIgnored(
     guildId: string,
     channelId: string
 ): Promise<boolean> {
-    const settings = await db.query.levelingSettings.findFirst({
-        where: eq(levelingSettings.guildId, guildId),
-    });
-
+    const settings = await getLevelingSettings(guildId);
     return settings?.ignoredChannels?.includes(channelId) ?? false;
 }
 
 /**
- * Check if a role should be ignored for XP
+ * Check if a role should be ignored for XP (uses cached settings)
  */
 export async function hasIgnoredRole(
     guildId: string,
     roleIds: string[]
 ): Promise<boolean> {
-    const settings = await db.query.levelingSettings.findFirst({
-        where: eq(levelingSettings.guildId, guildId),
-    });
-
+    const settings = await getLevelingSettings(guildId);
     const ignoredRoles = settings?.ignoredRoles ?? [];
     return roleIds.some((id) => ignoredRoles.includes(id));
 }
