@@ -69,7 +69,7 @@ export const config = {
     api: {
         port: env.BOT_API_PORT,
         secret: env.BOT_API_SECRET,
-        // dashboardUrl: env.DASHBOARD_URL, (will add later)
+        dashboardUrl: env.DASHBOARD_URL, // (will add later)
     },
     bot: {
         prefix: env.BOT_PREFIX,
