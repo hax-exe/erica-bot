@@ -33,7 +33,7 @@ const envSchema = z.object({
     // Optional API Keys
     SPOTIFY_CLIENT_ID: z.string().optional(),
     SPOTIFY_CLIENT_SECRET: z.string().optional(),
-    YOUTUBE_API_KEY: z.string().optional(),
+    YOUTUBE_OAUTH_REFRESH_TOKEN: z.string().optional(),
     TWITCH_CLIENT_ID: z.string().optional(),
     TWITCH_CLIENT_SECRET: z.string().optional(),
 });
@@ -69,7 +69,7 @@ export const config = {
     api: {
         port: env.BOT_API_PORT,
         secret: env.BOT_API_SECRET,
-        dashboardUrl: env.DASHBOARD_URL,
+        // dashboardUrl: env.DASHBOARD_URL, (will add later)
     },
     bot: {
         prefix: env.BOT_PREFIX,
@@ -86,7 +86,7 @@ export const config = {
             clientSecret: env.SPOTIFY_CLIENT_SECRET,
         },
         youtube: {
-            apiKey: env.YOUTUBE_API_KEY,
+            refreshToken: env.YOUTUBE_OAUTH_REFRESH_TOKEN,
         },
         twitch: {
             clientId: env.TWITCH_CLIENT_ID,

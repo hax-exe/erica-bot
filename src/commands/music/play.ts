@@ -46,17 +46,16 @@ export default new Command({
                 });
             }
 
-            // Search for track - use SoundCloud search if not a URL
-            // YouTube is disabled due to authentication requirements
+            // Search for track - use YouTube search via youtube-source plugin
             const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            const searchQuery = isUrl ? query : `scsearch:${query}`;
+            const searchQuery = isUrl ? query : `ytsearch:${query}`;
 
             const result = await client.music.search(searchQuery, {
                 requester: interaction.user,
             });
 
             if (!result.tracks.length) {
-                await interaction.editReply('❌ No results found. Try a SoundCloud URL or different search terms.');
+                await interaction.editReply('❌ No results found. Try a YouTube URL or different search terms.');
                 return;
             }
 

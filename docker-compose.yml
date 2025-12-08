@@ -42,6 +42,10 @@ services:
     environment:
       - SERVER_PORT=2333
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD}
+      - PLUGINS_YOUTUBE_OAUTH_REFRESHTOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN}
+      # Spotify credentials for LavaSrc plugin
+      - PLUGINS_LAVASRC_SPOTIFY_CLIENTID=${SPOTIFY_CLIENT_ID}
+      - PLUGINS_LAVASRC_SPOTIFY_CLIENTSECRET=${SPOTIFY_CLIENT_SECRET}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     networks:

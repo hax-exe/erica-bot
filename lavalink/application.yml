@@ -3,10 +3,21 @@ server:
   address: 0.0.0.0
 
 lavalink:
+  plugins:
+    # YouTube Source Plugin - handles YouTube playback with OAuth
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0"
+      repository: "https://maven.lavalink.dev/releases"
+    # LavaSearch Plugin - enhanced search capabilities
+    - dependency: "com.github.topi314.lavasearch:lavasearch-plugin:1.0.0"
+      repository: "https://maven.lavalink.dev/releases"
+    # LavaSrc Plugin - Spotify, Apple Music, Deezer support
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.3.0"
+      repository: "https://maven.lavalink.dev/releases"
+
   server:
     password: ${LAVALINK_PASSWORD}
     sources:
-      # Disabled - requires authentication
+      # MUST be false - youtube-source plugin handles YouTube instead
       youtube: false
       # Working sources
       bandcamp: true
@@ -36,6 +47,53 @@ lavalink:
     soundcloudSearchEnabled: true
     gc-warnings: true
 
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    # Client priority for track loading (first = highest priority)
+    clients:
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
+    # OAuth configuration - use a burner Google account!
+    oauth:
+      enabled: true
+      # refreshToken passed via Spring Boot env var in docker-compose.yml
+
+  lavasearch:
+    sources:
+      - youtube
+      - soundcloud
+      - spotify
+
+  # LavaSrc configuration for Spotify and other sources
+  lavasrc:
+    # Providers define how to find the actual audio (mirrors Spotify -> YouTube)
+    providers:
+      - "ytsearch:\"%ISRC%\""  # Search by ISRC code first (most accurate)
+      - "ytsearch:%QUERY%"     # Fallback to title + artist search
+    sources:
+      spotify: true     # Enable Spotify source
+      applemusic: false # Enable if you have Apple Music credentials
+      deezer: false     # Enable if you have Deezer credentials
+      yandexmusic: false
+      flowerytts: false
+      youtube: true     # Enable YouTube lyrics via LavaSearch
+      vkmusic: false
+      tidal: false
+      qobuz: false
+    spotify:
+      # Get these from https://developer.spotify.com/dashboard
+      clientId: ${SPOTIFY_CLIENT_ID}
+      clientSecret: ${SPOTIFY_CLIENT_SECRET}
+      countryCode: "US"
+      playlistLoadLimit: 6   # Pages of 100 tracks each
+      albumLoadLimit: 6      # Pages of 50 tracks each
+
 metrics:
   prometheus:
     enabled: false
@@ -51,3 +109,5 @@ logging:
   level:
     root: INFO
     lavalink: INFO
+    # Enable INFO logging to see OAuth flow messages
+    dev.lavalink.youtube: INFO
