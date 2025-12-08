@@ -48,7 +48,12 @@ jobs:
       - name: Run tests
         run: npm run test:run
         env:
+          # Required env vars for config validation (dummy values for CI)
           DATABASE_URL: postgres://test:test@localhost:5432/testdb
+          DISCORD_TOKEN: test_token_for_ci_validation
+          DISCORD_CLIENT_ID: 123456789012345678
+          LAVALINK_PASSWORD: test_password
+          NODE_ENV: test
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
