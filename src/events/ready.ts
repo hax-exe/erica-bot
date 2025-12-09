@@ -1,6 +1,7 @@
 import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
 import { connectDatabase } from '../db/index.js';
+import { pushSchema } from '../db/migrate.js';
 import { loadCommands } from '../structures/CommandHandler.js';
 import { loadEvents } from '../structures/EventHandler.js';
 
@@ -15,6 +16,9 @@ export default new Event({
 
         // Connect to database
         await connectDatabase();
+
+        // Push schema (creates tables if they don't exist)
+        await pushSchema();
 
         // Load commands after ready
         await loadCommands(client);

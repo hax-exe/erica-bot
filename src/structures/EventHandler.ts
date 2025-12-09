@@ -12,7 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export async function loadEvents(client: ExtendedClient): Promise<void> {
     const eventsPath = join(__dirname, '..', 'events');
     const eventFiles = readdirSync(eventsPath).filter(
-        (file) => file.endsWith('.js') || file.endsWith('.ts')
+        (file) => (file.endsWith('.js') || file.endsWith('.ts')) && !file.endsWith('.d.ts')
     );
 
     let loadedCount = 0;
