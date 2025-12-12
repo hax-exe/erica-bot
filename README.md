@@ -137,6 +137,63 @@ Run the bot directly on your machine without Docker.
 
 ---
 
+## High Availability (Optional)
+
+The bot supports High Availability (HA) mode with automatic failover. When enabled, you can run multiple bot instances where only one is active at a time (the "leader"), while others remain on standby ready to take over if the leader fails.
+
+### How It Works
+
+- **Leader Election**: Uses Redis to elect a single active instance
+- **10-Second Failover**: If the leader stops sending heartbeats, a standby takes over
+- **Music Session Preservation**: Active music sessions are saved to Redis and restored on failover
+
+### Quick Start (HA Mode)
+
+1. Ensure the base setup is working first (see Options 1 or 2 above)
+
+2. Start with the HA override:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d
+   ```
+
+3. Verify both instances are running:
+   ```bash
+   # Check primary (should show isLeader: true)
+   curl http://localhost:3002/health
+
+   # Check standby (should show isLeader: false)
+   curl http://localhost:3003/health
+   ```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HA_ENABLED` | `false` | Enable HA mode |
+| `HA_INSTANCE_ID` | auto | Unique instance ID |
+| `HA_HEARTBEAT_INTERVAL` | `3000` | Heartbeat frequency (ms) |
+| `HA_LEADER_TIMEOUT` | `10000` | Failover timeout (ms) |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
+
+### Testing Failover
+
+```bash
+# Kill the primary instance
+docker stop discord-bot-primary
+
+# Wait 10-15 seconds, then check standby
+curl http://localhost:3003/health
+# Should now show: "isLeader": true
+```
+
+### Limitations
+
+- ~10-15 seconds of downtime during failover
+- Music playback resumes from last saved position (may be a few seconds behind)
+- If the track expired (YouTube), it will skip to the next in queue
+
+---
+
 ## Setting Up Lavalink
 
 If running standalone, you'll need a Lavalink server for music features.

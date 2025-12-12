@@ -36,6 +36,15 @@ const envSchema = z.object({
     YOUTUBE_OAUTH_REFRESH_TOKEN: z.string().optional(),
     TWITCH_CLIENT_ID: z.string().optional(),
     TWITCH_CLIENT_SECRET: z.string().optional(),
+
+    // Redis
+    REDIS_URL: z.string().default('redis://localhost:6379'),
+
+    // High Availability
+    HA_ENABLED: z.string().transform(v => v === 'true').default('false'),
+    HA_INSTANCE_ID: z.string().optional(),
+    HA_HEARTBEAT_INTERVAL: z.string().default('3000').transform(Number),
+    HA_LEADER_TIMEOUT: z.string().default('10000').transform(Number),
 });
 
 function validateEnv() {
@@ -92,6 +101,15 @@ export const config = {
             clientId: env.TWITCH_CLIENT_ID,
             clientSecret: env.TWITCH_CLIENT_SECRET,
         },
+    },
+    redis: {
+        url: env.REDIS_URL,
+    },
+    ha: {
+        enabled: env.HA_ENABLED,
+        instanceId: env.HA_INSTANCE_ID || `bot-${process.pid}`,
+        heartbeatInterval: env.HA_HEARTBEAT_INTERVAL,
+        leaderTimeout: env.HA_LEADER_TIMEOUT,
     },
 } as const;
 

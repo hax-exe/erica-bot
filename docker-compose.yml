@@ -6,6 +6,7 @@ services:
     depends_on:
       - postgres
       - lavalink
+      - redis
     ports:
       - "3002:3002" # Bot API for health checks
     env_file:
@@ -15,6 +16,7 @@ services:
       - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
       - LAVALINK_HOST=lavalink
       - LAVALINK_PORT=2333
+      - REDIS_URL=redis://redis:6379
     networks:
       - bot-network
 
@@ -30,6 +32,18 @@ services:
       - POSTGRES_DB=discord_bot
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - bot-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: discord-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
     networks:
       - bot-network
 
@@ -53,6 +67,7 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
 
 
 networks:
