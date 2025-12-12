@@ -11,7 +11,7 @@ const logger = createLogger('main');
 
 async function main(): Promise<void> {
     const client = new ExtendedClient();
-    let leaderElection = config.ha.enabled ? getLeaderElection() : null;
+    const leaderElection = config.ha.enabled ? getLeaderElection() : null;
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
