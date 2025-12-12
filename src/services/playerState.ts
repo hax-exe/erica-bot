@@ -206,6 +206,7 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
             }
 
             // Create a new player
+            logger.info({ guildId: state.guildId, voiceId: state.voiceChannelId }, 'Creating player for restore');
             const player = await client.music.createPlayer({
                 guildId: state.guildId,
                 voiceId: state.voiceChannelId,
@@ -217,27 +218,46 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
             await player.setVolume(state.volume);
             player.setLoop(state.loop);
 
-            // Restore current track and queue
+            // Restore current track
+            let firstTrack = null;
             if (state.currentTrack) {
+                logger.debug({ guildId: state.guildId, uri: state.currentTrack.uri }, 'Searching for current track');
                 const searchResult = await client.music.search(state.currentTrack.uri, { requester: client.user });
                 const track = searchResult.tracks[0];
                 if (track) {
-                    player.queue.add(track);
+                    firstTrack = track;
+                    logger.debug({ guildId: state.guildId, title: track.title }, 'Found current track');
+                } else {
+                    logger.warn({ guildId: state.guildId, uri: state.currentTrack.uri }, 'Could not find current track');
                 }
             }
 
             // Restore queue
+            const queueTracks = [];
             for (const queuedTrack of state.queue) {
                 const searchResult = await client.music.search(queuedTrack.uri, { requester: client.user });
                 const track = searchResult.tracks[0];
                 if (track) {
-                    player.queue.add(track);
+                    queueTracks.push(track);
                 }
             }
 
-            // Start playback
-            if (!player.playing && player.queue.length > 0) {
-                await player.play();
+            logger.info({
+                guildId: state.guildId,
+                hasFirstTrack: !!firstTrack,
+                queueSize: queueTracks.length
+            }, 'Tracks loaded for restore');
+
+            // Start playback with first track
+            if (firstTrack) {
+                // Add queue tracks first (they go after current)
+                for (const track of queueTracks) {
+                    player.queue.add(track);
+                }
+
+                // Play the first track directly
+                logger.info({ guildId: state.guildId, track: firstTrack.title }, 'Starting playback');
+                await player.play(firstTrack);
 
                 // Seek to saved position if possible
                 if (state.currentTrack && state.currentTrack.position > 0) {
@@ -246,18 +266,32 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                         try {
                             // Calculate adjusted position accounting for time since save
                             const timeSinceSave = Date.now() - state.updatedAt;
-                            const adjustedPosition = state.currentTrack!.position + timeSinceSave;
+                            const adjustedPosition = Math.min(
+                                state.currentTrack!.position + timeSinceSave,
+                                state.currentTrack!.duration - 5000 // Leave 5s buffer
+                            );
 
-                            // Only seek if not past the end of the track
-                            if (adjustedPosition < state.currentTrack!.duration) {
+                            if (adjustedPosition > 0 && adjustedPosition < state.currentTrack!.duration) {
                                 await player.seek(adjustedPosition);
-                                logger.debug({ guildId: state.guildId, position: adjustedPosition }, 'Seeked to saved position');
+                                logger.info({ guildId: state.guildId, position: adjustedPosition }, 'Seeked to saved position');
                             }
                         } catch (seekError) {
                             logger.warn({ guildId: state.guildId, error: seekError }, 'Failed to seek to saved position');
                         }
-                    }, 1500);
+                    }, 2000);
                 }
+            } else if (queueTracks.length > 0) {
+                // No current track but have queue - play first from queue
+                for (const track of queueTracks) {
+                    player.queue.add(track);
+                }
+                await player.play();
+                logger.info({ guildId: state.guildId }, 'Playing from restored queue');
+            } else {
+                logger.warn({ guildId: state.guildId }, 'No tracks to restore, destroying player');
+                player.destroy();
+                await deletePlayerState(state.guildId);
+                continue;
             }
 
             // Start auto-saving for restored player
