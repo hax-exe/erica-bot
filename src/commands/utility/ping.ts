@@ -29,11 +29,7 @@ export default new Command({
             .setTitle('🏓 Pong!')
             .addFields(
                 { name: '📡 Roundtrip', value: `\`${roundtrip}ms\``, inline: true },
-                { name: '💓 WebSocket', value: `\`${wsLatency}ms\``, inline: true },
                 { name: '⏱️ Uptime', value: `\`${uptime}\``, inline: true },
-                { name: '🖥️ Memory', value: `\`${memUsedMB} MB\``, inline: true },
-                { name: '📚 Discord.js', value: `\`v${djsVersion}\``, inline: true },
-                { name: '📊 Guilds', value: `\`${client.guilds.cache.size}\``, inline: true },
             )
             .setFooter({ text: `Node.js ${process.version} • ${os.platform()}` })
             .setTimestamp();

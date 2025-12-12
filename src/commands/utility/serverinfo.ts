@@ -42,7 +42,6 @@ export default new Command({
                 { name: '💬 Channels', value: `${channels.size} (${textChannels} text, ${voiceChannels} voice, ${categories} categories)`, inline: true },
                 { name: '🎭 Roles', value: `${roles.size}`, inline: true },
                 { name: '😀 Emojis', value: `${emojis.size}`, inline: true },
-                { name: '🔒 Verification', value: guild.verificationLevel.toString(), inline: true },
                 { name: '🚀 Boost Level', value: `Level ${guild.premiumTier} (${guild.premiumSubscriptionCount} boosts)`, inline: true },
             )
             .setTimestamp();
