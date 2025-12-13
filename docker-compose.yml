@@ -4,9 +4,12 @@ services:
     container_name: discord-bot
     restart: unless-stopped
     depends_on:
-      - postgres
-      - lavalink
-      - redis
+      postgres:
+        condition: service_healthy
+      lavalink:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "3002:3002" # Bot API for health checks
     env_file:
@@ -32,6 +35,11 @@ services:
       - POSTGRES_DB=discord_bot
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U bot -d discord_bot" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - bot-network
 
@@ -44,6 +52,11 @@ services:
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - bot-network
 
@@ -62,6 +75,12 @@ services:
       - PLUGINS_LAVASRC_SPOTIFY_CLIENTSECRET=${SPOTIFY_CLIENT_SECRET}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf http://localhost:2333/version || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - bot-network
 

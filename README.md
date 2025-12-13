@@ -35,6 +35,11 @@ Docker deployment includes the bot, PostgreSQL database, and Lavalink server all
 
 - Docker and Docker Compose installed
 - A Discord bot token and client ID from the [Discord Developer Portal](https://discord.com/developers/applications)
+- **Privileged Gateway Intents enabled** in the Discord Developer Portal:
+  1. Go to your application → **Bot** settings
+  2. Scroll to **Privileged Gateway Intents**
+  3. Enable **Server Members Intent** and **Message Content Intent**
+  4. Save changes
 
 #### Quick Start
 
@@ -89,6 +94,7 @@ Run the bot directly on your machine without Docker.
 - Node.js 20 or higher
 - PostgreSQL database (local or remote)
 - Lavalink server (for music features)
+- **Privileged Gateway Intents enabled** in the [Discord Developer Portal](https://discord.com/developers/applications) (Server Members Intent + Message Content Intent)
 
 #### Installation
 

@@ -17,9 +17,12 @@ services:
     container_name: discord-bot-standby
     restart: unless-stopped
     depends_on:
-      - postgres
-      - lavalink
-      - redis
+      postgres:
+        condition: service_healthy
+      lavalink:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "3003:3002" # Different external port for health checks
     env_file:
