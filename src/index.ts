@@ -53,7 +53,12 @@ async function main(): Promise<void> {
     });
 
     process.on('unhandledRejection', (reason) => {
-        logger.error({ reason }, 'Unhandled rejection');
+        // Pino serializes Error objects properly when using 'err' key
+        if (reason instanceof Error) {
+            logger.error({ err: reason }, 'Unhandled rejection');
+        } else {
+            logger.error({ reason }, 'Unhandled rejection');
+        }
     });
 
     // Start the bot
