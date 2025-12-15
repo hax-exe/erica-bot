@@ -76,7 +76,7 @@ services:
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:2333/version || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf -H 'Authorization: ${LAVALINK_PASSWORD}' http://localhost:2333/version || exit 1" ]
       interval: 10s
       timeout: 10s
       retries: 10
