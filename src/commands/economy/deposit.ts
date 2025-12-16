@@ -23,33 +23,30 @@ export default new Command({
     requiredModule: 'economy',
 
     async execute(interaction) {
-        const amountInput = interaction.options.getString('amount', true).toLowerCase();
+        const input = interaction.options.getString('amount', true).toLowerCase();
         const userId = interaction.user.id;
         const guildId = interaction.guildId!;
 
-        // Get settings
         const settings = await db.query.economySettings.findFirst({
             where: eq(economySettings.guildId, guildId),
         });
-        const currencyName = settings?.currencyName ?? 'coins';
-        const currencySymbol = settings?.currencySymbol ?? '🪙';
+        const currency = settings?.currencyName ?? 'coins';
+        const symbol = settings?.currencySymbol ?? '🪙';
 
-        // Get member data
-        const memberData = await db.query.guildMembers.findFirst({
+        const member = await db.query.guildMembers.findFirst({
             where: and(
                 eq(guildMembers.guildId, guildId),
                 eq(guildMembers.odId, userId)
             ),
         });
 
-        const wallet = memberData?.balance ?? 0;
+        const wallet = member?.balance ?? 0;
 
-        // Parse amount - handle "all" or numeric value
         let amount: number;
-        if (amountInput === 'all') {
+        if (input === 'all') {
             amount = wallet;
         } else {
-            amount = parseInt(amountInput, 10);
+            amount = parseInt(input, 10);
             if (isNaN(amount) || amount < 1) {
                 await interaction.reply({
                     content: '❌ Please enter a valid number or "all".',
@@ -69,14 +66,14 @@ export default new Command({
 
         if (wallet < amount) {
             await interaction.reply({
-                content: `❌ You don't have enough coins. Your wallet: ${wallet.toLocaleString()} ${currencyName}`,
+                content: `❌ You don't have enough coins. Your wallet: ${wallet.toLocaleString()} ${currency}`,
                 ephemeral: true,
             });
             return;
         }
 
         const newWallet = wallet - amount;
-        const newBank = (memberData?.bank ?? 0) + amount;
+        const newBank = (member?.bank ?? 0) + amount;
 
         await db.update(guildMembers)
             .set({
@@ -91,11 +88,11 @@ export default new Command({
 
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
-            .setTitle(`${currencySymbol} Deposit Successful!`)
-            .setDescription(`Deposited **${amount.toLocaleString()}** ${currencyName} to your bank.`)
+            .setTitle(`${symbol} Deposit Successful!`)
+            .setDescription(`Deposited **${amount.toLocaleString()}** ${currency} to your bank.`)
             .addFields(
-                { name: '💰 Wallet', value: `${newWallet.toLocaleString()} ${currencyName}`, inline: true },
-                { name: '🏦 Bank', value: `${newBank.toLocaleString()} ${currencyName}`, inline: true },
+                { name: '💰 Wallet', value: `${newWallet.toLocaleString()} ${currency}`, inline: true },
+                { name: '🏦 Bank', value: `${newBank.toLocaleString()} ${currency}`, inline: true },
             )
             .setTimestamp();
 

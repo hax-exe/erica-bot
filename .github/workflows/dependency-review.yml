@@ -9,20 +9,12 @@ permissions:
   pull-requests: write
 
 jobs:
-  dependency-review:
-    name: Review Dependencies
+  review:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
         with:
-          # Fail on high and critical severity vulnerabilities
           fail-on-severity: high
-          # Comment on PR with vulnerability details
           comment-summary-in-pr: always
-          # Deny specific licenses if needed (optional)
-          # deny-licenses: GPL-3.0, AGPL-3.0

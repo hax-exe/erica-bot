@@ -27,36 +27,22 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run type check
-        run: npx tsc --noEmit
-
-      - name: Run tests
-        run: npm run test:run
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run test:run
         env:
-          # Required env vars for config validation (dummy values for CI)
           DATABASE_URL: postgres://test:test@localhost:5432/testdb
           DISCORD_TOKEN: test_token_for_ci_validation
           DISCORD_CLIENT_ID: 123456789012345678
           LAVALINK_PASSWORD: test_password
           NODE_ENV: test
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v3
         if: always()
         with:
           files: ./coverage/coverage-final.json
@@ -68,28 +54,18 @@ jobs:
     needs: test
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build bot
-        run: npm run build
-
-      - name: Upload bot artifact
-        uses: actions/upload-artifact@v4
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
         with:
           name: bot-dist
           path: dist/
 
-  # Build AMD64 image on native x64 runner
   docker-amd64:
     name: Build Docker (AMD64)
     runs-on: ubuntu-latest
@@ -101,27 +77,18 @@ jobs:
       packages: write
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Download bot artifact
-        uses: actions/download-artifact@v7
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
           name: bot-dist
           path: dist/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push AMD64 image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           push: true
@@ -131,7 +98,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=amd64
           provenance: false
 
-  # Build ARM64 image on GitHub-hosted ARM runner
   docker-arm64:
     name: Build Docker (ARM64)
     runs-on: ubuntu-24.04-arm
@@ -143,27 +109,18 @@ jobs:
       packages: write
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Download bot artifact
-        uses: actions/download-artifact@v7
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
           name: bot-dist
           path: dist/
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push ARM64 image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           push: true
@@ -173,7 +130,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=arm64
           provenance: false
 
-  # Create multi-arch manifest after both platform images are built
   docker-manifest:
     name: Create Multi-Arch Manifest
     runs-on: ubuntu-latest
@@ -185,15 +141,12 @@ jobs:
       packages: write
     
     steps:
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push manifest
-        run: |
+      - run: |
           docker manifest create ghcr.io/${{ github.repository }}/bot:latest \
             ghcr.io/${{ github.repository }}/bot:amd64-${{ github.sha }} \
             ghcr.io/${{ github.repository }}/bot:arm64-${{ github.sha }}

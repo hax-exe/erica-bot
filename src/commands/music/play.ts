@@ -21,9 +21,9 @@ export default new Command({
         const member = interaction.member;
 
         // @ts-expect-error - Voice state exists on GuildMember
-        const voiceChannel = member?.voice?.channel;
+        const vc = member?.voice?.channel;
 
-        if (!voiceChannel) {
+        if (!vc) {
             await interaction.reply({
                 content: '❌ You must be in a voice channel to use this command.',
                 ephemeral: true,
@@ -32,37 +32,32 @@ export default new Command({
         }
 
         const isUrl = query.startsWith('http://') || query.startsWith('https://');
-
-        // Defer differently: ephemeral for search selection, public for URLs
         await interaction.deferReply({ flags: isUrl ? undefined : MessageFlags.Ephemeral });
 
         try {
-            // Get or create player
             let player = client.music.players.get(interaction.guildId!);
 
             if (!player) {
                 player = await client.music.createPlayer({
                     guildId: interaction.guildId!,
                     textId: interaction.channelId,
-                    voiceId: voiceChannel.id,
+                    voiceId: vc.id,
                     volume: 50,
                     deaf: true,
                 });
             }
 
-            // Search for track - use Spotify search via LavaSrc plugin
-            const searchOptions = isUrl
+            const opts = isUrl
                 ? { requester: interaction.user }
                 : { requester: interaction.user, engine: 'spsearch:' };
 
-            const result = await client.music.search(query, searchOptions);
+            const result = await client.music.search(query, opts);
 
             if (!result.tracks.length) {
                 await interaction.editReply('❌ No results found. Try a direct URL (YouTube, Spotify, SoundCloud) or different search terms.');
                 return;
             }
 
-            // Handle playlists - add all tracks directly
             if (result.type === 'PLAYLIST') {
                 for (const track of result.tracks) {
                     player.queue.add(track);
@@ -82,7 +77,6 @@ export default new Command({
                 return;
             }
 
-            // Handle direct URLs - add directly without selection
             if (isUrl) {
                 const track = result.tracks[0]!;
                 player.queue.add(track);
@@ -107,71 +101,63 @@ export default new Command({
                 return;
             }
 
-            // Text query - show selection with buttons
             const tracks = result.tracks.slice(0, 5);
 
-            const trackList = tracks
+            const list = tracks
                 .map((t, i) => `**${i + 1}.** [${t.title}](${t.uri}) - ${t.author || 'Unknown'} (${formatDuration(t.length || 0)})`)
                 .join('\n');
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865f2)
                 .setTitle('🔍 Search Results')
-                .setDescription(`${trackList}\n\n*Select a track or cancel. Expires in 30 seconds.*`)
+                .setDescription(`${list}\n\n*Select a track or cancel. Expires in 30 seconds.*`)
                 .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
-            // Create selection buttons (max 5 per row, so split if needed)
-            const trackButtons = tracks.map((_, i) =>
+            const trackBtns = tracks.map((_, i) =>
                 new ButtonBuilder()
                     .setCustomId(`track_select_${i}`)
                     .setLabel(`${i + 1}`)
                     .setStyle(ButtonStyle.Primary)
             );
 
-            const cancelButton = new ButtonBuilder()
+            const cancelBtn = new ButtonBuilder()
                 .setCustomId('track_select_cancel')
                 .setLabel('Cancel')
                 .setStyle(ButtonStyle.Secondary);
 
-            // Track buttons row (up to 5)
-            const trackRow = new ActionRowBuilder<ButtonBuilder>().addComponents(...trackButtons);
-            // Cancel button on separate row
-            const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(cancelButton);
+            const trackRow = new ActionRowBuilder<ButtonBuilder>().addComponents(...trackBtns);
+            const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(cancelBtn);
 
             const response = await interaction.editReply({ embeds: [embed], components: [trackRow, cancelRow] });
 
-            // Wait for button interaction
             try {
-                const buttonInteraction = await response.awaitMessageComponent({
+                const btn = await response.awaitMessageComponent({
                     componentType: ComponentType.Button,
                     filter: (i) => i.user.id === interaction.user.id,
                     time: 30_000,
                 });
 
-                if (buttonInteraction.customId === 'track_select_cancel') {
+                if (btn.customId === 'track_select_cancel') {
                     await interaction.deleteReply();
                     return;
                 }
 
-                // Parse track index from button ID
-                const trackIndex = parseInt(buttonInteraction.customId.replace('track_select_', ''), 10);
-                const selectedTrack = tracks[trackIndex]!;
+                const idx = parseInt(btn.customId.replace('track_select_', ''), 10);
+                const selected = tracks[idx]!;
 
-                player.queue.add(selectedTrack);
-
-                // Update ephemeral with confirmation, send public message
+                player.queue.add(selected);
                 await interaction.deleteReply();
 
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x5865f2)
                     .setTitle('🎵 Track Added')
-                    .setDescription(`[${selectedTrack.title}](${selectedTrack.uri})`)
+                    .setDescription(`[${selected.title}](${selected.uri})`)
                     .addFields(
-                        { name: 'Author', value: selectedTrack.author || 'Unknown', inline: true },
-                        { name: 'Duration', value: formatDuration(selectedTrack.length || 0), inline: true },
+                        { name: 'Author', value: selected.author || 'Unknown', inline: true },
+                        { name: 'Duration', value: formatDuration(selected.length || 0), inline: true },
                         { name: 'Position', value: `#${player.queue.length}`, inline: true },
                     )
-                    .setThumbnail(selectedTrack.thumbnail || null)
+                    .setThumbnail(selected.thumbnail || null)
                     .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
                 if (interaction.channel?.isTextBased() && 'send' in interaction.channel) {
@@ -182,7 +168,6 @@ export default new Command({
                     await player.play();
                 }
             } catch {
-                // Timeout - remove the message
                 await interaction.deleteReply().catch(() => { });
             }
         } catch (error) {
@@ -193,12 +178,12 @@ export default new Command({
 });
 
 function formatDuration(ms: number): string {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
 
-    if (hours > 0) {
-        return `${hours}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+    if (h > 0) {
+        return `${h}:${(m % 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
     }
-    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}`;
+    return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }

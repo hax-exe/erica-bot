@@ -1,19 +1,13 @@
 import { getRedisClient, REDIS_KEYS } from './redis.js';
 import { createLogger } from '../utils/logger.js';
-import type { KazagumoPlayer, KazagumoTrack } from 'kazagumo';
+import type { KazagumoPlayer } from 'kazagumo';
 import type { ExtendedClient } from '../structures/Client.js';
 
 const logger = createLogger('player-state');
 
-// TTL for player state in Redis (5 minutes)
 const PLAYER_STATE_TTL = 5 * 60 * 1000;
-
-// How often to save state while playing (5 seconds)
 const SAVE_INTERVAL = 5000;
 
-/**
- * Serializable player state for persistence.
- */
 export interface PlayerState {
     guildId: string;
     voiceChannelId: string;
@@ -22,7 +16,7 @@ export interface PlayerState {
         uri: string;
         title: string;
         author: string;
-        position: number;  // Playback position in ms
+        position: number;
         duration: number;
     } | null;
     queue: Array<{
@@ -37,34 +31,28 @@ export interface PlayerState {
     updatedAt: number;
 }
 
-/**
- * Tracks which players are being auto-saved.
- */
 const saveTimers = new Map<string, NodeJS.Timeout>();
 
-/**
- * Save a player's state to Redis.
- */
 export async function savePlayerState(player: KazagumoPlayer): Promise<void> {
     const redis = getRedisClient();
+    const current = player.queue.current;
 
-    const currentTrack = player.queue.current;
     const state: PlayerState = {
         guildId: player.guildId,
         voiceChannelId: player.voiceId || '',
         textChannelId: player.textId || '',
-        currentTrack: currentTrack ? {
-            uri: currentTrack.uri || '',
-            title: currentTrack.title || 'Unknown',
-            author: currentTrack.author || 'Unknown',
+        currentTrack: current ? {
+            uri: current.uri || '',
+            title: current.title || 'Unknown',
+            author: current.author || 'Unknown',
             position: player.position || 0,
-            duration: currentTrack.length || 0,
+            duration: current.length || 0,
         } : null,
-        queue: player.queue.map(track => ({
-            uri: track.uri || '',
-            title: track.title || 'Unknown',
-            author: track.author || 'Unknown',
-            duration: track.length || 0,
+        queue: player.queue.map(t => ({
+            uri: t.uri || '',
+            title: t.title || 'Unknown',
+            author: t.author || 'Unknown',
+            duration: t.length || 0,
         })),
         volume: player.volume,
         loop: player.loop as 'none' | 'track' | 'queue',
@@ -82,9 +70,6 @@ export async function savePlayerState(player: KazagumoPlayer): Promise<void> {
     logger.debug({ guildId: player.guildId }, 'Player state saved');
 }
 
-/**
- * Get a saved player state from Redis.
- */
 export async function getPlayerState(guildId: string): Promise<PlayerState | null> {
     const redis = getRedisClient();
     const data = await redis.get(REDIS_KEYS.PLAYER_STATE(guildId));
@@ -99,9 +84,6 @@ export async function getPlayerState(guildId: string): Promise<PlayerState | nul
     }
 }
 
-/**
- * Get all saved player states from Redis.
- */
 export async function getAllPlayerStates(): Promise<PlayerState[]> {
     const redis = getRedisClient();
     const keys = await redis.keys(REDIS_KEYS.PLAYER_STATE('*'));
@@ -123,20 +105,13 @@ export async function getAllPlayerStates(): Promise<PlayerState[]> {
     return states;
 }
 
-/**
- * Delete a player's saved state.
- */
 export async function deletePlayerState(guildId: string): Promise<void> {
     const redis = getRedisClient();
     await redis.del(REDIS_KEYS.PLAYER_STATE(guildId));
     logger.debug({ guildId }, 'Player state deleted');
 }
 
-/**
- * Start auto-saving a player's state periodically.
- */
 export function startAutoSave(player: KazagumoPlayer): void {
-    // Clear existing timer if any
     stopAutoSave(player.guildId);
 
     const timer = setInterval(async () => {
@@ -149,9 +124,6 @@ export function startAutoSave(player: KazagumoPlayer): void {
     logger.debug({ guildId: player.guildId }, 'Started auto-save for player');
 }
 
-/**
- * Stop auto-saving a player's state.
- */
 export function stopAutoSave(guildId: string): void {
     const timer = saveTimers.get(guildId);
     if (timer) {
@@ -161,21 +133,14 @@ export function stopAutoSave(guildId: string): void {
     }
 }
 
-/**
- * Stop all auto-save timers.
- */
 export function stopAllAutoSaves(): void {
-    for (const [guildId, timer] of saveTimers) {
+    for (const [, timer] of saveTimers) {
         clearInterval(timer);
     }
     saveTimers.clear();
     logger.debug('Stopped all auto-saves');
 }
 
-/**
- * Restore all saved player states after failover.
- * This reconnects to voice channels and resumes playback.
- */
 export async function restorePlayerStates(client: ExtendedClient): Promise<number> {
     const states = await getAllPlayerStates();
 
@@ -189,7 +154,6 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
 
     for (const state of states) {
         try {
-            // Check if we have access to the guild
             const guild = client.guilds.cache.get(state.guildId);
             if (!guild) {
                 logger.warn({ guildId: state.guildId }, 'Guild not found, skipping restore');
@@ -197,15 +161,13 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                 continue;
             }
 
-            // Check if voice channel exists
-            const voiceChannel = guild.channels.cache.get(state.voiceChannelId);
-            if (!voiceChannel?.isVoiceBased()) {
+            const vc = guild.channels.cache.get(state.voiceChannelId);
+            if (!vc?.isVoiceBased()) {
                 logger.warn({ guildId: state.guildId }, 'Voice channel not found, skipping restore');
                 await deletePlayerState(state.guildId);
                 continue;
             }
 
-            // Create a new player
             logger.info({ guildId: state.guildId, voiceId: state.voiceChannelId }, 'Creating player for restore');
             const player = await client.music.createPlayer({
                 guildId: state.guildId,
@@ -214,16 +176,14 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                 deaf: true,
             });
 
-            // Set volume and loop mode
             await player.setVolume(state.volume);
             player.setLoop(state.loop);
 
-            // Restore current track
             let firstTrack = null;
             if (state.currentTrack) {
                 logger.debug({ guildId: state.guildId, uri: state.currentTrack.uri }, 'Searching for current track');
-                const searchResult = await client.music.search(state.currentTrack.uri, { requester: client.user });
-                const track = searchResult.tracks[0];
+                const result = await client.music.search(state.currentTrack.uri, { requester: client.user });
+                const track = result.tracks[0];
                 if (track) {
                     firstTrack = track;
                     logger.debug({ guildId: state.guildId, title: track.title }, 'Found current track');
@@ -232,11 +192,10 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                 }
             }
 
-            // Restore queue
             const queueTracks = [];
-            for (const queuedTrack of state.queue) {
-                const searchResult = await client.music.search(queuedTrack.uri, { requester: client.user });
-                const track = searchResult.tracks[0];
+            for (const queued of state.queue) {
+                const result = await client.music.search(queued.uri, { requester: client.user });
+                const track = result.tracks[0];
                 if (track) {
                     queueTracks.push(track);
                 }
@@ -248,40 +207,33 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                 queueSize: queueTracks.length
             }, 'Tracks loaded for restore');
 
-            // Start playback with first track
             if (firstTrack) {
-                // Add queue tracks first (they go after current)
                 for (const track of queueTracks) {
                     player.queue.add(track);
                 }
 
-                // Play the first track directly
                 logger.info({ guildId: state.guildId, track: firstTrack.title }, 'Starting playback');
                 await player.play(firstTrack);
 
-                // Seek to saved position if possible
                 if (state.currentTrack && state.currentTrack.position > 0) {
-                    // Add a small delay to ensure track is playing before seeking
                     setTimeout(async () => {
                         try {
-                            // Calculate adjusted position accounting for time since save
-                            const timeSinceSave = Date.now() - state.updatedAt;
-                            const adjustedPosition = Math.min(
-                                state.currentTrack!.position + timeSinceSave,
-                                state.currentTrack!.duration - 5000 // Leave 5s buffer
+                            const elapsed = Date.now() - state.updatedAt;
+                            const pos = Math.min(
+                                state.currentTrack!.position + elapsed,
+                                state.currentTrack!.duration - 5000
                             );
 
-                            if (adjustedPosition > 0 && adjustedPosition < state.currentTrack!.duration) {
-                                await player.seek(adjustedPosition);
-                                logger.info({ guildId: state.guildId, position: adjustedPosition }, 'Seeked to saved position');
+                            if (pos > 0 && pos < state.currentTrack!.duration) {
+                                await player.seek(pos);
+                                logger.info({ guildId: state.guildId, position: pos }, 'Seeked to saved position');
                             }
-                        } catch (seekError) {
-                            logger.warn({ guildId: state.guildId, error: seekError }, 'Failed to seek to saved position');
+                        } catch (err) {
+                            logger.warn({ guildId: state.guildId, error: err }, 'Failed to seek to saved position');
                         }
                     }, 2000);
                 }
             } else if (queueTracks.length > 0) {
-                // No current track but have queue - play first from queue
                 for (const track of queueTracks) {
                     player.queue.add(track);
                 }
@@ -294,10 +246,8 @@ export async function restorePlayerStates(client: ExtendedClient): Promise<numbe
                 continue;
             }
 
-            // Start auto-saving for restored player
             startAutoSave(player);
 
-            // Notify the text channel
             const textChannel = client.channels.cache.get(state.textChannelId);
             if (textChannel?.isTextBased() && 'send' in textChannel) {
                 textChannel.send('🔄 Music session restored after bot failover. Resuming playback...');
