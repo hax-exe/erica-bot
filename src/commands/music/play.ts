@@ -46,6 +46,7 @@ export default new Command({
                     textId: interaction.channelId,
                     voiceId: voiceChannel.id,
                     volume: 50,
+                    deaf: true,
                 });
             }
 
