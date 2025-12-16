@@ -13,7 +13,7 @@ services:
 
   # Add a standby bot instance
   bot-standby:
-    image: ghcr.io/haxkiana/erica-bot/bot:latest
+    image: ghcr.io/hax-exe/erica-bot/bot:latest
     container_name: erica-bot-standby
     restart: unless-stopped
     depends_on:
