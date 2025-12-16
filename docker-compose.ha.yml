@@ -4,7 +4,7 @@
 services:
   # Override the default bot service to be the primary
   bot:
-    container_name: discord-bot-primary
+    container_name: erica-bot-primary
     environment:
       - HA_ENABLED=true
       - HA_INSTANCE_ID=bot-primary
@@ -13,8 +13,8 @@ services:
 
   # Add a standby bot instance
   bot-standby:
-    image: ghcr.io/haxkiana/multi-bot-discord/bot:latest
-    container_name: discord-bot-standby
+    image: ghcr.io/haxkiana/erica-bot/bot:latest
+    container_name: erica-bot-standby
     restart: unless-stopped
     depends_on:
       postgres:

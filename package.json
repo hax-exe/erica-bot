@@ -1,7 +1,7 @@
 {
-    "name": "multi-bot-discord",
+    "name": "erica-bot",
     "version": "1.0.0",
-    "description": "A high-end multi-purpose Discord bot with moderation, music, leveling, economy, and more",
+    "description": "Erica Bot - A high-end multi-purpose Discord bot with moderation, music, leveling, economy, and more",
     "main": "dist/index.js",
     "type": "module",
     "scripts": {

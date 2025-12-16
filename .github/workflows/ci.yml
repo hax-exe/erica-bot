@@ -142,6 +142,6 @@ jobs:
           echo "✅ Docker image pushed successfully!"
           echo ""
           echo "📦 To deploy manually, SSH into your VPS and run:"
-          echo "   cd /home/kiana/multi-bot-discord"
+          echo "   cd /home/kiana/erica-bot"
           echo "   docker compose pull"
           echo "   docker compose up -d"

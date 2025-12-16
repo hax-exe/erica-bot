@@ -31,7 +31,7 @@ export default new Event({
             status: 'online',
             activities: [
                 {
-                    name: '/help | Multi-Bot',
+                    name: '/help | Erica Bot',
                     type: 3, // Watching
                 },
             ],

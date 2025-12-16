@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
     // Start the bot
     try {
-        logger.info('Starting Multi-Bot Discord...');
+        logger.info('Starting Erica Bot...');
 
         if (config.ha.enabled) {
             logger.info({

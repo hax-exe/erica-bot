@@ -83,7 +83,7 @@ export default new Command({
 
         const embed = new EmbedBuilder()
             .setColor(0x5865f2)
-            .setTitle('📚 Multi-Bot Help')
+            .setTitle('📚 Erica Bot Help')
             .setDescription('Select a category from the dropdown or use `/help <command>` for details.')
             .setFooter({ text: `${client.commands.size} total commands` })
             .setTimestamp();

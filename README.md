@@ -1,6 +1,6 @@
-# Multi-Bot Discord
+# Erica Bot
 
-A high-end, multi-purpose Discord bot built with Discord.js v14, TypeScript, PostgreSQL, and Lavalink.
+Erica Bot is a high-end, multi-purpose Discord bot built with Discord.js v14, TypeScript, PostgreSQL, and Lavalink.
 
 ## Features
 
@@ -46,7 +46,7 @@ Docker deployment includes the bot, PostgreSQL database, and Lavalink server all
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd multi-bot-discord
+   cd erica-bot
    ```
 
 2. Copy and configure environment variables:
@@ -101,7 +101,7 @@ Run the bot directly on your machine without Docker.
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd multi-bot-discord
+   cd erica-bot
    ```
 
 2. Install dependencies:
@@ -185,7 +185,7 @@ The bot supports High Availability (HA) mode with automatic failover. When enabl
 
 ```bash
 # Kill the primary instance
-docker stop discord-bot-primary
+docker stop erica-bot-primary
 
 # Wait 10-15 seconds, then check standby
 curl http://localhost:3003/health
