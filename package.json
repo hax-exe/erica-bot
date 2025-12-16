@@ -49,6 +49,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.1",
+        "esbuild": "^0.25.0",
         "@types/cors": "^2.8.19",
         "@types/express": "^5.0.6",
         "@types/node": "^22.10.1",
@@ -65,5 +66,8 @@
     },
     "engines": {
         "node": ">=20.0.0"
+    },
+    "overrides": {
+        "esbuild": "^0.25.0"
     }
 }
