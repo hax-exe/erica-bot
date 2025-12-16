@@ -1,0 +1,65 @@
+# Development Docker Compose - runs only infrastructure services
+# The bot runs locally with hot-reload via `npm run dev`
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d    # Start infrastructure
+#   npm run dev                                        # Run bot locally with hot-reload
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: erica-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=bot
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=discord_bot
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U bot -d discord_bot" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: erica-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: erica-lavalink-dev
+    restart: unless-stopped
+    ports:
+      - "2333:2333"
+    environment:
+      - SERVER_PORT=2333
+      - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD}
+      - PLUGINS_YOUTUBE_OAUTH_REFRESHTOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN}
+      - PLUGINS_LAVASRC_SPOTIFY_CLIENTID=${SPOTIFY_CLIENT_ID}
+      - PLUGINS_LAVASRC_SPOTIFY_CLIENTSECRET=${SPOTIFY_CLIENT_SECRET}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sf -H 'Authorization: ${LAVALINK_PASSWORD}' http://localhost:2333/version || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-data-dev:
+  redis-data-dev:
