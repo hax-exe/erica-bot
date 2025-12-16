@@ -99,8 +99,10 @@ describe('ReDoS Protection', () => {
     // or handled safely at runtime
 
     it('should handle catastrophic backtracking patterns safely', () => {
-        // Classic ReDoS pattern: (a+)+
-        const dangerousPattern = '(a+)+b';
+        // Classic ReDoS pattern - intentionally dangerous for testing
+        // lgtm[js/redos] - This is a security test, the pattern is intentionally dangerous
+        // codeql-disable-next-line js/redos
+        const dangerousPattern = '(a+)+b'; // NOSONAR
 
         // Even if validation passes, runtime should be safe
         // This is a heuristic test - the important thing is the bot doesn't freeze
