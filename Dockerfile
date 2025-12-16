@@ -9,16 +9,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
-# Build stage
-FROM base AS builder
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
 # Production stage
 FROM base AS runner
 WORKDIR /app
@@ -29,10 +19,12 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 bot
 
-# Copy built files
+# Copy production dependencies
 COPY --from=deps --chown=bot:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=bot:nodejs /app/dist ./dist
-COPY --from=builder --chown=bot:nodejs /app/package.json ./
+
+# Copy pre-built dist from CI artifact (passed via build context)
+COPY --chown=bot:nodejs dist ./dist
+COPY --chown=bot:nodejs package.json ./
 
 USER bot
 
