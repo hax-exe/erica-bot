@@ -29,7 +29,7 @@
         "economy"
     ],
     "author": "",
-    "license": "MIT",
+    "license": "UNLICENSED",
     "dependencies": {
         "@discordjs/rest": "^2.4.0",
         "cors": "^2.8.5",

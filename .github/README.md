@@ -8,7 +8,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white)](https://discord.js.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
 
 [Features](#-features) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#-configuration) • [Development](#-development)
 
@@ -367,6 +367,16 @@ docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d
 | Logging | [Pino](https://github.com/pinojs/pino) |
 | Testing | [Vitest](https://vitest.dev/) |
 | CI/CD | [GitHub Actions](https://github.com/features/actions) |
+
+---
+
+---
+
+## 📜 License
+
+**© 2025. All Rights Reserved.**
+
+This software is proprietary and confidential. Viewing this code for educational purposes is permitted, but cloning, deployment, modification, and distribution are strictly prohibited. See [LICENSE](LICENSE) for full terms.
 
 ---
 
