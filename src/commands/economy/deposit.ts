@@ -11,12 +11,11 @@ export default new Command({
     data: new SlashCommandBuilder()
         .setName('deposit')
         .setDescription('Deposit coins into your bank')
-        .addIntegerOption((option) =>
+        .addStringOption((option) =>
             option
                 .setName('amount')
-                .setDescription('Amount to deposit (or "all")')
+                .setDescription('Amount to deposit (number or "all")')
                 .setRequired(true)
-                .setMinValue(1)
         ),
     category: 'economy',
     cooldown: 3,
@@ -24,7 +23,7 @@ export default new Command({
     requiredModule: 'economy',
 
     async execute(interaction) {
-        const amount = interaction.options.getInteger('amount', true);
+        const amountInput = interaction.options.getString('amount', true).toLowerCase();
         const userId = interaction.user.id;
         const guildId = interaction.guildId!;
 
@@ -44,6 +43,29 @@ export default new Command({
         });
 
         const wallet = memberData?.balance ?? 0;
+
+        // Parse amount - handle "all" or numeric value
+        let amount: number;
+        if (amountInput === 'all') {
+            amount = wallet;
+        } else {
+            amount = parseInt(amountInput, 10);
+            if (isNaN(amount) || amount < 1) {
+                await interaction.reply({
+                    content: '❌ Please enter a valid number or "all".',
+                    ephemeral: true,
+                });
+                return;
+            }
+        }
+
+        if (amount === 0) {
+            await interaction.reply({
+                content: '❌ You have no coins to deposit.',
+                ephemeral: true,
+            });
+            return;
+        }
 
         if (wallet < amount) {
             await interaction.reply({
