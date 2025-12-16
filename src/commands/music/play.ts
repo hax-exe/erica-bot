@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, MessageFlags } from 'discord.js';
 import { Command } from '../../types/Command.js';
 
 export default new Command({
@@ -31,7 +31,10 @@ export default new Command({
             return;
         }
 
-        await interaction.deferReply();
+        const isUrl = query.startsWith('http://') || query.startsWith('https://');
+
+        // Defer differently: ephemeral for search selection, public for URLs
+        await interaction.deferReply({ flags: isUrl ? undefined : MessageFlags.Ephemeral });
 
         try {
             // Get or create player
@@ -46,21 +49,20 @@ export default new Command({
                 });
             }
 
-            // Search for track - use YouTube search via youtube-source plugin
-            const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            const searchQuery = isUrl ? query : `ytsearch:${query}`;
+            // Search for track - use Spotify search via LavaSrc plugin
+            const searchOptions = isUrl
+                ? { requester: interaction.user }
+                : { requester: interaction.user, engine: 'spsearch:' };
 
-            const result = await client.music.search(searchQuery, {
-                requester: interaction.user,
-            });
+            const result = await client.music.search(query, searchOptions);
 
             if (!result.tracks.length) {
-                await interaction.editReply('❌ No results found. Try a YouTube URL or different search terms.');
+                await interaction.editReply('❌ No results found. Try a direct URL (YouTube, Spotify, SoundCloud) or different search terms.');
                 return;
             }
 
+            // Handle playlists - add all tracks directly
             if (result.type === 'PLAYLIST') {
-                // Add all tracks from playlist
                 for (const track of result.tracks) {
                     player.queue.add(track);
                 }
@@ -72,8 +74,15 @@ export default new Command({
                     .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
                 await interaction.editReply({ embeds: [embed] });
-            } else {
-                // Add single track
+
+                if (!player.playing && !player.paused) {
+                    await player.play();
+                }
+                return;
+            }
+
+            // Handle direct URLs - add directly without selection
+            if (isUrl) {
                 const track = result.tracks[0]!;
                 player.queue.add(track);
 
@@ -90,11 +99,90 @@ export default new Command({
                     .setFooter({ text: `Requested by ${interaction.user.tag}` });
 
                 await interaction.editReply({ embeds: [embed] });
+
+                if (!player.playing && !player.paused) {
+                    await player.play();
+                }
+                return;
             }
 
-            // Start playing if not already
-            if (!player.playing && !player.paused) {
-                await player.play();
+            // Text query - show selection with buttons
+            const tracks = result.tracks.slice(0, 5);
+
+            const trackList = tracks
+                .map((t, i) => `**${i + 1}.** [${t.title}](${t.uri}) - ${t.author || 'Unknown'} (${formatDuration(t.length || 0)})`)
+                .join('\n');
+
+            const embed = new EmbedBuilder()
+                .setColor(0x5865f2)
+                .setTitle('🔍 Search Results')
+                .setDescription(`${trackList}\n\n*Select a track or cancel. Expires in 30 seconds.*`)
+                .setFooter({ text: `Requested by ${interaction.user.tag}` });
+
+            // Create selection buttons (max 5 per row, so split if needed)
+            const trackButtons = tracks.map((_, i) =>
+                new ButtonBuilder()
+                    .setCustomId(`track_select_${i}`)
+                    .setLabel(`${i + 1}`)
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            const cancelButton = new ButtonBuilder()
+                .setCustomId('track_select_cancel')
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary);
+
+            // Track buttons row (up to 5)
+            const trackRow = new ActionRowBuilder<ButtonBuilder>().addComponents(...trackButtons);
+            // Cancel button on separate row
+            const cancelRow = new ActionRowBuilder<ButtonBuilder>().addComponents(cancelButton);
+
+            const response = await interaction.editReply({ embeds: [embed], components: [trackRow, cancelRow] });
+
+            // Wait for button interaction
+            try {
+                const buttonInteraction = await response.awaitMessageComponent({
+                    componentType: ComponentType.Button,
+                    filter: (i) => i.user.id === interaction.user.id,
+                    time: 30_000,
+                });
+
+                if (buttonInteraction.customId === 'track_select_cancel') {
+                    await interaction.deleteReply();
+                    return;
+                }
+
+                // Parse track index from button ID
+                const trackIndex = parseInt(buttonInteraction.customId.replace('track_select_', ''), 10);
+                const selectedTrack = tracks[trackIndex]!;
+
+                player.queue.add(selectedTrack);
+
+                // Update ephemeral with confirmation, send public message
+                await interaction.deleteReply();
+
+                const confirmEmbed = new EmbedBuilder()
+                    .setColor(0x5865f2)
+                    .setTitle('🎵 Track Added')
+                    .setDescription(`[${selectedTrack.title}](${selectedTrack.uri})`)
+                    .addFields(
+                        { name: 'Author', value: selectedTrack.author || 'Unknown', inline: true },
+                        { name: 'Duration', value: formatDuration(selectedTrack.length || 0), inline: true },
+                        { name: 'Position', value: `#${player.queue.length}`, inline: true },
+                    )
+                    .setThumbnail(selectedTrack.thumbnail || null)
+                    .setFooter({ text: `Requested by ${interaction.user.tag}` });
+
+                if (interaction.channel?.isTextBased() && 'send' in interaction.channel) {
+                    await interaction.channel.send({ embeds: [confirmEmbed] });
+                }
+
+                if (!player.playing && !player.paused) {
+                    await player.play();
+                }
+            } catch {
+                // Timeout - remove the message
+                await interaction.deleteReply().catch(() => { });
             }
         } catch (error) {
             console.error('Music play error:', error);
