@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -136,12 +136,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Deployment instructions
-        run: |
-          echo "✅ Docker image pushed successfully!"
-          echo ""
-          echo "📦 To deploy manually, SSH into your VPS and run:"
-          echo "   cd /home/kiana/erica-bot"
-          echo "   docker compose pull"
-          echo "   docker compose up -d"
