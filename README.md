@@ -1,278 +1,127 @@
-# Erica Bot
+<div align="center">
 
-Erica Bot is a high-end, multi-purpose Discord bot built with Discord.js v14, TypeScript, PostgreSQL, and Lavalink.
+# 🌸 Erica Bot
 
-## Features
+**A feature-rich, high-performance Discord bot built for modern communities**
 
-- 🛡️ **Moderation** - Warnings, bans, kicks, mutes, purge, channel lock/unlock, slowmode
-- 🎵 **Music** - Multi-source playback with Lavalink (YouTube, Spotify, SoundCloud)
-- 📊 **Leveling** - XP system, rank cards, leaderboards, role rewards
-- 💰 **Economy** - Virtual currency, daily rewards, shop, gambling games (coinflip)
-- 🎉 **Giveaways** - Create and manage giveaways
-- 🎮 **Fun** - 8ball, avatar lookup, choose, dice roll
-- ⚙️ **Auto Responders** - Custom triggers and automated responses
-- 🔧 **Admin** - Server settings and configuration
+[![CI/CD](https://github.com/Hax-Exe/erica-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/Hax-Exe/erica-bot/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white)](https://discord.js.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Tech Stack
+[Features](#-features) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#-configuration) • [Development](#-development)
 
-- **Runtime**: Node.js 20+
-- **Language**: TypeScript 5.x
-- **Framework**: Discord.js v14
-- **Database**: PostgreSQL with Drizzle ORM
-- **Music**: Lavalink 4 with Kazagumo/Shoukaku
-- **Plugins**: LavaSrc (Spotify), YouTube Source (OAuth), LavaSearch
-- **Logging**: Pino
-- **Testing**: Vitest
-- **CI/CD**: GitHub Actions with Docker image publishing
+</div>
 
-## Deployment
+---
 
-### Option 1: Docker (Recommended)
+## ✨ Features
 
-Docker deployment includes the bot, PostgreSQL database, and Lavalink server all configured to work together.
+<table>
+<tr>
+<td width="50%">
 
-#### Prerequisites
+### 🛡️ Moderation
+Comprehensive tools to keep your server safe
+- Warnings, kicks, bans, mutes
+- Bulk message deletion
+- Channel lock/slowmode
+- Detailed audit logging
 
-- Docker and Docker Compose installed
-- A Discord bot token and client ID from the [Discord Developer Portal](https://discord.com/developers/applications)
-- **Privileged Gateway Intents enabled** in the Discord Developer Portal:
-  1. Go to your application → **Bot** settings
-  2. Scroll to **Privileged Gateway Intents**
-  3. Enable **Server Members Intent** and **Message Content Intent**
-  4. Save changes
+</td>
+<td width="50%">
 
-#### Quick Start
+### 🎵 Music
+High-quality audio streaming
+- YouTube, Spotify, SoundCloud
+- Queue management & looping
+- Volume control & seeking
+- Interactive search selection
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd erica-bot
-   ```
+</td>
+</tr>
+<tr>
+<td width="50%">
 
-2. Copy and configure environment variables:
-   ```bash
-   cp .env.example .env
-   ```
+### 📊 Leveling
+Engage your community
+- XP system with rank cards
+- Server leaderboards
+- Customizable role rewards
+- Level-up announcements
 
-3. Edit `.env` with your configuration (see [Environment Variables](#environment-variables))
+</td>
+<td width="50%">
 
-4. Start the services:
-   ```bash
-   docker compose up -d
-   ```
+### 💰 Economy
+Virtual currency system
+- Daily/work rewards
+- Bank & wallet system
+- Gambling (coinflip)
+- Server shop
 
-5. Push the database schema:
-   ```bash
-   docker compose exec bot npm run db:push
-   ```
+</td>
+</tr>
+<tr>
+<td width="50%">
 
-The bot will automatically connect and start running. View logs with:
+### 🎉 Giveaways
+Easy giveaway management
+- Timed giveaways
+- Multiple winners
+- Reroll support
+- Button-based entry
+
+</td>
+<td width="50%">
+
+### ⚙️ Auto Responders
+Automated interactions
+- Custom trigger words
+- Flexible responses
+- Regex support
+- Easy management
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- Discord bot token from the [Developer Portal](https://discord.com/developers/applications)
+- **Enable Privileged Intents**: Server Members Intent + Message Content Intent
+
+### Deploy in 3 Steps
+
 ```bash
-docker compose logs -f bot
-```
+# 1. Clone and configure
+git clone https://github.com/Hax-Exe/erica-bot.git
+cd erica-bot
+cp .env.example .env
+# Edit .env with your tokens
 
-#### Using Pre-built Images
-
-The CI/CD pipeline automatically builds and pushes multi-architecture Docker images (amd64/arm64) to GitHub Container Registry on every push to `main`.
-
-```bash
-# Pull the latest image
-docker compose pull
-
-# Start services
+# 2. Start services
 docker compose up -d
+
+# 3. Initialize database
+docker compose exec bot npm run db:push
 ```
+
+**That's it!** View logs with `docker compose logs -f bot`
 
 ---
 
-### Option 2: Standalone (Development)
+## 📖 Commands
 
-Run the bot directly on your machine without Docker.
+<details>
+<summary><b>🛡️ Moderation</b></summary>
 
-#### Prerequisites
-
-- Node.js 20 or higher
-- PostgreSQL database (local or remote)
-- Lavalink server (for music features)
-- **Privileged Gateway Intents enabled** in the [Discord Developer Portal](https://discord.com/developers/applications) (Server Members Intent + Message Content Intent)
-
-#### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd erica-bot
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Copy the environment template:
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Configure your `.env` file with:
-   - Discord bot token and client ID
-   - PostgreSQL connection string
-   - Lavalink server details
-
-5. Push the database schema:
-   ```bash
-   npm run db:push
-   ```
-
-6. Start in development mode (with hot reload):
-   ```bash
-   npm run dev
-   ```
-
-#### Production Build
-
-1. Build the project:
-   ```bash
-   npm run build
-   ```
-
-2. Start the bot:
-   ```bash
-   npm start
-   ```
-
----
-
-## High Availability (Optional)
-
-The bot supports High Availability (HA) mode with automatic failover. When enabled, you can run multiple bot instances where only one is active at a time (the "leader"), while others remain on standby ready to take over if the leader fails.
-
-### How It Works
-
-- **Leader Election**: Uses Redis to elect a single active instance
-- **10-Second Failover**: If the leader stops sending heartbeats, a standby takes over
-- **Music Session Preservation**: Active music sessions are saved to Redis and restored on failover
-
-### Quick Start (HA Mode)
-
-1. Ensure the base setup is working first (see Options 1 or 2 above)
-
-2. Start with the HA override:
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d
-   ```
-
-3. Verify both instances are running:
-   ```bash
-   # Check primary (should show isLeader: true)
-   curl http://localhost:3002/health
-
-   # Check standby (should show isLeader: false)
-   curl http://localhost:3003/health
-   ```
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HA_ENABLED` | `false` | Enable HA mode |
-| `HA_INSTANCE_ID` | auto | Unique instance ID |
-| `HA_HEARTBEAT_INTERVAL` | `3000` | Heartbeat frequency (ms) |
-| `HA_LEADER_TIMEOUT` | `10000` | Failover timeout (ms) |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-
-### Testing Failover
-
-```bash
-# Kill the primary instance
-docker stop erica-bot-primary
-
-# Wait 10-15 seconds, then check standby
-curl http://localhost:3003/health
-# Should now show: "isLeader": true
-```
-
-### Limitations
-
-- ~10-15 seconds of downtime during failover
-- Music playback resumes from last saved position (may be a few seconds behind)
-- If the track expired (YouTube), it will skip to the next in queue
-
----
-
-## Setting Up Lavalink
-
-If running standalone, you'll need a Lavalink server for music features.
-
-### Using Docker (Standalone Lavalink)
-
-```bash
-docker run -d \
-  --name lavalink \
-  -p 2333:2333 \
-  -v ./lavalink/application.yml:/opt/Lavalink/application.yml:ro \
-  -e LAVALINK_PASSWORD=your_password \
-  ghcr.io/lavalink-devs/lavalink:4
-```
-
-### YouTube OAuth Setup
-
-YouTube requires OAuth authentication for reliable playback. To set this up:
-
-1. Start Lavalink and watch the logs
-2. Look for a device code prompt with a URL and code
-3. Visit the URL and sign in with a **burner Google account**
-4. Copy the refresh token to your `.env` as `YOUTUBE_OAUTH_REFRESH_TOKEN`
-
-### Spotify Support
-
-To enable Spotify link support:
-
-1. Create an app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Add `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` to your `.env`
-
----
-
-## Project Structure
-
-```
-├── src/
-│   ├── commands/           # Slash command handlers
-│   │   ├── admin/          # Server settings, autoresponder
-│   │   ├── economy/        # Currency, shop, gambling
-│   │   ├── fun/            # 8ball, avatar, choose, roll
-│   │   ├── giveaway/       # Giveaway management
-│   │   ├── leveling/       # XP, ranks, leaderboard
-│   │   ├── moderation/     # Ban, kick, mute, warn, etc.
-│   │   ├── music/          # Play, queue, skip, etc.
-│   │   └── utility/        # Help, ping, info commands
-│   ├── events/             # Discord event handlers
-│   ├── db/                 # Database connection and schema
-│   │   └── schema/         # Drizzle ORM schemas
-│   ├── structures/         # Core bot structures
-│   ├── types/              # TypeScript type definitions
-│   ├── utils/              # Utility functions
-│   ├── config/             # Configuration management
-│   └── index.ts            # Entry point
-├── lavalink/               # Lavalink configuration
-│   └── application.yml     # Lavalink server config
-├── tests/                  # Test files
-├── docker-compose.yml      # Docker orchestration
-├── Dockerfile              # Bot container image
-└── .github/workflows/      # CI/CD pipeline
-```
-
-## Commands
-
-### Utility
-| Command | Description |
-|---------|-------------|
-| `/ping` | Check bot latency |
-| `/help [command]` | Get help information |
-| `/serverinfo` | Display server information |
-| `/userinfo [user]` | Display user information |
-
-### Moderation
 | Command | Description |
 |---------|-------------|
 | `/warn <user> <reason>` | Warn a user |
@@ -288,86 +137,161 @@ To enable Spotify link support:
 | `/unlock [channel]` | Unlock a channel |
 | `/slowmode <seconds>` | Set channel slowmode |
 
-### Music
+</details>
+
+<details>
+<summary><b>🎵 Music</b></summary>
+
 | Command | Description |
 |---------|-------------|
-| `/play <query>` | Play a song (supports YouTube, Spotify, SoundCloud) |
+| `/play <query>` | Play a song (YouTube, Spotify, SoundCloud) |
 | `/queue [page]` | View the queue |
-| `/nowplaying` | Show current track info |
+| `/nowplaying` | Show current track |
 | `/skip` | Skip current song |
 | `/stop` | Stop and clear queue |
-| `/pause` | Pause playback |
-| `/resume` | Resume playback |
+| `/pause` / `/resume` | Control playback |
 | `/volume <0-100>` | Adjust volume |
 | `/seek <time>` | Seek to position |
 | `/shuffle` | Shuffle the queue |
-| `/loop <mode>` | Set loop mode (off/track/queue) |
-| `/remove <position>` | Remove track from queue |
-| `/clearqueue` | Clear the entire queue |
+| `/loop <mode>` | Loop off/track/queue |
+| `/remove <position>` | Remove from queue |
+| `/clearqueue` | Clear entire queue |
 
-### Leveling
+</details>
+
+<details>
+<summary><b>📊 Leveling</b></summary>
+
 | Command | Description |
 |---------|-------------|
 | `/rank [user]` | View rank card |
 | `/leaderboard` | View XP leaderboard |
-| `/givexp <user> <amount>` | Give XP to user (admin) |
-| `/setlevel <user> <level>` | Set user level (admin) |
+| `/givexp <user> <amount>` | Give XP (admin) |
+| `/setlevel <user> <level>` | Set level (admin) |
 
-### Economy
+</details>
+
+<details>
+<summary><b>💰 Economy</b></summary>
+
 | Command | Description |
 |---------|-------------|
-| `/balance [user]` | Check wallet and bank balance |
+| `/balance [user]` | Check balance |
 | `/daily` | Claim daily reward |
 | `/work` | Work for coins |
-| `/pay <user> <amount>` | Send coins to another user |
-| `/deposit <amount>` | Deposit coins to bank |
-| `/withdraw <amount>` | Withdraw coins from bank |
+| `/pay <user> <amount>` | Send coins |
+| `/deposit <amount\|all>` | Deposit to bank |
+| `/withdraw <amount\|all>` | Withdraw from bank |
 | `/coinflip <amount>` | Gamble coins |
-| `/shop` | View and buy items |
-| `/richest` | View richest users |
+| `/shop` | View/buy items |
+| `/richest` | View leaderboard |
 
-### Fun
+</details>
+
+<details>
+<summary><b>🎮 Fun & Utility</b></summary>
+
 | Command | Description |
 |---------|-------------|
 | `/8ball <question>` | Ask the magic 8ball |
 | `/avatar [user]` | Get user's avatar |
 | `/choose <options>` | Choose between options |
 | `/roll [dice]` | Roll dice (e.g., 2d6) |
+| `/ping` | Check bot latency |
+| `/help [command]` | Get help |
+| `/serverinfo` | Server information |
+| `/userinfo [user]` | User information |
 
-### Giveaways
+</details>
+
+<details>
+<summary><b>🎉 Giveaways & Admin</b></summary>
+
 | Command | Description |
 |---------|-------------|
 | `/giveaway start` | Start a giveaway |
-| `/giveaway end` | End a giveaway early |
-| `/giveaway reroll` | Reroll giveaway winner |
-
-### Admin
-| Command | Description |
-|---------|-------------|
-| `/settings` | Configure server settings |
+| `/giveaway end` | End early |
+| `/giveaway reroll` | Reroll winner |
+| `/settings` | Configure server |
 | `/autoresponder` | Manage auto responses |
 
-## Environment Variables
+</details>
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DISCORD_TOKEN` | Discord bot token | Yes |
-| `DISCORD_CLIENT_ID` | Discord application ID | Yes |
-| `DISCORD_DEV_GUILD_ID` | Dev guild for faster command updates | No |
-| `DATABASE_URL` | PostgreSQL connection URL | Yes |
-| `DB_PASSWORD` | Database password (Docker only) | Docker |
-| `LAVALINK_HOST` | Lavalink server host | Yes |
-| `LAVALINK_PORT` | Lavalink server port (default: 2333) | Yes |
-| `LAVALINK_PASSWORD` | Lavalink server password | Yes |
-| `SPOTIFY_CLIENT_ID` | Spotify API client ID | No |
-| `SPOTIFY_CLIENT_SECRET` | Spotify API client secret | No |
-| `YOUTUBE_OAUTH_REFRESH_TOKEN` | YouTube OAuth refresh token | No |
-| `BOT_API_PORT` | Bot API port (default: 3002) | No |
-| `BOT_API_SECRET` | Shared secret for API auth | No |
-| `NODE_ENV` | Environment (development/production) | No |
-| `LOG_LEVEL` | Logging level (default: info) | No |
+---
 
-## Development
+## ⚙️ Configuration
+
+### Environment Variables
+
+<details>
+<summary><b>Required Variables</b></summary>
+
+| Variable | Description |
+|----------|-------------|
+| `DISCORD_TOKEN` | Bot token from Developer Portal |
+| `DISCORD_CLIENT_ID` | Application ID |
+| `DATABASE_URL` | PostgreSQL connection URL |
+| `DB_PASSWORD` | Database password (Docker) |
+| `LAVALINK_HOST` | Lavalink server host |
+| `LAVALINK_PORT` | Lavalink port (default: 2333) |
+| `LAVALINK_PASSWORD` | Lavalink password |
+
+</details>
+
+<details>
+<summary><b>Optional Variables</b></summary>
+
+| Variable | Description |
+|----------|-------------|
+| `DISCORD_DEV_GUILD_ID` | Dev guild for faster command updates |
+| `SPOTIFY_CLIENT_ID` | Spotify API client ID |
+| `SPOTIFY_CLIENT_SECRET` | Spotify API secret |
+| `YOUTUBE_OAUTH_REFRESH_TOKEN` | YouTube OAuth token |
+| `BOT_API_PORT` | API port (default: 3002) |
+| `NODE_ENV` | Environment mode |
+| `LOG_LEVEL` | Logging verbosity |
+
+</details>
+
+### Music Setup
+
+<details>
+<summary><b>YouTube OAuth (Recommended)</b></summary>
+
+YouTube requires OAuth for reliable playback:
+
+1. Start Lavalink and watch logs: `docker compose logs -f lavalink`
+2. Look for device code prompt with URL
+3. Sign in with a **burner Google account**
+4. Copy refresh token to `.env` as `YOUTUBE_OAUTH_REFRESH_TOKEN`
+
+</details>
+
+<details>
+<summary><b>Spotify Support</b></summary>
+
+1. Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Add to `.env`:
+   ```
+   SPOTIFY_CLIENT_ID=your_client_id
+   SPOTIFY_CLIENT_SECRET=your_client_secret
+   ```
+
+</details>
+
+---
+
+## 🔧 Development
+
+### Local Development
+
+```bash
+# Start infrastructure only
+docker compose -f docker-compose.dev.yml up -d
+
+# Run bot with hot-reload
+npm run dev
+```
 
 ### Scripts
 
@@ -377,23 +301,79 @@ To enable Spotify link support:
 | `npm run build` | Build for production |
 | `npm start` | Run production build |
 | `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Fix ESLint issues |
-| `npm test` | Run tests in watch mode |
-| `npm run test:run` | Run tests once |
-| `npm run test:coverage` | Run tests with coverage |
-| `npm run db:push` | Push schema to database |
-| `npm run db:generate` | Generate migrations |
+| `npm test` | Run tests |
+| `npm run db:push` | Push schema to DB |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run deploy` | Deploy slash commands |
 
-### CI/CD
+### Project Structure
 
-The project uses GitHub Actions for continuous integration:
+```
+src/
+├── commands/          # Slash commands by category
+│   ├── admin/         # Settings, autoresponder
+│   ├── economy/       # Currency, shop, gambling
+│   ├── fun/           # 8ball, avatar, dice
+│   ├── giveaway/      # Giveaway management
+│   ├── leveling/      # XP, ranks, leaderboard
+│   ├── moderation/    # Ban, kick, warn, etc.
+│   ├── music/         # Playback controls
+│   └── utility/       # Help, ping, info
+├── events/            # Discord event handlers
+├── db/                # Database & Drizzle schemas
+├── structures/        # Core bot classes
+└── utils/             # Helpers & utilities
+```
 
-- **Test Job**: Runs linting, type checking, and tests on every push/PR
-- **Build Job**: Compiles TypeScript and creates build artifacts
-- **Docker Job**: Builds and pushes multi-arch images to GHCR (main branch only)
+---
 
-## License
+## 🔄 High Availability
 
-MIT
+Run multiple instances with automatic failover:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d
+```
+
+- **Leader Election**: Redis-based single active instance
+- **10-Second Failover**: Automatic standby promotion
+- **Session Preservation**: Music state saved & restored
+
+<details>
+<summary><b>HA Configuration</b></summary>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HA_ENABLED` | `false` | Enable HA mode |
+| `HA_INSTANCE_ID` | auto | Unique instance ID |
+| `HA_HEARTBEAT_INTERVAL` | `3000` | Heartbeat (ms) |
+| `HA_LEADER_TIMEOUT` | `10000` | Failover timeout (ms) |
+| `REDIS_URL` | `redis://localhost:6379` | Redis URL |
+
+</details>
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Runtime | [Node.js](https://nodejs.org/) 20+ |
+| Language | [TypeScript](https://www.typescriptlang.org/) 5.x |
+| Framework | [Discord.js](https://discord.js.org/) v14 |
+| Database | [PostgreSQL](https://www.postgresql.org/) + [Drizzle ORM](https://orm.drizzle.team/) |
+| Music | [Lavalink 4](https://github.com/lavalink-devs/Lavalink) + [Kazagumo](https://github.com/Takiyo0/kazagumo) |
+| Caching | [Redis](https://redis.io/) |
+| Logging | [Pino](https://github.com/pinojs/pino) |
+| Testing | [Vitest](https://vitest.dev/) |
+| CI/CD | [GitHub Actions](https://github.com/features/actions) |
+
+---
+
+<div align="center">
+
+**[⬆ Back to Top](#-erica-bot)**
+
+Made with 💜 by [hax-exe](https://github.com/hax-exe)
+
+</div>
