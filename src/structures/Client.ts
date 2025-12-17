@@ -98,21 +98,8 @@ export class ExtendedClient extends Client {
         });
 
         this.music.on('playerEnd', async (player) => {
-            if (!player.queue.length) {
-                const channel = this.channels.cache.get(player.textId!);
-                if (channel?.isTextBased() && 'send' in channel) {
-                    channel.send('📭 Queue is empty. Disconnecting...');
-                }
-
-                // Stop auto-save and clean up state
-                if (config.ha.enabled) {
-                    const { stopAutoSave, deletePlayerState } = await import('../services/playerState.js');
-                    stopAutoSave(player.guildId);
-                    await deletePlayerState(player.guildId);
-                }
-
-                player.destroy();
-            }
+            // playerEmpty event handles the disconnect message and cleanup
+            // This event is just for any per-track-end logic if needed
         });
 
         this.music.on('playerEmpty', async (player) => {
