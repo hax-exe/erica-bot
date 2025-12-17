@@ -23,8 +23,8 @@ jobs:
         language: ['javascript-typescript']
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
