@@ -7,6 +7,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guilds } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
+import { invalidateGuildCache } from '../../services/settingsCache.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -119,6 +120,8 @@ async function handleModule(interaction: any): Promise<void> {
     await db.update(guilds)
         .set({ [column]: enabled, updatedAt: new Date() })
         .where(eq(guilds.id, guildId));
+
+    invalidateGuildCache(guildId);
 
     const embed = new EmbedBuilder()
         .setColor(enabled ? 0x00ff00 : 0xff0000)
