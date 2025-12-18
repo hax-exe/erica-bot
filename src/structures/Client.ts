@@ -87,14 +87,6 @@ export class ExtendedClient extends Client {
             if (channel?.isTextBased() && 'send' in channel) {
                 channel.send(`🎵 Now playing: **${track.title}** by **${track.author}**`);
             }
-
-            // Start auto-saving player state for HA failover
-            if (config.ha.enabled) {
-                const { startAutoSave, savePlayerState } = await import('../services/playerState.js');
-                startAutoSave(player);
-                // Save immediately when track starts
-                await savePlayerState(player);
-            }
         });
 
         this.music.on('playerEnd', async (player) => {
@@ -106,13 +98,6 @@ export class ExtendedClient extends Client {
             const channel = this.channels.cache.get(player.textId!);
             if (channel?.isTextBased() && 'send' in channel) {
                 channel.send('📭 Queue is empty. Disconnecting...');
-            }
-
-            // Stop auto-save and clean up state
-            if (config.ha.enabled) {
-                const { stopAutoSave, deletePlayerState } = await import('../services/playerState.js');
-                stopAutoSave(player.guildId);
-                await deletePlayerState(player.guildId);
             }
 
             player.destroy();

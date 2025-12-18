@@ -327,33 +327,6 @@ src/
 
 ---
 
-## 🔄 High Availability
-
-Run multiple instances with automatic failover:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.ha.yml up -d
-```
-
-- **Leader Election**: Redis-based single active instance
-- **10-Second Failover**: Automatic standby promotion
-- **Session Preservation**: Music state saved & restored
-
-<details>
-<summary><b>HA Configuration</b></summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HA_ENABLED` | `false` | Enable HA mode |
-| `HA_INSTANCE_ID` | auto | Unique instance ID |
-| `HA_HEARTBEAT_INTERVAL` | `3000` | Heartbeat (ms) |
-| `HA_LEADER_TIMEOUT` | `10000` | Failover timeout (ms) |
-| `REDIS_URL` | `redis://localhost:6379` | Redis URL |
-
-</details>
-
----
-
 ## 🛠️ Tech Stack
 
 | Component | Technology |

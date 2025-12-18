@@ -94,10 +94,7 @@ export async function disconnectRedis(): Promise<void> {
     await Promise.all(disconnects);
 }
 
-// Redis key prefixes for HA
+// Redis key prefixes
 export const REDIS_KEYS = {
-    LEADER: 'ha:leader',
-    HEARTBEAT: (instanceId: string) => `ha:heartbeat:${instanceId}`,
-    PLAYER_STATE: (guildId: string) => `player:${guildId}`,
-    LEADER_CHANNEL: 'ha:leader-changes',
+    SETTINGS_CACHE: (guildId: string) => `settings:${guildId}`,
 } as const;

@@ -9,7 +9,6 @@ import { membersRouter } from './routes/members.js';
 import { moderationRouter } from './routes/moderation.js';
 import { statsRouter } from './routes/stats.js';
 import type { ExtendedClient } from '../structures/Client.js';
-import type { LeaderElectionService } from '../services/leaderElection.js';
 
 const logger = createLogger('api');
 
@@ -22,7 +21,7 @@ declare module 'express-serve-static-core' {
     }
 }
 
-export function createApiServer(client: ExtendedClient, leaderElection?: LeaderElectionService): Express {
+export function createApiServer(client: ExtendedClient): Express {
     const app = express();
 
     // Security middleware
@@ -82,14 +81,6 @@ export function createApiServer(client: ExtendedClient, leaderElection?: LeaderE
 
     // Health check endpoint
     app.get('/health', (_req: Request, res: Response) => {
-        const haInfo = leaderElection ? {
-            enabled: true,
-            instanceId: leaderElection.id,
-            isLeader: leaderElection.isLeader,
-        } : {
-            enabled: false,
-        };
-
         res.json({
             status: 'ok',
             timestamp: new Date().toISOString(),
@@ -99,7 +90,6 @@ export function createApiServer(client: ExtendedClient, leaderElection?: LeaderE
             music: {
                 activePlayers: client.music.players.size,
             },
-            ha: haInfo,
         });
     });
 
@@ -125,8 +115,8 @@ export function createApiServer(client: ExtendedClient, leaderElection?: LeaderE
     return app;
 }
 
-export function startApiServer(client: ExtendedClient, leaderElection?: LeaderElectionService): void {
-    const app = createApiServer(client, leaderElection);
+export function startApiServer(client: ExtendedClient): void {
+    const app = createApiServer(client);
     const port = config.api.port;
 
     app.listen(port, () => {

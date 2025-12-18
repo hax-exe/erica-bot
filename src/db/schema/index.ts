@@ -307,6 +307,3 @@ export const guildsRelations = relations(guilds, ({ one, many }) => ({
     socialFeeds: many(socialFeeds),
     shopItems: many(shopItems),
 }));
-
-// Re-export HA schema
-export { botInstances } from './leaderElection.js';
