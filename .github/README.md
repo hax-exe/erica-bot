@@ -93,7 +93,7 @@ Automated interactions
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- [Docker](https://docs.docker.com/get-docker/) and [Docker-Compose](https://docs.docker.com/compose/install/)
 - Discord bot token from the [Developer Portal](https://discord.com/developers/applications)
 - **Enable Privileged Intents**: Server Members Intent + Message Content Intent
 
