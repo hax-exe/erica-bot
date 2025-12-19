@@ -58,7 +58,7 @@ Engage your community
 Virtual currency system
 - Daily/work rewards
 - Bank & wallet system
-- Gambling (coinflip)
+- Coinflip
 - Server shop
 
 </td>
