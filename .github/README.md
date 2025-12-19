@@ -346,7 +346,7 @@ src/
 
 **© 2025. MIT LICENSE**
 
-See [LICENCE](https://github.com/hax-exe/erica-bot/#LICENCE) for details.
+See [LICENCE](https://github.com/hax-exe/erica-bot/?tab=MIT-1-ov-file#readme) for details.
 
 ---
 
