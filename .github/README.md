@@ -8,7 +8,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Discord.js](https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white)](https://discord.js.org/)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE)
 
 [Features](#-features) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#-configuration) • [Development](#-development)
 
@@ -97,23 +97,21 @@ Automated interactions
 - Discord bot token from the [Developer Portal](https://discord.com/developers/applications)
 - **Enable Privileged Intents**: Server Members Intent + Message Content Intent
 
-### Deploy in 3 Steps
+### Deploy in 2 Steps
 
 ```bash
 # 1. Clone and configure
 git clone https://github.com/Hax-Exe/erica-bot.git
 cd erica-bot
 cp .env.example .env
-# Edit .env with your tokens
+# Edit .env with bot credentials from portal and creating secure credentials from
+openssl rand -base64 32
 
 # 2. Start services
 docker compose up -d
-
-# 3. Initialize database
-docker compose exec bot npm run db:push
 ```
 
-**That's it!** View logs with `docker compose logs -f bot`
+**That's it!** View logs with `docker compose logs -f`
 
 ---
 
@@ -287,9 +285,9 @@ YouTube requires OAuth for reliable playback:
 
 ```bash
 # Start infrastructure only
-docker compose -f docker-compose.dev.yml up -d
+docker compose up lavalink postgres redis -d
 
-# Run bot with hot-reload
+# Run bot using npm with hot-reload
 npm run dev
 ```
 
@@ -297,13 +295,12 @@ npm run dev
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Start with hot reload |
+| `npm run dev` | Start with hot-reload |
 | `npm run build` | Build for production |
 | `npm start` | Run production build |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run tests |
 | `npm run db:push` | Push schema to DB |
-| `npm run db:studio` | Open Drizzle Studio |
 | `npm run deploy` | Deploy slash commands |
 
 ### Project Structure
@@ -347,9 +344,9 @@ src/
 
 ## 📜 License
 
-**© 2025. All Rights Reserved.**
+**© 2025. MIT LICENSE**
 
-This software is proprietary and confidential. Viewing this code for educational purposes is permitted, but cloning, deployment, modification, and distribution are strictly prohibited. See [LICENSE](LICENSE) for full terms.
+See [LICENCE](LICENSE) for details.
 
 ---
 
@@ -357,6 +354,6 @@ This software is proprietary and confidential. Viewing this code for educational
 
 **[⬆ Back to Top](#-erica-bot)**
 
-Made with 💜 by [hax-exe](https://github.com/hax-exe)
+Made with 💜 by [Joseph Tran](https://github.com/hax-exe)
 
 </div>
