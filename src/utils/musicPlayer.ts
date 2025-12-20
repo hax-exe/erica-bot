@@ -10,6 +10,14 @@ import {
 } from 'discord.js';
 import type { KazagumoPlayer, KazagumoTrack } from 'kazagumo';
 
+// Modern color palette
+const COLORS = {
+    primary: 0x7c3aed,      // Vibrant purple
+    playing: 0x10b981,      // Emerald green (when playing)
+    paused: 0xf59e0b,       // Amber (when paused)
+    accent: 0x6366f1,       // Indigo accent
+};
+
 /**
  * Format milliseconds to human-readable duration string
  */
@@ -25,26 +33,27 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * Create a visual progress bar for track playback
+ * Create a modern visual progress bar for track playback
  */
-export function createProgressBar(current: number, total: number, length = 15): string {
-    if (total === 0) return '▬'.repeat(length);
+export function createProgressBar(current: number, total: number, length = 12): string {
+    if (total === 0) return '░'.repeat(length);
     const progress = Math.round((current / total) * length);
-    const empty = length - progress;
-    return '▬'.repeat(Math.max(0, progress)) + '🔘' + '▬'.repeat(Math.max(0, empty - 1));
+    const filled = '▓'.repeat(Math.max(0, progress));
+    const empty = '░'.repeat(Math.max(0, length - progress));
+    return `${filled}${empty}`;
 }
 
 /**
  * Get the loop mode emoji and text
  */
-export function getLoopDisplay(loop: string | null): { emoji: string; text: string } {
+export function getLoopDisplay(loop: string | null): { emoji: string; text: string; active: boolean } {
     switch (loop) {
         case 'track':
-            return { emoji: '🔂', text: 'Track' };
+            return { emoji: '🔂', text: 'Track', active: true };
         case 'queue':
-            return { emoji: '🔁', text: 'Queue' };
+            return { emoji: '🔁', text: 'Queue', active: true };
         default:
-            return { emoji: '➡️', text: 'Off' };
+            return { emoji: '➡️', text: 'Off', active: false };
     }
 }
 
@@ -55,29 +64,48 @@ export function createNowPlayingEmbed(
     player: KazagumoPlayer,
     track: KazagumoTrack
 ): EmbedBuilder {
-    const position = player.shoukaku.position;
     const duration = track.length || 0;
-    const progressBar = createProgressBar(position, duration);
-    const positionStr = formatDuration(position);
     const durationStr = formatDuration(duration);
     const loopInfo = getLoopDisplay(player.loop);
+    const isPaused = player.paused;
+
+    // Dynamic color based on playback state
+    const embedColor = isPaused ? COLORS.paused : COLORS.playing;
 
     const embed = new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setAuthor({ name: '🎵 Now Playing' })
+        .setColor(embedColor)
+        .setAuthor({
+            name: isPaused ? '⏸️ Paused' : '💿 Now Playing',
+            iconURL: 'https://cdn.discordapp.com/emojis/1041747842490548305.gif'
+        })
         .setTitle(track.title)
         .setURL(track.uri || null)
-        .setDescription(`${progressBar}\n\`${positionStr} / ${durationStr}\``)
         .addFields(
-            { name: 'Duration', value: durationStr, inline: true },
-            { name: 'Requested by', value: `<@${(track.requester as any)?.id || 'Unknown'}>`, inline: true },
-            { name: 'Loop', value: `${loopInfo.emoji} ${loopInfo.text}`, inline: true }
+            {
+                name: '⏱️ Duration',
+                value: `\`${durationStr}\``,
+                inline: true
+            },
+            {
+                name: '👤 Requested by',
+                value: `<@${(track.requester as any)?.id || 'Unknown'}>`,
+                inline: true
+            },
+            {
+                name: '🔄 Loop',
+                value: `${loopInfo.emoji} \`${loopInfo.text}\``,
+                inline: true
+            }
         )
         .setThumbnail(track.thumbnail || null)
         .setTimestamp();
 
-    if (player.queue.length > 0) {
-        embed.setFooter({ text: `${player.queue.length} track(s) in queue` });
+    // Queue info footer
+    const queueSize = player.queue.length;
+    if (queueSize > 0) {
+        embed.setFooter({
+            text: `📋 ${queueSize} track${queueSize !== 1 ? 's' : ''} in queue`,
+        });
     }
 
     return embed;
@@ -89,19 +117,20 @@ export function createNowPlayingEmbed(
 export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<ButtonBuilder>[] {
     const isPaused = player.paused;
     const loopInfo = getLoopDisplay(player.loop);
+    const autoplayEnabled = (player.data as any)?.autoplay;
 
-    // Row 1: Pause/Resume, Skip, Like
+    // Row 1: Main playback controls - Pause/Resume (Primary), Skip (Primary), Like (Success)
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId(isPaused ? 'music_resume' : 'music_pause')
             .setLabel(isPaused ? 'Resume' : 'Pause')
             .setEmoji(isPaused ? '▶️' : '⏸️')
-            .setStyle(ButtonStyle.Secondary),
+            .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('music_skip')
             .setLabel('Skip')
             .setEmoji('⏭️')
-            .setStyle(ButtonStyle.Secondary),
+            .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId('music_like')
             .setLabel('Like')
@@ -109,27 +138,27 @@ export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<Bu
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // Row 2: Loop, Smart Shuffle
+    // Row 2: Loop (changes color when active), Smart Shuffle
     const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('music_loop')
             .setLabel(`Loop: ${loopInfo.text}`)
             .setEmoji(loopInfo.emoji)
-            .setStyle(ButtonStyle.Secondary),
+            .setStyle(loopInfo.active ? ButtonStyle.Success : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('music_shuffle')
-            .setLabel('Smart Shuffle')
+            .setLabel('Shuffle')
             .setEmoji('🔀')
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // Row 3: Autoplay, End Session
+    // Row 3: Autoplay (changes color when active), End Session (Danger)
     const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('music_autoplay')
             .setLabel('Autoplay')
-            .setEmoji('🔊')
-            .setStyle(ButtonStyle.Secondary),
+            .setEmoji('📻')
+            .setStyle(autoplayEnabled ? ButtonStyle.Success : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('music_stop')
             .setLabel('End Session')
@@ -164,7 +193,7 @@ export function createSuggestionsMenu(
 
     const menu = new StringSelectMenuBuilder()
         .setCustomId('music_suggestions')
-        .setPlaceholder('Suggested by AI')
+        .setPlaceholder('Suggested tracks')
         .addOptions(options);
 
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);

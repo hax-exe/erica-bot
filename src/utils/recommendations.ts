@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import { createLogger } from './logger.js';
+import type { Kazagumo } from 'kazagumo';
 
 const logger = createLogger('recommendations');
 
@@ -11,12 +12,12 @@ interface SpotifyTrack {
     duration_ms: number;
 }
 
-interface SpotifyRecommendation {
+interface Recommendation {
     title: string;
     author: string;
     uri: string;
     source: 'spotify' | 'youtube' | 'soundcloud';
-    duration: number;
+    duration?: number;
 }
 
 let accessToken: string | null = null;
@@ -80,6 +81,13 @@ export function extractSpotifyTrackId(uri: string): string | null {
 }
 
 /**
+ * Check if a URI is from YouTube
+ */
+export function isYouTubeUri(uri: string): boolean {
+    return uri.includes('youtube.com') || uri.includes('youtu.be');
+}
+
+/**
  * Search Spotify for a track to get its ID
  */
 async function searchSpotifyTrack(title: string, artist: string): Promise<string | null> {
@@ -110,7 +118,7 @@ export async function getSpotifyRecommendations(
     trackTitle?: string,
     trackArtist?: string,
     limit = 5
-): Promise<SpotifyRecommendation[]> {
+): Promise<Recommendation[]> {
     const token = await getSpotifyAccessToken();
     if (!token) {
         logger.debug('No Spotify token available for recommendations');
@@ -210,6 +218,108 @@ export async function getSpotifyRecommendations(
 }
 
 /**
+ * Get YouTube recommendations using Lavalink search
+ * This searches for related songs based on the current track's title and artist
+ */
+export async function getYouTubeRecommendations(
+    music: Kazagumo,
+    trackTitle: string,
+    trackArtist: string,
+    currentUri: string,
+    limit = 5
+): Promise<Recommendation[]> {
+    try {
+        // Clean up the title - remove common suffixes like "(Official Video)", "[HD]", etc.
+        const cleanTitle = trackTitle
+            .replace(/\(official\s*(music\s*)?video\)/gi, '')
+            .replace(/\(official\s*audio\)/gi, '')
+            .replace(/\(lyrics?\)/gi, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\(.*?remix.*?\)/gi, '')
+            .trim();
+
+        // Search for related songs by the same artist
+        const searchQuery = `${trackArtist} songs`;
+        logger.debug({ searchQuery }, 'Searching YouTube for recommendations');
+
+        const result = await music.search(searchQuery, { requester: null, engine: 'ytsearch:' });
+
+        if (!result.tracks.length) {
+            // Try a more generic search
+            const fallbackQuery = `${cleanTitle} ${trackArtist}`;
+            logger.debug({ fallbackQuery }, 'First search failed, trying fallback');
+            const fallbackResult = await music.search(fallbackQuery, { requester: null, engine: 'ytsearch:' });
+
+            if (!fallbackResult.tracks.length) {
+                logger.debug('No YouTube results found for recommendations');
+                return [];
+            }
+
+            result.tracks = fallbackResult.tracks;
+        }
+
+        // Filter out the current track and shorts, take up to limit
+        const recommendations = result.tracks
+            .filter((track) => {
+                // Skip the current track
+                if (track.uri === currentUri) return false;
+                // Skip tracks with same title (likely the same song)
+                if (track.title.toLowerCase().includes(cleanTitle.toLowerCase())) return false;
+                // Skip shorts (usually under 60 seconds)
+                if (track.length && track.length < 60000) return false;
+                // Skip if title contains "shorts" or "#shorts"
+                if (track.title.toLowerCase().includes('short')) return false;
+                return true;
+            })
+            .slice(0, limit)
+            .map((track) => ({
+                title: track.title,
+                author: track.author || 'Unknown',
+                uri: track.uri || '',
+                source: 'youtube' as const,
+                duration: track.length || 0,
+            }));
+
+        logger.debug({ count: recommendations.length }, 'Got YouTube recommendations');
+        return recommendations;
+    } catch (error) {
+        logger.error({ error }, 'Error getting YouTube recommendations');
+        return [];
+    }
+}
+
+/**
+ * Get recommendations for a track, trying Spotify first then YouTube as fallback
+ */
+export async function getRecommendations(
+    music: Kazagumo,
+    trackUri: string,
+    trackTitle: string,
+    trackArtist: string,
+    limit = 5
+): Promise<Recommendation[]> {
+    // Always try Spotify first (has better music metadata)
+    const spotifyRecs = await getSpotifyRecommendations(trackUri, trackTitle, trackArtist, limit);
+
+    if (spotifyRecs.length > 0) {
+        logger.debug({ count: spotifyRecs.length }, 'Using Spotify recommendations');
+        return spotifyRecs;
+    }
+
+    // Fallback to YouTube if Spotify didn't work
+    logger.debug('Spotify recommendations unavailable, falling back to YouTube');
+    const youtubeRecs = await getYouTubeRecommendations(music, trackTitle, trackArtist, trackUri, limit);
+
+    if (youtubeRecs.length > 0) {
+        logger.debug({ count: youtubeRecs.length }, 'Using YouTube recommendations');
+        return youtubeRecs;
+    }
+
+    logger.debug('No recommendations available from any source');
+    return [];
+}
+
+/**
  * Format a suggestion label with source icon
  */
 export function formatSuggestionLabel(
@@ -228,3 +338,4 @@ export const SOURCE_EMOJIS = {
     youtube: '🔴',
     soundcloud: '🟠',
 } as const;
+

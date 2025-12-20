@@ -103,13 +103,14 @@ export class ExtendedClient extends Client {
             try {
                 // Import utilities dynamically to avoid circular dependencies
                 const { createNowPlayingMessage } = await import('../utils/musicPlayer.js');
-                const { getSpotifyRecommendations } = await import('../utils/recommendations.js');
+                const { getRecommendations } = await import('../utils/recommendations.js');
 
-                // Fetch recommendations based on current track
-                const suggestions = await getSpotifyRecommendations(
+                // Fetch recommendations based on current track (tries Spotify first, then YouTube)
+                const suggestions = await getRecommendations(
+                    this.music,
                     track.uri || '',
                     track.title,
-                    track.author
+                    track.author || 'Unknown'
                 );
 
                 // Create and send the interactive Now Playing message
@@ -194,6 +195,39 @@ export class ExtendedClient extends Client {
             }
 
             player.destroy();
+        });
+
+        this.music.on('playerDestroy', async (player) => {
+            // Clean up the Now Playing message when player is destroyed
+            try {
+                const messageId = player.data.get('nowPlayingMessageId') as string | undefined;
+                const channelId = player.data.get('nowPlayingChannelId') as string | undefined;
+
+                if (messageId && channelId) {
+                    const channel = this.channels.cache.get(channelId);
+                    if (channel?.isTextBased() && 'messages' in channel) {
+                        const msg = await channel.messages.fetch(messageId).catch(() => null);
+                        if (msg?.deletable) {
+                            await msg.delete().catch(() => { });
+                        }
+                    }
+                }
+            } catch {
+                // Ignore errors when cleaning up messages
+            }
+
+            // Clear voice channel status using REST API
+            try {
+                const voiceChannelId = player.voiceId;
+                if (voiceChannelId) {
+                    const rest = new REST().setToken(config.discord.token);
+                    await rest.put(`/channels/${voiceChannelId}/voice-status` as any, {
+                        body: { status: null },
+                    });
+                }
+            } catch {
+                // Ignore errors
+            }
         });
     }
 
