@@ -76,15 +76,27 @@ export default new Event({
                 }, 'Executing command');
 
                 await command.execute(interaction, client);
-            } catch (error) {
+            } catch (error: any) {
+                // Check if this is an expired interaction error (10062)
+                const isExpiredInteraction = error?.code === 10062;
+
+                if (isExpiredInteraction) {
+                    logger.warn({ command: interaction.commandName }, 'Interaction expired before response');
+                    return;
+                }
+
                 logger.error({ error, command: interaction.commandName }, 'Command execution failed');
 
                 const errorMessage = '❌ An error occurred while executing this command.';
 
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: errorMessage, ephemeral: true });
-                } else {
-                    await interaction.reply({ content: errorMessage, ephemeral: true });
+                try {
+                    if (interaction.replied || interaction.deferred) {
+                        await interaction.followUp({ content: errorMessage, ephemeral: true });
+                    } else {
+                        await interaction.reply({ content: errorMessage, ephemeral: true });
+                    }
+                } catch {
+                    // Interaction may have expired, ignore
                 }
             }
         }

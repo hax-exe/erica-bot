@@ -18,21 +18,19 @@ export default new Command({
 
     async execute(interaction, client) {
         const query = interaction.options.getString('query', true);
-        const member = interaction.member;
+        const isUrl = query.startsWith('http://') || query.startsWith('https://');
 
+        // Defer immediately to avoid 3-second timeout
+        await interaction.deferReply({ flags: isUrl ? undefined : MessageFlags.Ephemeral });
+
+        const member = interaction.member;
         // @ts-expect-error - Voice state exists on GuildMember
         const vc = member?.voice?.channel;
 
         if (!vc) {
-            await interaction.reply({
-                content: '❌ You must be in a voice channel to use this command.',
-                ephemeral: true,
-            });
+            await interaction.editReply('❌ You must be in a voice channel to use this command.');
             return;
         }
-
-        const isUrl = query.startsWith('http://') || query.startsWith('https://');
-        await interaction.deferReply({ flags: isUrl ? undefined : MessageFlags.Ephemeral });
 
         try {
             let player = client.music.players.get(interaction.guildId!);

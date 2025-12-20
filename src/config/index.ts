@@ -36,6 +36,7 @@ const envSchema = z.object({
     YOUTUBE_OAUTH_REFRESH_TOKEN: z.string().optional(),
     TWITCH_CLIENT_ID: z.string().optional(),
     TWITCH_CLIENT_SECRET: z.string().optional(),
+    GENIUS_ACCESS_TOKEN: z.string().optional(),
 
     // Redis
     REDIS_URL: z.string().default('redis://localhost:6379'),
@@ -94,6 +95,9 @@ export const config = {
         twitch: {
             clientId: env.TWITCH_CLIENT_ID,
             clientSecret: env.TWITCH_CLIENT_SECRET,
+        },
+        genius: {
+            accessToken: env.GENIUS_ACCESS_TOKEN,
         },
     },
     redis: {
