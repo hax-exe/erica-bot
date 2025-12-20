@@ -346,7 +346,7 @@ src/
 
 **© 2025. GPL-3.0**
 
-See [LICENCE](https://github.com/hax-exe/erica-bot/blob/main/LICENSE.md) for details.
+See [LICENCE](https://github.com/hax-exe/erica-bot/blob/main/LICENSE) for details.
 
 ---
 
