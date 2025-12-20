@@ -86,7 +86,7 @@ async function handleButtonInteraction(client: any, interaction: ButtonInteracti
                 await updatePlayerMessage(client, interaction, player);
                 break;
 
-            case 'music_skip':
+            case 'music_skip': {
                 if (!player.queue.current) {
                     await interaction.editReply('❌ Nothing to skip.');
                     return;
@@ -95,6 +95,7 @@ async function handleButtonInteraction(client: any, interaction: ButtonInteracti
                 await player.skip();
                 await interaction.editReply(`⏭️ Skipped **${skippedTrack.title}**`);
                 break;
+            }
 
             case 'music_loop': {
                 // Cycle through loop modes: none -> track -> queue -> none

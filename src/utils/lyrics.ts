@@ -128,7 +128,7 @@ async function scrapeLyrics(geniusUrl: string): Promise<string | null> {
             // Now find the matching closing </div> by tracking nesting depth
             let depth = 1;
             let pos = openTagEnd + 1;
-            let contentStart = pos;
+            const contentStart = pos;
 
             while (depth > 0 && pos < html.length) {
                 const nextOpenDiv = html.indexOf('<div', pos);
@@ -205,7 +205,7 @@ function cleanLyricsHtml(html: string): string {
     text = text.replace(/^\d+\s*Contributors?.*?(?=\[|$)/is, '');
 
     // Remove song title + "Lyrics" header if present at start
-    text = text.replace(/^[^\[]*?Lyrics\s*/i, '');
+    text = text.replace(/^[^[]*?Lyrics\s*/i, '');
 
     // Clean up any leading whitespace/newlines after removal
     return text.trim();
