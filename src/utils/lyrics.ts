@@ -227,6 +227,11 @@ function cleanLyricsHtml(html: string): string {
     // Remove song title + "Lyrics" header if present at start
     text = text.replace(/^[^[]*?Lyrics\s*/i, '');
 
+    // As a final safety step, strip any remaining angle brackets so that
+    // decoded entities cannot reintroduce HTML elements such as <script>.
+    // Using a single-character regex avoids incomplete multi-character sanitization.
+    text = text.replace(/[<>]/g, '');
+
     // Clean up any leading whitespace/newlines after removal
     return text.trim();
 }
