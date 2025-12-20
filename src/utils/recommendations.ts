@@ -81,10 +81,22 @@ export function extractSpotifyTrackId(uri: string): string | null {
 }
 
 /**
- * Check if a URI is from YouTube
+ * Check if a URI is from YouTube (using proper URL parsing to prevent spoofing)
  */
 export function isYouTubeUri(uri: string): boolean {
-    return uri.includes('youtube.com') || uri.includes('youtu.be');
+    try {
+        const url = new URL(uri);
+        const hostname = url.hostname.toLowerCase();
+        // Check for exact domain or subdomain of youtube.com/youtu.be
+        return hostname === 'youtube.com' ||
+            hostname.endsWith('.youtube.com') ||
+            hostname === 'youtu.be' ||
+            hostname === 'www.youtube.com' ||
+            hostname === 'm.youtube.com';
+    } catch {
+        // Invalid URL
+        return false;
+    }
 }
 
 /**

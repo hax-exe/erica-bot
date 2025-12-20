@@ -180,6 +180,31 @@ async function scrapeLyrics(geniusUrl: string): Promise<string | null> {
 }
 
 /**
+ * Decode HTML entities safely to prevent double-escaping attacks
+ * Handles entities in the correct order to avoid re-introducing characters
+ */
+function decodeHtmlEntities(text: string): string {
+    // Decode numeric entities first (&#xNN; and &#NNN;)
+    let decoded = text
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)));
+
+    // Then decode named entities (except &amp; which must be last)
+    decoded = decoded
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ');
+
+    // Decode &amp; LAST to prevent double-decoding attacks
+    // e.g., &amp;lt; should become &lt; not <
+    decoded = decoded.replace(/&amp;/g, '&');
+
+    return decoded;
+}
+
+/**
  * Clean HTML tags from lyrics text
  */
 function cleanLyricsHtml(html: string): string {
@@ -188,17 +213,12 @@ function cleanLyricsHtml(html: string): string {
         .replace(/<br\s*\/?>/gi, '\n')
         // Remove other HTML tags but keep their content
         .replace(/<[^>]+>/g, '')
-        // Decode HTML entities
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#x27;/g, "'")
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ')
         // Remove excessive whitespace
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+
+    // Decode HTML entities safely
+    text = decodeHtmlEntities(text);
 
     // Remove Genius header metadata (contributor count, translations, etc.)
     // Pattern: number + "Contributors" or "ContributorsTranslations" followed by language names until "Lyrics" or first verse marker
