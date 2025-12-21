@@ -208,14 +208,20 @@ function decodeHtmlEntities(text: string): string {
  * Clean HTML tags from lyrics text
  */
 function cleanLyricsHtml(html: string): string {
-    let text = html
-        // Replace <br> and <br/> with newlines
-        .replace(/<br\s*\/?>/gi, '\n')
-        // Remove other HTML tags but keep their content
-        .replace(/<[^>]+>/g, '')
-        // Remove excessive whitespace
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+    // Replace <br> and <br/> with newlines first
+    let text = html.replace(/<br\s*\/?>/gi, '\n');
+
+    // Repeatedly remove HTML tags until the output stabilizes.
+    // This prevents incomplete sanitization attacks like "<<script>script>" or "<scr<script>ipt>"
+    // which could bypass a single-pass replacement.
+    let previousText = '';
+    while (previousText !== text) {
+        previousText = text;
+        text = text.replace(/<[^>]+>/g, '');
+    }
+
+    // Remove excessive whitespace
+    text = text.replace(/\n{3,}/g, '\n\n').trim();
 
     // Decode HTML entities safely
     text = decodeHtmlEntities(text);
