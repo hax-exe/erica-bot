@@ -191,10 +191,21 @@ export class ExtendedClient extends Client {
 
             const channel = this.channels.cache.get(player.textId!);
             if (channel?.isTextBased() && 'send' in channel) {
-                channel.send('📭 Queue is empty. Disconnecting...');
+                channel.send('📭 Queue is empty. Waiting for more tracks...');
             }
 
-            player.destroy();
+            // Check if bot is alone in the voice channel
+            const voiceChannel = player.voiceId ? this.channels.cache.get(player.voiceId) : null;
+            if (voiceChannel?.isVoiceBased()) {
+                const humanMembers = voiceChannel.members.filter((member: any) => !member.user.bot);
+
+                if (humanMembers.size === 0) {
+                    // Bot is alone, start inactivity timeout
+                    const { startInactivityTimeout } = await import('../events/voiceStateUpdate.js');
+                    startInactivityTimeout(player.guildId, player, player.textId, this);
+                }
+            }
+            // Note: We no longer destroy the player here - bot stays in channel
         });
 
         this.music.on('playerDestroy', async (player) => {
