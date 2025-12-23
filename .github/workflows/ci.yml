@@ -42,7 +42,7 @@ jobs:
           DISCORD_CLIENT_ID: 123456789012345678
           LAVALINK_PASSWORD: test_password
           NODE_ENV: test
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v5
         if: always()
         with:
           files: ./coverage/coverage-final.json
