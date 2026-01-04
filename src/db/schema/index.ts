@@ -10,6 +10,7 @@ import {
     serial,
     primaryKey,
     uniqueIndex,
+    uuid,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -290,6 +291,22 @@ export const shopItems = pgTable('shop_items', {
 });
 
 // ============================================
+// Guild Rank Backgrounds (S3/R2 storage)
+// ============================================
+
+export const guildRankBackgrounds = pgTable('guild_rank_backgrounds', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guildId: varchar('guild_id', { length: 20 }).notNull()
+        .references(() => guilds.id, { onDelete: 'cascade' }),
+    originalName: varchar('original_name', { length: 255 }),
+    mimeType: varchar('mime_type', { length: 50 }).notNull(),
+    fileSize: integer('file_size').notNull(),
+    uploadedBy: varchar('uploaded_by', { length: 20 }).notNull(),
+    isActive: boolean('is_active').default(false),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ============================================
 // Relations
 // ============================================
 
@@ -306,4 +323,5 @@ export const guildsRelations = relations(guilds, ({ one, many }) => ({
     giveaways: many(giveaways),
     socialFeeds: many(socialFeeds),
     shopItems: many(shopItems),
+    rankBackgrounds: many(guildRankBackgrounds),
 }));

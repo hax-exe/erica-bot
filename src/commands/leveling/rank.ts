@@ -1,13 +1,14 @@
 import {
     SlashCommandBuilder,
-    EmbedBuilder,
     AttachmentBuilder,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { getXpProgress, getLevelFromXp, getXpForLevel } from '../../services/leveling.js';
+import { getXpProgress } from '../../services/leveling.js';
+import { generateRankCard } from '../../utils/rankCard.js';
+import { getActiveBackgroundId, fetchBackgroundImage } from '../../utils/cloudStorage.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -38,7 +39,6 @@ export default new Command({
 
         const xp = memberData?.xp ?? 0;
         const level = memberData?.level ?? 0;
-        const totalMessages = memberData?.totalMessages ?? 0;
         const progress = getXpProgress(xp);
 
         // Get rank position
@@ -49,31 +49,29 @@ export default new Command({
 
         const rank = allMembers.findIndex((m) => m.odId === targetUser.id) + 1;
 
-        // Create progress bar
-        const progressBar = createProgressBar(progress.percentage);
+        // Fetch guild's active background from S3 (if any)
+        let backgroundBuffer: Buffer | undefined;
+        const backgroundId = await getActiveBackgroundId(interaction.guildId!);
+        if (backgroundId) {
+            const buffer = await fetchBackgroundImage(backgroundId);
+            if (buffer) {
+                backgroundBuffer = buffer;
+            }
+        }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle(`📊 Rank Card`)
-            .setThumbnail(targetUser.displayAvatarURL({ size: 256 }))
-            .addFields(
-                { name: 'User', value: `${targetUser.tag}`, inline: true },
-                { name: 'Rank', value: `#${rank || 'Unranked'}`, inline: true },
-                { name: 'Level', value: `${level}`, inline: true },
-                { name: 'Total XP', value: `${xp.toLocaleString()}`, inline: true },
-                { name: 'Messages', value: `${totalMessages.toLocaleString()}`, inline: true },
-                { name: 'Next Level', value: `${progress.current.toLocaleString()} / ${progress.required.toLocaleString()} XP`, inline: true },
-                { name: 'Progress', value: `${progressBar} ${progress.percentage}%` },
-            )
-            .setFooter({ text: `${getXpForLevel(level).toLocaleString()} XP needed for next level` })
-            .setTimestamp();
+        // Generate rank card image
+        const rankCardBuffer = await generateRankCard({
+            username: targetUser.username,
+            avatarUrl: targetUser.displayAvatarURL({ extension: 'png', size: 256 }),
+            rank: rank || 0,
+            level: level,
+            currentXp: progress.current,
+            requiredXp: progress.required,
+            totalXp: xp,
+            ...(backgroundBuffer ? { backgroundBuffer } : {}),
+        });
 
-        await interaction.editReply({ embeds: [embed] });
+        const attachment = new AttachmentBuilder(rankCardBuffer, { name: 'rank.png' });
+        await interaction.editReply({ files: [attachment] });
     },
 });
-
-function createProgressBar(percentage: number, length = 20): string {
-    const filled = Math.round((percentage / 100) * length);
-    const empty = length - filled;
-    return '█'.repeat(filled) + '░'.repeat(empty);
-}
