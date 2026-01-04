@@ -1,9 +1,21 @@
 # Docker configuration for production deployment
-FROM node:25-alpine AS base
+FROM node:20-alpine AS base
+
+# Install runtime dependencies for @napi-rs/canvas
+RUN apk add --no-cache \
+    cairo \
+    pango \
+    libjpeg-turbo \
+    giflib \
+    librsvg \
+    pixman
 
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++ cairo-dev pango-dev libjpeg-turbo-dev giflib-dev
 
 # Copy package files
 COPY package.json package-lock.json ./
