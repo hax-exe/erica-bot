@@ -11,7 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgif7 \
     librsvg2-2 \
     libpixman-1-0 \
-    && rm -rf /var/lib/apt/lists/*
+    fontconfig \
+    fonts-dejavu-core \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f -v
 
 # Install dependencies only when needed
 FROM base AS deps

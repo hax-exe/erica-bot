@@ -203,21 +203,21 @@ export async function generateRankCard(data: RankCardData): Promise<Buffer> {
     // Draw rank and level on the right
     ctx.textAlign = 'right';
 
-    // Rank
-    ctx.font = 'bold 28px sans-serif';
+    // Rank label and value
+    ctx.font = 'bold 20px sans-serif';
     ctx.fillStyle = COLORS.secondary;
-    ctx.fillText('RANK', textEndX - 100, 60);
-    ctx.font = 'bold 48px sans-serif';
+    ctx.fillText('RANK', textEndX - 120, 55);
+    ctx.font = 'bold 40px sans-serif';
     ctx.fillStyle = COLORS.primary;
-    ctx.fillText(`#${data.rank}`, textEndX - 100, 110);
+    ctx.fillText(`#${data.rank}`, textEndX - 120, 100);
 
-    // Level
-    ctx.font = 'bold 28px sans-serif';
+    // Level label and value
+    ctx.font = 'bold 20px sans-serif';
     ctx.fillStyle = COLORS.secondary;
-    ctx.fillText('LEVEL', textEndX, 60);
-    ctx.font = 'bold 48px sans-serif';
+    ctx.fillText('LEVEL', textEndX, 55);
+    ctx.font = 'bold 40px sans-serif';
     ctx.fillStyle = COLORS.primary;
-    ctx.fillText(`${data.level}`, textEndX, 110);
+    ctx.fillText(`${data.level}`, textEndX, 100);
 
     // XP text
     ctx.font = 'bold 24px sans-serif';
