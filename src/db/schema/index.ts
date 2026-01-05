@@ -8,15 +8,12 @@ import {
     text,
     bigint,
     serial,
-    primaryKey,
     uniqueIndex,
     uuid,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-// ============================================
-// Guild Configuration
-// ============================================
+// --- Guilds ---
 
 export const guilds = pgTable('guilds', {
     id: varchar('id', { length: 20 }).primaryKey(), // Discord snowflake
@@ -34,9 +31,7 @@ export const guilds = pgTable('guilds', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Moderation Settings
-// ============================================
+// --- Moderation Settings ---
 
 export const moderationSettings = pgTable('moderation_settings', {
     guildId: varchar('guild_id', { length: 20 }).primaryKey().references(() => guilds.id, { onDelete: 'cascade' }),
@@ -62,9 +57,7 @@ export const moderationSettings = pgTable('moderation_settings', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Leveling Settings
-// ============================================
+// --- Leveling Settings ---
 
 export const levelingSettings = pgTable('leveling_settings', {
     guildId: varchar('guild_id', { length: 20 }).primaryKey().references(() => guilds.id, { onDelete: 'cascade' }),
@@ -87,9 +80,7 @@ export const levelingSettings = pgTable('leveling_settings', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Economy Settings
-// ============================================
+// --- Economy Settings ---
 
 export const economySettings = pgTable('economy_settings', {
     guildId: varchar('guild_id', { length: 20 }).primaryKey().references(() => guilds.id, { onDelete: 'cascade' }),
@@ -106,9 +97,7 @@ export const economySettings = pgTable('economy_settings', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Music Settings
-// ============================================
+// --- Music Settings ---
 
 export const musicSettings = pgTable('music_settings', {
     guildId: varchar('guild_id', { length: 20 }).primaryKey().references(() => guilds.id, { onDelete: 'cascade' }),
@@ -124,9 +113,7 @@ export const musicSettings = pgTable('music_settings', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Guild Members (Per-guild user data)
-// ============================================
+// --- Guild Members ---
 
 export const guildMembers = pgTable('guild_members', {
     id: serial('id').primaryKey(),
@@ -155,9 +142,7 @@ export const guildMembers = pgTable('guild_members', {
     guildUserUnique: uniqueIndex('guild_user_idx').on(table.guildId, table.odId),
 }));
 
-// ============================================
-// Warnings
-// ============================================
+// --- Warnings ---
 
 export const warnings = pgTable('warnings', {
     id: serial('id').primaryKey(),
@@ -168,9 +153,7 @@ export const warnings = pgTable('warnings', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// ============================================
-// Level Role Rewards
-// ============================================
+// --- Level Rewards ---
 
 export const levelRewards = pgTable('level_rewards', {
     id: serial('id').primaryKey(),
@@ -180,9 +163,7 @@ export const levelRewards = pgTable('level_rewards', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// ============================================
-// Auto Responders
-// ============================================
+// --- Auto Responders ---
 
 export const autoResponders = pgTable('auto_responders', {
     id: serial('id').primaryKey(),
@@ -198,9 +179,7 @@ export const autoResponders = pgTable('auto_responders', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Custom Commands
-// ============================================
+// --- Custom Commands ---
 
 export const customCommands = pgTable('custom_commands', {
     id: serial('id').primaryKey(),
@@ -214,9 +193,7 @@ export const customCommands = pgTable('custom_commands', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Giveaways
-// ============================================
+// --- Giveaways ---
 
 export const giveaways = pgTable('giveaways', {
     id: serial('id').primaryKey(),
@@ -238,9 +215,7 @@ export const giveaways = pgTable('giveaways', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// ============================================
-// Social Feeds
-// ============================================
+// --- Social Feeds ---
 
 export const socialFeeds = pgTable('social_feeds', {
     id: serial('id').primaryKey(),
@@ -256,9 +231,7 @@ export const socialFeeds = pgTable('social_feeds', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// User Playlists
-// ============================================
+// --- Playlists ---
 
 export const playlists = pgTable('playlists', {
     id: serial('id').primaryKey(),
@@ -274,9 +247,7 @@ export const playlists = pgTable('playlists', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// ============================================
-// Shop Items
-// ============================================
+// --- Shop ---
 
 export const shopItems = pgTable('shop_items', {
     id: serial('id').primaryKey(),
@@ -290,9 +261,7 @@ export const shopItems = pgTable('shop_items', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// ============================================
-// Guild Rank Backgrounds (S3/R2 storage)
-// ============================================
+// --- Rank Backgrounds ---
 
 export const guildRankBackgrounds = pgTable('guild_rank_backgrounds', {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -306,9 +275,7 @@ export const guildRankBackgrounds = pgTable('guild_rank_backgrounds', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// ============================================
-// Relations
-// ============================================
+// --- Relations ---
 
 export const guildsRelations = relations(guilds, ({ one, many }) => ({
     moderationSettings: one(moderationSettings),

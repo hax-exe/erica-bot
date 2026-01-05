@@ -1,7 +1,4 @@
-/**
- * Audio filter presets for Lavalink
- * These are applied via player.shoukaku.setFilters()
- */
+// Lavalink audio filter presets - applied via player.shoukaku.setFilters()
 
 export interface FilterPreset {
     name: string;
@@ -203,23 +200,14 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     },
 };
 
-/**
- * Get list of available filter names
- */
 export function getFilterNames(): string[] {
     return Object.keys(FILTER_PRESETS);
 }
 
-/**
- * Get a filter preset by name
- */
 export function getFilterPreset(name: string): FilterPreset | undefined {
     return FILTER_PRESETS[name.toLowerCase()];
 }
 
-/**
- * Apply a filter preset to a player
- */
 export async function applyFilter(
     player: { shoukaku: { setFilters: (filters: FilterPreset['filters']) => Promise<void> } },
     filterName: string

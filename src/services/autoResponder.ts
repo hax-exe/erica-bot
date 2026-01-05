@@ -13,9 +13,6 @@ const REGEX_TIMEOUT_MS = 100;
 const MAX_TRIGGER_LENGTH = 200;
 const MAX_RESPONSE_LENGTH = 2000;
 
-/**
- * Check and respond to auto-responder triggers
- */
 export async function checkAutoResponders(message: Message): Promise<boolean> {
     if (!message.guild || message.author.bot) return false;
 
@@ -42,9 +39,6 @@ export async function checkAutoResponders(message: Message): Promise<boolean> {
     return false;
 }
 
-/**
- * Match content against a trigger with timeout protection for regex
- */
 function matchesTrigger(content: string, trigger: string, type: string): boolean {
     const lowerContent = content.toLowerCase();
     const lowerTrigger = trigger.toLowerCase();
@@ -62,9 +56,7 @@ function matchesTrigger(content: string, trigger: string, type: string): boolean
     }
 }
 
-/**
- * Test regex with timeout protection to prevent ReDoS attacks
- */
+// test regex with timeout to prevent ReDoS
 function safeRegexTest(content: string, pattern: string): boolean {
     try {
         // Validate regex isn't too complex
@@ -93,10 +85,7 @@ function safeRegexTest(content: string, pattern: string): boolean {
     }
 }
 
-/**
- * Basic check for potentially dangerous regex patterns
- * This is a heuristic check - for full protection, use a regex analysis library
- */
+// heuristic check for dangerous regex patterns
 function isRegexSafe(pattern: string): boolean {
     // Patterns that are often involved in ReDoS
     const dangerousPatterns = [
@@ -129,9 +118,6 @@ function isRegexSafe(pattern: string): boolean {
     return true;
 }
 
-/**
- * Validate a trigger pattern before saving to database
- */
 export function validateTrigger(trigger: string, type: string): { valid: boolean; error?: string } {
     if (!trigger || trigger.trim().length === 0) {
         return { valid: false, error: 'Trigger cannot be empty' };
@@ -156,9 +142,6 @@ export function validateTrigger(trigger: string, type: string): { valid: boolean
     return { valid: true };
 }
 
-/**
- * Validate a response before saving to database
- */
 export function validateResponse(response: string): { valid: boolean; error?: string } {
     if (!response || response.trim().length === 0) {
         return { valid: false, error: 'Response cannot be empty' };

@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
-import { warnings, guildMembers } from '../../db/schema/index.js';
+import { warnings } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { ensureGuildExists } from '../../services/leveling.js';
 

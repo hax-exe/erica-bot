@@ -33,9 +33,6 @@ function getS3Client() {
 const BUCKET = process.env.S3_BUCKET || 'erica-bot-assets';
 const PUBLIC_URL = process.env.S3_PUBLIC_URL || '';
 
-/**
- * Check if S3 is configured
- */
 export function isS3Configured(): boolean {
     return !!(
         process.env.S3_ENDPOINT &&
@@ -45,9 +42,6 @@ export function isS3Configured(): boolean {
     );
 }
 
-/**
- * Get the public URL for a background image (optional, for display purposes)
- */
 export function getBackgroundUrl(id: string): string {
     if (PUBLIC_URL) {
         return `${PUBLIC_URL}/rank-backgrounds/${id}`;
@@ -55,9 +49,7 @@ export function getBackgroundUrl(id: string): string {
     return `s3://${BUCKET}/rank-backgrounds/${id}`;
 }
 
-/**
- * Fetch a background image directly from S3 as a Buffer
- */
+// fetch directly from S3, bypassing public URL (more secure)
 export async function fetchBackgroundImage(id: string): Promise<Buffer | null> {
     try {
         // Look up guildId from database
@@ -94,17 +86,11 @@ export async function fetchBackgroundImage(id: string): Promise<Buffer | null> {
     }
 }
 
-/**
- * Get S3 key for a background (organized by guild)
- */
 function getS3Key(guildId: string, id: string): string {
     return `rank-backgrounds/${guildId}/${id}`;
 }
 
-/**
- * Upload a rank card background to S3
- * If guild already has MAX_BACKGROUNDS_PER_GUILD, deletes the oldest one
- */
+// uploads to S3, auto-deletes oldest if guild has MAX_BACKGROUNDS_PER_GUILD
 export async function uploadBackground(
     guildId: string,
     attachment: Attachment,
@@ -188,9 +174,6 @@ export async function uploadBackground(
     return result;
 }
 
-/**
- * Delete a background from S3 and database
- */
 export async function deleteBackground(id: string): Promise<void> {
     // Look up guildId from database first
     const record = await db.query.guildRankBackgrounds.findFirst({
@@ -214,9 +197,6 @@ export async function deleteBackground(id: string): Promise<void> {
     await db.delete(guildRankBackgrounds).where(eq(guildRankBackgrounds.id, id));
 }
 
-/**
- * List all backgrounds for a guild
- */
 export async function listBackgrounds(guildId: string) {
     return db.query.guildRankBackgrounds.findMany({
         where: eq(guildRankBackgrounds.guildId, guildId),
@@ -224,9 +204,7 @@ export async function listBackgrounds(guildId: string) {
     });
 }
 
-/**
- * Set a background as active for a guild (deactivates others)
- */
+// sets one bg as active, deactivates the rest
 export async function setActiveBackground(guildId: string, backgroundId: string): Promise<boolean> {
     // First verify the background exists and belongs to this guild
     const background = await db.query.guildRankBackgrounds.findFirst({
@@ -253,9 +231,6 @@ export async function setActiveBackground(guildId: string, backgroundId: string)
     return true;
 }
 
-/**
- * Get the active background ID for a guild (or null if none set)
- */
 export async function getActiveBackgroundId(guildId: string): Promise<string | null> {
     const active = await db.query.guildRankBackgrounds.findFirst({
         where: and(
@@ -267,9 +242,6 @@ export async function getActiveBackgroundId(guildId: string): Promise<string | n
     return active ? active.id : null;
 }
 
-/**
- * Reset to default backgrounds (deactivate all custom)
- */
 export async function resetToDefault(guildId: string): Promise<void> {
     await db.update(guildRankBackgrounds)
         .set({ isActive: false })

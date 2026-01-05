@@ -1,7 +1,7 @@
 import { Message, EmbedBuilder, TextChannel } from 'discord.js';
 import { db } from '../db/index.js';
 import { moderationSettings, warnings } from '../db/schema/index.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('automod');
@@ -13,8 +13,6 @@ const spamTracker = new Map<string, {
     timestamps: number[];
 }>();
 
-// Link regex
-const LINK_REGEX = /https?:\/\/[^\s]+/gi;
 const DISCORD_INVITE_REGEX = /(discord\.(gg|io|me|li)|discordapp\.com\/invite)\/[a-zA-Z0-9]+/gi;
 
 interface AutoModResult {
@@ -23,9 +21,6 @@ interface AutoModResult {
     action?: 'warn' | 'mute' | 'kick' | 'ban';
 }
 
-/**
- * Check a message against auto-moderation rules
- */
 export async function checkMessage(message: Message): Promise<AutoModResult> {
     if (!message.guild || message.author.bot) {
         return { shouldDelete: false };
@@ -81,9 +76,6 @@ export async function checkMessage(message: Message): Promise<AutoModResult> {
     return { shouldDelete: false };
 }
 
-/**
- * Check for banned words
- */
 function checkBannedWords(content: string, bannedWords: string[]): AutoModResult {
     if (bannedWords.length === 0) {
         return { shouldDelete: false };
@@ -104,9 +96,6 @@ function checkBannedWords(content: string, bannedWords: string[]): AutoModResult
     return { shouldDelete: false };
 }
 
-/**
- * Check for Discord invites
- */
 async function checkInvites(message: Message, allowedInvites: string[]): Promise<AutoModResult> {
     const invites = message.content.match(DISCORD_INVITE_REGEX);
 
@@ -129,9 +118,6 @@ async function checkInvites(message: Message, allowedInvites: string[]): Promise
     return { shouldDelete: false };
 }
 
-/**
- * Check for spam (repeated messages, fast messages)
- */
 function checkSpam(message: Message): AutoModResult {
     const key = `${message.guild!.id}:${message.author.id}`;
     const now = Date.now();
@@ -183,9 +169,6 @@ function checkSpam(message: Message): AutoModResult {
     return { shouldDelete: false };
 }
 
-/**
- * Check for excessive capital letters
- */
 function checkExcessiveCaps(content: string): AutoModResult {
     if (content.length < 10) {
         return { shouldDelete: false };
@@ -209,9 +192,6 @@ function checkExcessiveCaps(content: string): AutoModResult {
     return { shouldDelete: false };
 }
 
-/**
- * Check for excessive emojis
- */
 function checkExcessiveEmojis(content: string): AutoModResult {
     // Match both unicode emojis and Discord custom emojis
     const emojiRegex = /(\p{Emoji_Presentation}|\p{Extended_Pictographic}|<a?:\w+:\d+>)/gu;
@@ -227,9 +207,6 @@ function checkExcessiveEmojis(content: string): AutoModResult {
     return { shouldDelete: false };
 }
 
-/**
- * Check for mass mentions
- */
 function checkMassMentions(message: Message): AutoModResult {
     const mentions = message.mentions.users.size + message.mentions.roles.size;
 
@@ -252,9 +229,6 @@ function checkMassMentions(message: Message): AutoModResult {
     return { shouldDelete: false };
 }
 
-/**
- * Take action based on auto-mod result
- */
 export async function takeAction(
     message: Message,
     result: AutoModResult
@@ -310,9 +284,7 @@ export async function takeAction(
     }, 'Auto-mod action taken');
 }
 
-/**
- * Clean up spam tracker periodically
- */
+// cleanup stale spam entries
 setInterval(() => {
     const now = Date.now();
     for (const [key, tracker] of spamTracker) {

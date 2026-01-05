@@ -7,9 +7,6 @@ const logger = createLogger('redis');
 let redisClient: Redis.Redis | null = null;
 let subscriberClient: Redis.Redis | null = null;
 
-/**
- * Get or create the main Redis client for commands.
- */
 export function getRedisClient(): Redis.Redis {
     if (!redisClient) {
         redisClient = new Redis.default(config.redis.url, {
@@ -41,10 +38,7 @@ export function getRedisClient(): Redis.Redis {
     return redisClient;
 }
 
-/**
- * Get or create a subscriber client for Pub/Sub.
- * This must be a separate connection from the command client.
- */
+// separate connection for pub/sub (can't share with command client)
 export function getRedisSubscriber(): Redis.Redis {
     if (!subscriberClient) {
         subscriberClient = new Redis.default(config.redis.url, {
@@ -67,9 +61,6 @@ export function getRedisSubscriber(): Redis.Redis {
     return subscriberClient;
 }
 
-/**
- * Disconnect all Redis clients gracefully.
- */
 export async function disconnectRedis(): Promise<void> {
     const disconnects: Promise<void>[] = [];
 

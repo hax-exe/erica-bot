@@ -1,10 +1,6 @@
 import {
     SlashCommandBuilder,
     EmbedBuilder,
-    ActionRowBuilder,
-    StringSelectMenuBuilder,
-    ButtonBuilder,
-    ButtonStyle,
     PermissionFlagsBits,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
@@ -224,8 +220,8 @@ async function handleBuy(interaction: any): Promise<void> {
         try {
             const member = await interaction.guild!.members.fetch(userId);
             await member.roles.add(item.roleId);
-        } catch (error) {
-            // Role might not exist or bot lacks permission
+        } catch {
+            // role missing or bot lacks permission - non-fatal
         }
     }
 

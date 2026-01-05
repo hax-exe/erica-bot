@@ -3,7 +3,6 @@ import { createLogger } from '../utils/logger.js';
 import { connectDatabase } from '../db/index.js';
 import { pushSchema } from '../db/migrate.js';
 import { loadCommands } from '../structures/CommandHandler.js';
-import { loadEvents } from '../structures/EventHandler.js';
 
 const logger = createLogger('ready');
 

@@ -49,7 +49,6 @@ export default new Command({
         const settings = await getEconomySettings(guildId);
         const defaults = getDefaultEconomySettings();
         const currencyName = settings?.currencyName ?? defaults.currencyName;
-        const currencySymbol = settings?.currencySymbol ?? defaults.currencySymbol;
 
         // Flip the coin first to determine outcome
         const result = Math.random() < 0.5 ? 'heads' : 'tails';

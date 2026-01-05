@@ -23,9 +23,6 @@ interface Recommendation {
 let accessToken: string | null = null;
 let tokenExpiry: number = 0;
 
-/**
- * Get Spotify access token using client credentials flow
- */
 async function getSpotifyAccessToken(): Promise<string | null> {
     const { clientId, clientSecret } = config.apis.spotify;
 
@@ -65,9 +62,6 @@ async function getSpotifyAccessToken(): Promise<string | null> {
     }
 }
 
-/**
- * Extract Spotify track ID from a URI or URL
- */
 export function extractSpotifyTrackId(uri: string): string | null {
     // spotify:track:XXXXX format
     const spotifyUriMatch = uri.match(/spotify:track:([a-zA-Z0-9]+)/);
@@ -80,9 +74,7 @@ export function extractSpotifyTrackId(uri: string): string | null {
     return null;
 }
 
-/**
- * Check if a URI is from YouTube (using proper URL parsing to prevent spoofing)
- */
+// uses URL parsing to prevent hostname spoofing
 export function isYouTubeUri(uri: string): boolean {
     try {
         const url = new URL(uri);
@@ -99,9 +91,6 @@ export function isYouTubeUri(uri: string): boolean {
     }
 }
 
-/**
- * Search Spotify for a track to get its ID
- */
 async function searchSpotifyTrack(title: string, artist: string): Promise<string | null> {
     const token = await getSpotifyAccessToken();
     if (!token) return null;
@@ -122,9 +111,6 @@ async function searchSpotifyTrack(title: string, artist: string): Promise<string
     }
 }
 
-/**
- * Get track recommendations from Spotify based on a seed track
- */
 export async function getSpotifyRecommendations(
     trackUri: string,
     trackTitle?: string,
@@ -229,10 +215,7 @@ export async function getSpotifyRecommendations(
     }
 }
 
-/**
- * Get YouTube recommendations using Lavalink search
- * This searches for related songs based on the current track's title and artist
- */
+// fallback: search YouTube for related songs when Spotify doesn't have the track
 export async function getYouTubeRecommendations(
     music: Kazagumo,
     trackTitle: string,
@@ -300,9 +283,7 @@ export async function getYouTubeRecommendations(
     }
 }
 
-/**
- * Get recommendations for a track, trying Spotify first then YouTube as fallback
- */
+// tries Spotify first, then YouTube
 export async function getRecommendations(
     music: Kazagumo,
     trackUri: string,
@@ -331,20 +312,14 @@ export async function getRecommendations(
     return [];
 }
 
-/**
- * Format a suggestion label with source icon
- */
 export function formatSuggestionLabel(
     track: { title: string; author: string },
-    source: 'spotify' | 'youtube' | 'soundcloud'
+    _source: 'spotify' | 'youtube' | 'soundcloud'
 ): string {
     const label = `${track.author} - ${track.title}`;
     return label.length > 100 ? label.slice(0, 97) + '...' : label;
 }
 
-/**
- * Source emoji map for select menu options
- */
 export const SOURCE_EMOJIS = {
     spotify: '🟢',
     youtube: '🔴',

@@ -19,12 +19,6 @@ interface LyricsResult {
     thumbnail?: string | undefined;
 }
 
-/**
- * Search for a song on Genius
- */
-/**
- * Search for a song on Genius
- */
 async function searchGeniusSong(query: string, artistName?: string): Promise<GeniusSong | null> {
     const accessToken = config.apis.genius?.accessToken;
 
@@ -101,10 +95,7 @@ async function searchGeniusSong(query: string, artistName?: string): Promise<Gen
     }
 }
 
-/**
- * Scrape lyrics from a Genius song page
- * Note: Genius API doesn't provide lyrics directly, so we scrape the page
- */
+// scrape lyrics from Genius page (API doesn't provide lyrics directly)
 async function scrapeLyrics(geniusUrl: string): Promise<string | null> {
     try {
         const response = await fetch(geniusUrl);
@@ -179,10 +170,7 @@ async function scrapeLyrics(geniusUrl: string): Promise<string | null> {
     }
 }
 
-/**
- * Decode HTML entities safely to prevent double-escaping attacks
- * Handles entities in the correct order to avoid re-introducing characters
- */
+// decode HTML entities in the right order to avoid double-escape attacks
 function decodeHtmlEntities(text: string): string {
     // Decode numeric entities first (&#xNN; and &#NNN;)
     let decoded = text
@@ -204,9 +192,6 @@ function decodeHtmlEntities(text: string): string {
     return decoded;
 }
 
-/**
- * Clean HTML tags from lyrics text
- */
 function cleanLyricsHtml(html: string): string {
     // Replace <br> and <br/> with newlines first
     let text = html.replace(/<br\s*\/?>/gi, '\n');
@@ -242,9 +227,7 @@ function cleanLyricsHtml(html: string): string {
     return text.trim();
 }
 
-/**
- * Clean song title by removing metadata like (Official Video), lyrics, etc.
- */
+// strip "(Official Video)", "[Lyrics]", "ft. Artist" etc
 function removeSongMetadata(title: string): string {
     return title
         .replace(/(\(|\[)?(official)?\s?(music)?\s?(video|lyric(s)?|audio)(\)|\])?/gi, '') // Remove (Official Video), [Lyrics], etc.
@@ -254,9 +237,6 @@ function removeSongMetadata(title: string): string {
         .trim();
 }
 
-/**
- * Clean artist name by removing suffixes like - Topic, VEVO, etc.
- */
 function cleanArtistName(artist: string): string {
     return artist
         .replace(/- topic/gi, '')
@@ -265,9 +245,6 @@ function cleanArtistName(artist: string): string {
         .trim();
 }
 
-/**
- * Get lyrics for a song
- */
 export async function getLyrics(
     title: string,
     artist?: string
@@ -312,9 +289,7 @@ export async function getLyrics(
     };
 }
 
-/**
- * Split lyrics into chunks for Discord embeds (max 4096 chars per embed)
- */
+// split lyrics into chunks for Discord embeds (max 4096 chars)
 export function splitLyricsForEmbed(lyrics: string, maxLength = 4000): string[] {
     if (lyrics.length <= maxLength) {
         return [lyrics];
@@ -358,9 +333,6 @@ export function splitLyricsForEmbed(lyrics: string, maxLength = 4000): string[] 
     return chunks;
 }
 
-/**
- * Check if Genius API is configured
- */
 export function isLyricsConfigured(): boolean {
     return !!config.apis.genius?.accessToken;
 }
