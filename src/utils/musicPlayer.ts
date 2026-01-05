@@ -5,7 +5,6 @@ import {
     ActionRowBuilder,
     StringSelectMenuBuilder,
     StringSelectMenuOptionBuilder,
-    Message,
     TextChannel,
 } from 'discord.js';
 import type { KazagumoPlayer, KazagumoTrack } from 'kazagumo';
@@ -18,9 +17,6 @@ const COLORS = {
     accent: 0x6366f1,       // Indigo accent
 };
 
-/**
- * Format milliseconds to human-readable duration string
- */
 export function formatDuration(ms: number): string {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -32,9 +28,6 @@ export function formatDuration(ms: number): string {
     return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
-/**
- * Create a modern visual progress bar for track playback
- */
 export function createProgressBar(current: number, total: number, length = 12): string {
     if (total === 0) return '░'.repeat(length);
     const progress = Math.round((current / total) * length);
@@ -43,9 +36,6 @@ export function createProgressBar(current: number, total: number, length = 12): 
     return `${filled}${empty}`;
 }
 
-/**
- * Get the loop mode emoji and text
- */
 export function getLoopDisplay(loop: string | null): { emoji: string; text: string; active: boolean } {
     switch (loop) {
         case 'track':
@@ -57,9 +47,6 @@ export function getLoopDisplay(loop: string | null): { emoji: string; text: stri
     }
 }
 
-/**
- * Create the Now Playing embed with all track information
- */
 export function createNowPlayingEmbed(
     player: KazagumoPlayer,
     track: KazagumoTrack
@@ -111,9 +98,6 @@ export function createNowPlayingEmbed(
     return embed;
 }
 
-/**
- * Create control buttons for the music player
- */
 export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<ButtonBuilder>[] {
     const isPaused = player.paused;
     const loopInfo = getLoopDisplay(player.loop);
@@ -169,9 +153,7 @@ export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<Bu
     return [row1, row2, row3];
 }
 
-/**
- * Create the "Suggested by AI" select menu
- */
+// dropdown with "you might like" tracks
 export function createSuggestionsMenu(
     suggestions: Array<{ title: string; author: string; uri: string; source: 'spotify' | 'youtube' | 'soundcloud' }>
 ): ActionRowBuilder<StringSelectMenuBuilder> | null {
@@ -199,9 +181,6 @@ export function createSuggestionsMenu(
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
 
-/**
- * Create the complete Now Playing message with embed and components
- */
 export function createNowPlayingMessage(
     player: KazagumoPlayer,
     track: KazagumoTrack,
@@ -219,9 +198,6 @@ export function createNowPlayingMessage(
     return { embed, components };
 }
 
-/**
- * Update an existing Now Playing message
- */
 export async function updateNowPlayingMessage(
     player: KazagumoPlayer,
     channel: TextChannel,
@@ -238,9 +214,6 @@ export async function updateNowPlayingMessage(
     }
 }
 
-/**
- * Delete the Now Playing message when session ends
- */
 export async function deleteNowPlayingMessage(
     channel: TextChannel,
     messageId: string

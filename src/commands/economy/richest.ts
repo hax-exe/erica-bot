@@ -5,7 +5,7 @@ import {
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers, economySettings } from '../../db/schema/index.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export default new Command({
     data: new SlashCommandBuilder()

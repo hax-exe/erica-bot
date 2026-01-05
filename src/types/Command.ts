@@ -1,5 +1,4 @@
 import {
-    SlashCommandBuilder,
     ChatInputCommandInteraction,
     PermissionFlagsBits,
     AutocompleteInteraction,

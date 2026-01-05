@@ -1,4 +1,4 @@
-import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D } from '@napi-rs/canvas';
+import { createCanvas, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readdir } from 'fs/promises';
@@ -32,9 +32,7 @@ export interface RankCardData {
     backgroundBuffer?: Buffer;  // Direct image buffer from S3
 }
 
-/**
- * Format large numbers with k/M suffix
- */
+// 1000 -> "1.00k", 1000000 -> "1.00M"
 function formatNumber(num: number): string {
     if (num >= 1000000) {
         return (num / 1000000).toFixed(2) + 'M';
@@ -45,9 +43,6 @@ function formatNumber(num: number): string {
     return num.toString();
 }
 
-/**
- * Draw a rounded rectangle
- */
 function roundRect(
     ctx: SKRSContext2D,
     x: number,
@@ -69,9 +64,7 @@ function roundRect(
     ctx.closePath();
 }
 
-/**
- * Get a random default background image
- */
+// grabs a random bg from assets/backgrounds
 async function getDefaultBackground(): Promise<string | null> {
     try {
         const backgroundsDir = join(ASSETS_DIR, 'backgrounds');
@@ -92,9 +85,6 @@ async function getDefaultBackground(): Promise<string | null> {
     }
 }
 
-/**
- * Generate a rank card image
- */
 export async function generateRankCard(data: RankCardData): Promise<Buffer> {
     const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     const ctx = canvas.getContext('2d');

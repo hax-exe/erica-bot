@@ -4,7 +4,6 @@ import {
     PermissionFlagsBits,
     TextChannel,
     ChannelType,
-    OverwriteType,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 

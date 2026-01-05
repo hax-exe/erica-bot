@@ -10,9 +10,6 @@ const inactivityTimeouts = new Map<string, NodeJS.Timeout>();
 // Inactivity duration: 2 minutes
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
 
-/**
- * Start the inactivity timeout for a guild
- */
 function startInactivityTimeout(
     guildId: string,
     player: any,
@@ -52,9 +49,6 @@ function startInactivityTimeout(
     inactivityTimeouts.set(guildId, timeout);
 }
 
-/**
- * Clear the inactivity timeout for a guild
- */
 function clearInactivityTimeout(guildId: string): void {
     const timeout = inactivityTimeouts.get(guildId);
     if (timeout) {

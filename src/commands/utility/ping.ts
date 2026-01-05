@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, version as djsVersion } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import os from 'os';
 
@@ -21,8 +21,6 @@ export default new Command({
         const seconds = Math.floor(uptimeSeconds % 60);
 
         const uptime = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-        const memUsage = process.memoryUsage();
-        const memUsedMB = (memUsage.heapUsed / 1024 / 1024).toFixed(2);
 
         const embed = new EmbedBuilder()
             .setColor(wsLatency < 100 ? 0x00ff00 : wsLatency < 300 ? 0xffff00 : 0xff0000)

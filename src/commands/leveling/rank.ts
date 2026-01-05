@@ -24,7 +24,7 @@ export default new Command({
     guildOnly: true,
     requiredModule: 'leveling',
 
-    async execute(interaction, client) {
+    async execute(interaction, _client) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
 
         await interaction.deferReply();

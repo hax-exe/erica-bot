@@ -277,8 +277,8 @@ async function endGiveaway(client: any, giveaway: any): Promise<void> {
         } else {
             await channel.send('😢 No one entered the giveaway.');
         }
-    } catch (error) {
-        // Message might be deleted
+    } catch {
+        // message deleted or channel unavailable
     }
 }
 

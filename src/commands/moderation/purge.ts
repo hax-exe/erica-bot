@@ -127,7 +127,7 @@ export default new Command({
             }
 
             await interaction.editReply({ embeds: [embed] });
-        } catch (error) {
+        } catch {
             await interaction.editReply('❌ Failed to delete messages. They may be older than 14 days.');
         }
     },

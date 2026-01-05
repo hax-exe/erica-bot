@@ -21,9 +21,6 @@ const economySettingsCache = new SimpleCache<EconomySettingsType | null>();
 const levelingSettingsCache = new SimpleCache<LevelingSettingsType | null>();
 const moderationSettingsCache = new SimpleCache<ModerationSettingsType | null>();
 
-/**
- * Get guild settings with caching.
- */
 export async function getGuildSettings(guildId: string): Promise<GuildSettings | null> {
     const cached = guildSettingsCache.get(guildId);
     if (cached !== undefined) {
@@ -38,9 +35,6 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
     return settings;
 }
 
-/**
- * Get economy settings with caching.
- */
 export async function getEconomySettings(guildId: string): Promise<EconomySettingsType | null> {
     const cached = economySettingsCache.get(guildId);
     if (cached !== undefined) {
@@ -55,9 +49,6 @@ export async function getEconomySettings(guildId: string): Promise<EconomySettin
     return settings;
 }
 
-/**
- * Get leveling settings with caching.
- */
 export async function getLevelingSettings(guildId: string): Promise<LevelingSettingsType | null> {
     const cached = levelingSettingsCache.get(guildId);
     if (cached !== undefined) {
@@ -72,9 +63,6 @@ export async function getLevelingSettings(guildId: string): Promise<LevelingSett
     return settings;
 }
 
-/**
- * Get moderation settings with caching.
- */
 export async function getModerationSettings(guildId: string): Promise<ModerationSettingsType | null> {
     const cached = moderationSettingsCache.get(guildId);
     if (cached !== undefined) {
@@ -89,10 +77,7 @@ export async function getModerationSettings(guildId: string): Promise<Moderation
     return settings;
 }
 
-/**
- * Invalidate all caches for a specific guild.
- * Call this when settings are updated.
- */
+// call when settings are updated
 export function invalidateGuildCache(guildId: string): void {
     guildSettingsCache.delete(guildId);
     economySettingsCache.delete(guildId);
@@ -101,9 +86,6 @@ export function invalidateGuildCache(guildId: string): void {
     logger.debug({ guildId }, 'Invalidated settings cache for guild');
 }
 
-/**
- * Clear all caches.
- */
 export function clearAllCaches(): void {
     guildSettingsCache.clear();
     economySettingsCache.clear();
@@ -112,9 +94,6 @@ export function clearAllCaches(): void {
     logger.debug('Cleared all settings caches');
 }
 
-/**
- * Get default economy settings values.
- */
 export function getDefaultEconomySettings() {
     return {
         currencyName: 'coins',
@@ -126,9 +105,6 @@ export function getDefaultEconomySettings() {
     };
 }
 
-/**
- * Get default leveling settings values.
- */
 export function getDefaultLevelingSettings() {
     return {
         xpPerMessage: 15,

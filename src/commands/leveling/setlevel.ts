@@ -7,7 +7,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { getLevelFromXp, getTotalXpForLevel, ensureGuildExists } from '../../services/leveling.js';
+import { getTotalXpForLevel, ensureGuildExists } from '../../services/leveling.js';
 
 export default new Command({
     data: new SlashCommandBuilder()

@@ -67,7 +67,7 @@ export default new Command({
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
-        } catch (error) {
+        } catch {
             await interaction.reply({
                 content: '❌ Failed to unban user. Please check the user ID.',
                 ephemeral: true,
