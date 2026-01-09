@@ -20,7 +20,15 @@ async function updatePlayerMessage(client: any, interaction: ButtonInteraction, 
         const message = await channel.messages.fetch(messageId).catch(() => null);
         if (!message || !player.queue.current) return;
 
-        const { embed, components } = createNowPlayingMessage(player, player.queue.current);
+        // Retrieve stored suggestions to preserve the dropdown menu
+        const suggestions = player.data.get('suggestions') as Array<{
+            title: string;
+            author: string;
+            uri: string;
+            source: 'spotify' | 'youtube' | 'soundcloud';
+        }> | undefined;
+
+        const { embed, components } = createNowPlayingMessage(player, player.queue.current, suggestions);
         await message.edit({ embeds: [embed], components: components as any });
     } catch {
         // Message may have been deleted or edited by another process
@@ -134,7 +142,9 @@ async function handleButtonInteraction(client: any, interaction: ButtonInteracti
                 // Toggle autoplay (stored in player data)
                 const isAutoplay = player.data.get('autoplay') as boolean || false;
                 player.data.set('autoplay', !isAutoplay);
-                await interaction.editReply(`🔊 Autoplay ${!isAutoplay ? 'enabled' : 'disabled'}.`);
+                await interaction.editReply(`📻 Autoplay ${!isAutoplay ? 'enabled' : 'disabled'}.`);
+                // Update the Now Playing message to show the new autoplay state
+                await updatePlayerMessage(client, interaction, player);
                 break;
             }
 

@@ -101,7 +101,7 @@ export function createNowPlayingEmbed(
 export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<ButtonBuilder>[] {
     const isPaused = player.paused;
     const loopInfo = getLoopDisplay(player.loop);
-    const autoplayEnabled = (player.data as any)?.autoplay;
+    const autoplayEnabled = player.data.get('autoplay') as boolean || false;
 
     // Row 1: Main playback controls - Pause/Resume (Primary), Skip (Primary), Like (Success)
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -201,13 +201,14 @@ export function createNowPlayingMessage(
 export async function updateNowPlayingMessage(
     player: KazagumoPlayer,
     channel: TextChannel,
-    messageId: string
+    messageId: string,
+    suggestions?: Array<{ title: string; author: string; uri: string; source: 'spotify' | 'youtube' | 'soundcloud' }>
 ): Promise<void> {
     try {
         const message = await channel.messages.fetch(messageId);
         if (!message || !player.queue.current) return;
 
-        const { embed, components } = createNowPlayingMessage(player, player.queue.current);
+        const { embed, components } = createNowPlayingMessage(player, player.queue.current, suggestions);
         await message.edit({ embeds: [embed], components: components as any });
     } catch {
         // Message may have been deleted

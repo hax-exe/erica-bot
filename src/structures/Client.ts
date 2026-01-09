@@ -176,6 +176,71 @@ export class ExtendedClient extends Client {
         });
 
         this.music.on('playerEmpty', async (player) => {
+            // Check if autoplay is enabled
+            const autoplayEnabled = player.data.get('autoplay') as boolean || false;
+            const previousTrack = player.data.get('previousTrack') as {
+                title: string;
+                author: string;
+                uri: string;
+            } | undefined;
+
+            if (autoplayEnabled && previousTrack) {
+                const channel = this.channels.cache.get(player.textId!);
+
+                try {
+                    const { getRecommendations } = await import('../utils/recommendations.js');
+
+                    // Get recommendations based on the previous track
+                    const suggestions = await getRecommendations(
+                        this.music,
+                        previousTrack.uri || '',
+                        previousTrack.title,
+                        previousTrack.author || 'Unknown',
+                        5
+                    );
+
+                    if (suggestions.length > 0) {
+                        // Pick a random recommendation for variety
+                        const randomIndex = Math.floor(Math.random() * suggestions.length);
+                        const nextTrack = suggestions[randomIndex]!;
+
+                        // Search and add the track
+                        const result = await this.music.search(nextTrack.uri, { requester: null });
+                        const track = result.tracks[0];
+
+                        if (track) {
+                            player.queue.add(track);
+
+                            if (channel?.isTextBased() && 'send' in channel) {
+                                channel.send(`📻 **Autoplay:** Queueing **${nextTrack.title}** by **${nextTrack.author}**`);
+                            }
+
+                            // Start playing if not already
+                            if (!player.playing && !player.paused) {
+                                await player.play();
+                            }
+                            return; // Skip the "queue empty" message
+                        }
+                    }
+
+                    // Autoplay failed to find tracks
+                    if (channel?.isTextBased() && 'send' in channel) {
+                        channel.send('📻 Autoplay couldn\'t find more recommendations. Queue is empty.');
+                    }
+                } catch (error) {
+                    logger.error({ error }, 'Autoplay failed to fetch recommendations');
+                    if (channel?.isTextBased() && 'send' in channel) {
+                        channel.send('📭 Queue is empty. Waiting for more tracks...');
+                    }
+                }
+            } else {
+                // Autoplay disabled or no previous track
+                const channel = this.channels.cache.get(player.textId!);
+                if (channel?.isTextBased() && 'send' in channel) {
+                    channel.send('📭 Queue is empty. Waiting for more tracks...');
+                }
+            }
+
             // Clear voice channel status using REST API
             try {
                 const voiceChannelId = player.voiceId;
@@ -187,11 +252,6 @@ export class ExtendedClient extends Client {
                 }
             } catch {
                 // Ignore errors
-            }
-
-            const channel = this.channels.cache.get(player.textId!);
-            if (channel?.isTextBased() && 'send' in channel) {
-                channel.send('📭 Queue is empty. Waiting for more tracks...');
             }
 
             // Check if bot is alone in the voice channel
