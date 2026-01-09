@@ -11,6 +11,7 @@ const categoryEmojis: Record<CommandCategory, string> = {
     admin: '⚙️',
     giveaway: '🎉',
     social: '📱',
+    games: '🎲',
 };
 
 const categoryDescriptions: Record<CommandCategory, string> = {
@@ -23,6 +24,7 @@ const categoryDescriptions: Record<CommandCategory, string> = {
     admin: 'Server configuration',
     giveaway: 'Giveaway management',
     social: 'Social feed notifications',
+    games: 'Multiplayer games to play with others',
 };
 
 export default new Command({

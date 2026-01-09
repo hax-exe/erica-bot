@@ -41,7 +41,8 @@ export type CommandCategory =
     | 'utility'
     | 'admin'
     | 'giveaway'
-    | 'social';
+    | 'social'
+    | 'games';
 
 export interface Command extends CommandOptions { }
 
