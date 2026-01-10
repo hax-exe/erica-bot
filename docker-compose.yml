@@ -21,6 +21,9 @@ services:
       - LAVALINK_HOST=host.docker.internal
       - LAVALINK_PORT=2333
       - REDIS_URL=redis://redis:6379
+    # Required for Linux hosts - maps host.docker.internal to host's IP
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - bot-network
 
