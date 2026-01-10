@@ -63,6 +63,13 @@ plugins:
     oauth:
       enabled: true
       # refreshToken passed via Spring Boot env var in docker-compose.yml
+    # Residential proxy configuration - routes YouTube requests through residential IP
+    # Get proxy from: Bright Data, Oxylabs, SmartProxy, IPRoyal, etc.
+    httpConfig:
+      proxyHost: ${YOUTUBE_PROXY_HOST:}
+      proxyPort: ${YOUTUBE_PROXY_PORT:0}
+      proxyLogin: ${YOUTUBE_PROXY_USER:}
+      proxyPassword: ${YOUTUBE_PROXY_PASS:}
 
   lavasearch:
     sources:

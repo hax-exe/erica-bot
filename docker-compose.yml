@@ -17,7 +17,8 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
-      - LAVALINK_HOST=lavalink
+      # Use host.docker.internal since Lavalink runs on host network for Tailscale access
+      - LAVALINK_HOST=host.docker.internal
       - LAVALINK_PORT=2333
       - REDIS_URL=redis://redis:6379
     networks:
@@ -64,8 +65,8 @@ services:
     image: ghcr.io/lavalink-devs/lavalink:4
     container_name: erica-lavalink
     restart: unless-stopped
-    ports:
-      - "2333:2333"
+    # Use host network to access Tailscale IPs for residential proxy
+    network_mode: host
     environment:
       - SERVER_PORT=2333
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_PASSWORD}
@@ -73,6 +74,11 @@ services:
       # Spotify credentials for LavaSrc plugin
       - PLUGINS_LAVASRC_SPOTIFY_CLIENTID=${SPOTIFY_CLIENT_ID}
       - PLUGINS_LAVASRC_SPOTIFY_CLIENTSECRET=${SPOTIFY_CLIENT_SECRET}
+      # Residential proxy for YouTube (optional - leave empty if not using)
+      - YOUTUBE_PROXY_HOST=${YOUTUBE_PROXY_HOST:-}
+      - YOUTUBE_PROXY_PORT=${YOUTUBE_PROXY_PORT:-0}
+      - YOUTUBE_PROXY_USER=${YOUTUBE_PROXY_USER:-}
+      - YOUTUBE_PROXY_PASS=${YOUTUBE_PROXY_PASS:-}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     healthcheck:
@@ -81,8 +87,7 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
-    networks:
-      - bot-network
+    # Note: ports and networks not needed with network_mode: host
 
 volumes:
   postgres-data:
