@@ -3,6 +3,7 @@ import { createLogger } from '../utils/logger.js';
 import { connectDatabase } from '../db/index.js';
 import { pushSchema } from '../db/migrate.js';
 import { loadCommands } from '../structures/CommandHandler.js';
+import { startStatusRotation } from '../services/statusRotator.js';
 
 const logger = createLogger('ready');
 
@@ -25,16 +26,8 @@ export default new Event({
         // Deploy slash commands
         await client.deployCommands();
 
-        // Set bot presence
-        client.user?.setPresence({
-            status: 'online',
-            activities: [
-                {
-                    name: '/help | Erica Bot',
-                    type: 3, // Watching
-                },
-            ],
-        });
+        // Start rotating bot status
+        startStatusRotation(client);
 
         logger.info('🚀 Bot is fully ready!');
     },
