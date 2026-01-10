@@ -54,15 +54,15 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     # Client priority for track loading (first = highest priority)
+    # Using clients that work better on datacenter/VPS IPs
     clients:
-      - MUSIC
-      - ANDROID_VR
-      - WEB
-      - WEBEMBEDDED
-    # OAuth configuration - use a burner Google account!
+      - ANDROID_TESTSUITE
+      - TVHTML5EMBEDDED
+      - IOS
+      - ANDROID_LITE
+    # OAuth disabled - doesn't help on datacenter IPs
     oauth:
-      enabled: true
-      # refreshToken passed via Spring Boot env var in docker-compose.yml
+      enabled: false
 
   lavasearch:
     sources:
