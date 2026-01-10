@@ -3,6 +3,7 @@ import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
 import { db } from '../db/index.js';
 import { guilds, moderationSettings, levelingSettings, economySettings, musicSettings } from '../db/schema/index.js';
+import { sendOnboardingMessage } from '../services/onboarding.js';
 
 const logger = createLogger('guild-create');
 
@@ -35,6 +36,9 @@ export default new Event({
             }).onConflictDoNothing();
 
             logger.info({ guildId: guild.id }, 'Initialized guild settings');
+
+            // Send onboarding DM to server owner
+            await sendOnboardingMessage(client, guild);
         } catch (error) {
             logger.error({ error, guildId: guild.id }, 'Failed to initialize guild settings');
         }

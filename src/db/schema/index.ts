@@ -19,6 +19,7 @@ export const guilds = pgTable('guilds', {
     id: varchar('id', { length: 20 }).primaryKey(), // Discord snowflake
     prefix: varchar('prefix', { length: 10 }).default('!'),
     language: varchar('language', { length: 10 }).default('en'),
+    onboardingCompleted: boolean('onboarding_completed').default(false),
 
     // Module toggles
     moderationEnabled: boolean('moderation_enabled').default(true),
