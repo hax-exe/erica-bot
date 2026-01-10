@@ -114,6 +114,17 @@ CREATE TABLE "leveling_settings" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE "liked_songs" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" varchar(20) NOT NULL,
+	"track_uri" varchar(500) NOT NULL,
+	"track_title" varchar(256) NOT NULL,
+	"track_author" varchar(256),
+	"thumbnail" varchar(500),
+	"duration" integer,
+	"liked_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE "moderation_settings" (
 	"guild_id" varchar(20) PRIMARY KEY NOT NULL,
 	"audit_log_channel_id" varchar(20),
@@ -198,4 +209,5 @@ ALTER TABLE "music_settings" ADD CONSTRAINT "music_settings_guild_id_guilds_id_f
 ALTER TABLE "shop_items" ADD CONSTRAINT "shop_items_guild_id_guilds_id_fk" FOREIGN KEY ("guild_id") REFERENCES "public"."guilds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "social_feeds" ADD CONSTRAINT "social_feeds_guild_id_guilds_id_fk" FOREIGN KEY ("guild_id") REFERENCES "public"."guilds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "warnings" ADD CONSTRAINT "warnings_guild_id_guilds_id_fk" FOREIGN KEY ("guild_id") REFERENCES "public"."guilds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "guild_user_idx" ON "guild_members" USING btree ("guild_id","user_id");
+CREATE UNIQUE INDEX "guild_user_idx" ON "guild_members" USING btree ("guild_id","user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "user_track_idx" ON "liked_songs" USING btree ("user_id","track_uri");

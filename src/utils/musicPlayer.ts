@@ -55,61 +55,125 @@ export function createNowPlayingEmbed(
     const durationStr = formatDuration(duration);
     const loopInfo = getLoopDisplay(player.loop);
     const isPaused = player.paused;
+    const autoplayEnabled = player.data.get('autoplay') as boolean || false;
+    const queueSize = player.queue.length;
 
-    // Dynamic color based on playback state
-    const embedColor = isPaused ? COLORS.paused : COLORS.playing;
+    // Requester info
+    const requester = (track.requester as any);
+    const requesterName = requester?.username || requester?.tag || 'Unknown';
+
+    // Build description in Musico style
+    const descriptionLines = [
+        `**${track.author} - ${track.title}**`,
+        ``,
+        `⏱ ${durationStr}  ${loopInfo.active ? `${loopInfo.emoji} Loop: ${loopInfo.text}` : ''}`,
+        `Requested by **${requesterName}**`,
+        ``,
+        `**Queue** - ${queueSize > 0 ? `${queueSize} track${queueSize !== 1 ? 's' : ''}` : 'empty'}`,
+    ];
+
+    // Add autoplay indicator if enabled
+    if (autoplayEnabled) {
+        descriptionLines.push(`📻 Autoplay enabled`);
+    }
 
     const embed = new EmbedBuilder()
-        .setColor(embedColor)
-        .setAuthor({
-            name: isPaused ? '⏸️ Paused' : '💿 Now Playing',
-            iconURL: 'https://cdn.discordapp.com/emojis/1041747842490548305.gif'
-        })
-        .setTitle(track.title)
-        .setURL(track.uri || null)
-        .addFields(
-            {
-                name: '⏱️ Duration',
-                value: `\`${durationStr}\``,
-                inline: true
-            },
-            {
-                name: '👤 Requested by',
-                value: `<@${(track.requester as any)?.id || 'Unknown'}>`,
-                inline: true
-            },
-            {
-                name: '🔄 Loop',
-                value: `${loopInfo.emoji} \`${loopInfo.text}\``,
-                inline: true
-            }
-        )
-        .setThumbnail(track.thumbnail || null)
-        .setTimestamp();
-
-    // Queue info footer
-    const queueSize = player.queue.length;
-    if (queueSize > 0) {
-        embed.setFooter({
-            text: `📋 ${queueSize} track${queueSize !== 1 ? 's' : ''} in queue`,
-        });
-    }
+        .setColor(isPaused ? COLORS.paused : COLORS.primary)
+        .setAuthor({ name: isPaused ? '⏸️ Paused' : 'NowPlaying' })
+        .setDescription(descriptionLines.join('\n'))
+        .setImage(track.thumbnail || null); // Large album art
 
     return embed;
 }
+
+/**
+ * Creates an idle/empty state embed when no track is playing
+ */
+export function createIdleEmbed(): EmbedBuilder {
+    return new EmbedBuilder()
+        .setColor(COLORS.primary)
+        .setTitle('Nothing is Playing')
+        .setDescription(
+            '> No track is currently playing.\n' +
+            '> Join a voice channel and add songs by name or URL.\n\n' +
+            `Use \`/play\` to start playing music!`
+        );
+}
+
+/**
+ * Creates disabled buttons for idle state (nothing playing)
+ */
+export function createIdleButtons(): ActionRowBuilder<ButtonBuilder>[] {
+    // Row 1: Pause, Skip, Like (all disabled)
+    const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('music_pause')
+            .setLabel('Pause')
+            .setEmoji('⏸')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId('music_skip')
+            .setLabel('Skip')
+            .setEmoji('⏭️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId('music_like')
+            .setLabel('Like')
+            .setEmoji('💜')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true)
+    );
+
+    // Row 2: Loop, Smart Shuffle (all disabled)
+    const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('music_loop')
+            .setLabel('Loop')
+            .setEmoji('🔁')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId('music_shuffle')
+            .setLabel('Smart Shuffle')
+            .setEmoji('✖️')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(true)
+    );
+
+    // Row 3: Autoplay (disabled), End Session (disabled)
+    const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId('music_autoplay')
+            .setLabel('Autoplay')
+            .setEmoji('♾️')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId('music_stop')
+            .setLabel('End Session')
+            .setEmoji('⏹️')
+            .setStyle(ButtonStyle.Danger)
+            .setDisabled(true)
+    );
+
+    return [row1, row2, row3];
+}
+
 
 export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<ButtonBuilder>[] {
     const isPaused = player.paused;
     const loopInfo = getLoopDisplay(player.loop);
     const autoplayEnabled = player.data.get('autoplay') as boolean || false;
 
-    // Row 1: Main playback controls - Pause/Resume (Primary), Skip (Primary), Like (Success)
+    // Row 1: Pause (Secondary), Skip (Primary), Like (Secondary)
     const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId(isPaused ? 'music_resume' : 'music_pause')
             .setLabel(isPaused ? 'Resume' : 'Pause')
-            .setEmoji(isPaused ? '▶️' : '⏸️')
-            .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Primary),
+            .setEmoji(isPaused ? '▶️' : '⏸')
+            .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('music_skip')
             .setLabel('Skip')
@@ -118,31 +182,31 @@ export function createPlayerButtons(player: KazagumoPlayer): ActionRowBuilder<Bu
         new ButtonBuilder()
             .setCustomId('music_like')
             .setLabel('Like')
-            .setEmoji('❤️')
+            .setEmoji('💜')
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // Row 2: Loop (changes color when active), Smart Shuffle
+    // Row 2: Loop (Primary when active), Smart Shuffle (Primary)
     const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('music_loop')
-            .setLabel(`Loop: ${loopInfo.text}`)
-            .setEmoji(loopInfo.emoji)
-            .setStyle(loopInfo.active ? ButtonStyle.Success : ButtonStyle.Secondary),
+            .setLabel('Loop')
+            .setEmoji('🔁')
+            .setStyle(loopInfo.active ? ButtonStyle.Primary : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('music_shuffle')
-            .setLabel('Shuffle')
-            .setEmoji('🔀')
-            .setStyle(ButtonStyle.Secondary)
+            .setLabel('Smart Shuffle')
+            .setEmoji('✖️')
+            .setStyle(ButtonStyle.Primary)
     );
 
-    // Row 3: Autoplay (changes color when active), End Session (Danger)
+    // Row 3: Autoplay (Secondary when off), End Session (Danger)
     const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
             .setCustomId('music_autoplay')
             .setLabel('Autoplay')
-            .setEmoji('📻')
-            .setStyle(autoplayEnabled ? ButtonStyle.Success : ButtonStyle.Secondary),
+            .setEmoji('♾️')
+            .setStyle(autoplayEnabled ? ButtonStyle.Primary : ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId('music_stop')
             .setLabel('End Session')

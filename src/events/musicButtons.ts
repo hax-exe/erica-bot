@@ -153,10 +153,55 @@ async function handleButtonInteraction(client: any, interaction: ButtonInteracti
                 await interaction.editReply('⏹️ Stopped the music and left the channel.');
                 break;
 
-            case 'music_like':
-                // TODO: Implement saving to user's playlist
-                await interaction.editReply('❤️ Track liked! (Playlist feature coming soon)');
+            case 'music_like': {
+                const currentTrack = player.queue.current;
+                if (!currentTrack) {
+                    await interaction.editReply('❌ No track is currently playing.');
+                    return;
+                }
+
+                const trackUri = currentTrack.uri || `${currentTrack.title}-${currentTrack.author}`;
+
+                try {
+                    const { db } = await import('../db/index.js');
+                    const { likedSongs } = await import('../db/schema/index.js');
+                    const { eq, and } = await import('drizzle-orm');
+
+                    // Check if track is already liked
+                    const existing = await db.select()
+                        .from(likedSongs)
+                        .where(and(
+                            eq(likedSongs.userId, interaction.user.id),
+                            eq(likedSongs.trackUri, trackUri)
+                        ))
+                        .limit(1);
+
+                    if (existing.length > 0) {
+                        // Unlike - remove from database
+                        await db.delete(likedSongs)
+                            .where(and(
+                                eq(likedSongs.userId, interaction.user.id),
+                                eq(likedSongs.trackUri, trackUri)
+                            ));
+                        await interaction.editReply(`🤍 Removed **${currentTrack.title}** from your liked songs.`);
+                    } else {
+                        // Like - add to database
+                        await db.insert(likedSongs).values({
+                            userId: interaction.user.id,
+                            trackUri: trackUri,
+                            trackTitle: currentTrack.title.slice(0, 256),
+                            trackAuthor: currentTrack.author?.slice(0, 256) || null,
+                            thumbnail: currentTrack.thumbnail?.slice(0, 500) || null,
+                            duration: currentTrack.length || null,
+                        });
+                        await interaction.editReply(`💜 Added **${currentTrack.title}** to your liked songs!`);
+                    }
+                } catch (error) {
+                    logger.error({ error }, 'Failed to toggle like status');
+                    await interaction.editReply('❌ Failed to update liked songs. Please try again.');
+                }
                 break;
+            }
 
             default:
                 await interaction.editReply('❓ Unknown action.');

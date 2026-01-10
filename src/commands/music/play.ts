@@ -1,5 +1,6 @@
-import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, MessageFlags, TextChannel } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { updateNowPlayingMessage } from '../../utils/musicPlayer.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -61,6 +62,16 @@ export default new Command({
                     player.queue.add(track);
                 }
 
+                // Update Now Playing message with new queue count
+                const messageId = player.data.get('nowPlayingMessageId') as string | undefined;
+                const channelId = player.data.get('nowPlayingChannelId') as string | undefined;
+                if (messageId && channelId && player.queue.current) {
+                    const channel = client.channels.cache.get(channelId) as TextChannel | undefined;
+                    if (channel) {
+                        await updateNowPlayingMessage(player, channel, messageId);
+                    }
+                }
+
                 const embed = new EmbedBuilder()
                     .setColor(0x5865f2)
                     .setTitle('📋 Playlist Added')
@@ -78,6 +89,16 @@ export default new Command({
             if (isUrl) {
                 const track = result.tracks[0]!;
                 player.queue.add(track);
+
+                // Update Now Playing message with new queue count
+                const messageId = player.data.get('nowPlayingMessageId') as string | undefined;
+                const channelId = player.data.get('nowPlayingChannelId') as string | undefined;
+                if (messageId && channelId && player.queue.current) {
+                    const npChannel = client.channels.cache.get(channelId) as TextChannel | undefined;
+                    if (npChannel) {
+                        await updateNowPlayingMessage(player, npChannel, messageId);
+                    }
+                }
 
                 const embed = new EmbedBuilder()
                     .setColor(0x5865f2)
@@ -145,6 +166,16 @@ export default new Command({
 
                 player.queue.add(selected);
                 await interaction.deleteReply();
+
+                // Update Now Playing message with new queue count
+                const npMessageId = player.data.get('nowPlayingMessageId') as string | undefined;
+                const npChannelId = player.data.get('nowPlayingChannelId') as string | undefined;
+                if (npMessageId && npChannelId && player.queue.current) {
+                    const npChannel = client.channels.cache.get(npChannelId) as TextChannel | undefined;
+                    if (npChannel) {
+                        await updateNowPlayingMessage(player, npChannel, npMessageId);
+                    }
+                }
 
                 const confirmEmbed = new EmbedBuilder()
                     .setColor(0x5865f2)

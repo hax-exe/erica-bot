@@ -247,6 +247,21 @@ export const playlists = pgTable('playlists', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// --- Liked Songs ---
+
+export const likedSongs = pgTable('liked_songs', {
+    id: serial('id').primaryKey(),
+    userId: varchar('user_id', { length: 20 }).notNull(),
+    trackUri: varchar('track_uri', { length: 500 }).notNull(),
+    trackTitle: varchar('track_title', { length: 256 }).notNull(),
+    trackAuthor: varchar('track_author', { length: 256 }),
+    thumbnail: varchar('thumbnail', { length: 500 }),
+    duration: integer('duration'), // in milliseconds
+    likedAt: timestamp('liked_at').defaultNow(),
+}, (table) => ({
+    userTrackUnique: uniqueIndex('user_track_idx').on(table.userId, table.trackUri),
+}));
+
 // --- Shop ---
 
 export const shopItems = pgTable('shop_items', {
