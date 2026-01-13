@@ -11,9 +11,9 @@ interface StatusEntry {
 // List of statuses to rotate through
 const statuses: StatusEntry[] = [
     { text: '/help | Erica Bot', type: ActivityType.Watching },
-    { text: 'Over {users} users', type: ActivityType.Watching },
-    { text: 'Music for {guilds} servers', type: ActivityType.Playing },
-    { text: 'your favorite tunes', type: ActivityType.Listening },
+    { text: 'Watching over {users} users', type: ActivityType.Watching },
+    { text: 'Playing music for {guilds} servers', type: ActivityType.Playing },
+    { text: 'Listening to your favorite tunes', type: ActivityType.Listening },
 ];
 
 // Rotation interval (10 seconds)

@@ -4,6 +4,7 @@ import { connectDatabase } from '../db/index.js';
 import { pushSchema } from '../db/migrate.js';
 import { loadCommands } from '../structures/CommandHandler.js';
 import { startStatusRotation } from '../services/statusRotator.js';
+import { restoreMusicPlayers, restoreGameState, startStateCheckpoint } from '../services/stateManager.js';
 
 const logger = createLogger('ready');
 
@@ -28,6 +29,13 @@ export default new Event({
 
         // Start rotating bot status
         startStatusRotation(client);
+
+        // Restore state from previous session (if any)
+        await restoreMusicPlayers(client);
+        await restoreGameState();
+
+        // Start periodic state checkpointing for crash recovery
+        startStateCheckpoint(client);
 
         logger.info('🚀 Bot is fully ready!');
     },
