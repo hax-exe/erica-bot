@@ -486,6 +486,23 @@ class GameManager {
     }
 
     /**
+     * Get all active games (for state persistence)
+     */
+    getAllGames(): Map<string, AnyGameSession> {
+        return this.games;
+    }
+
+    /**
+     * Restore games from saved state
+     */
+    restoreGames(games: AnyGameSession[]): void {
+        for (const game of games) {
+            this.games.set(game.id, game);
+        }
+        logger.info({ count: games.length }, 'Restored games from saved state');
+    }
+
+    /**
      * Clean up expired games
      */
     private cleanupExpiredGames(): void {
