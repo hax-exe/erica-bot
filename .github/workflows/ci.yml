@@ -212,25 +212,3 @@ jobs:
           curl -H "Content-Type: application/json" \
             -d "{\"embeds\": [{\"title\": \"🚀 Erica Bot ${{ steps.version.outputs.tag }}\", \"description\": \"A new version has been deployed!\\n\\n**Changes:**\\n${{ steps.changelog.outputs.commits_json }}\", \"color\": 10181046, \"footer\": {\"text\": \"Product of Elysiana Productions\"}}]}" \
             ${{ secrets.DISCORD_PATCH_NOTES_WEBHOOK }}
-      
-      - name: Setup Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:prod
-      
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_KEY }}
-          script: |
-            cd /home/kiana/erica-bot
-            
-            # Pull the new image
-            docker pull ghcr.io/${{ github.repository }}/bot:latest
-            
-            # Recreate the bot container with the new image
-            docker compose up -d --force-recreate bot
