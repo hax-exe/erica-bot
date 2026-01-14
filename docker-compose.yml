@@ -23,6 +23,24 @@ services:
     networks:
       - bot-network
 
+  db-migrate:
+    image: node:20-alpine
+    container_name: erica-db-migrate
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
+    volumes:
+      - ./:/app
+      - migrate-node-modules:/app/node_modules
+    command: sh -c "npm install && npx drizzle-kit push"
+    networks:
+      - bot-network
+    profiles:
+      - migrate
+
   postgres:
     image: postgres:15-alpine
     container_name: erica-postgres
@@ -87,6 +105,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  migrate-node-modules:
 
 
 networks:
