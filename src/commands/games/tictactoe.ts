@@ -169,6 +169,26 @@ export default new Command({
         const opponentMember = await validateMemberWithError(interaction, opponent.id, opponent.tag);
         if (!opponentMember) return;
 
+        // Check if challenger is already in a game
+        const challengerGame = gameManager.isPlayerInGame(challenger.id);
+        if (challengerGame) {
+            await interaction.reply({
+                content: '❌ You are already in a game! Finish or wait for it to expire first.',
+                ephemeral: true,
+            });
+            return;
+        }
+
+        // Check if opponent is already in a game
+        const opponentGame = gameManager.isPlayerInGame(opponent.id);
+        if (opponentGame) {
+            await interaction.reply({
+                content: `❌ ${opponent} is already in a game! They need to finish or wait for it to expire.`,
+                ephemeral: true,
+            });
+            return;
+        }
+
         // Create the game (starts in pending state)
         const game = gameManager.createTicTacToe(
             challenger.id,
@@ -197,6 +217,25 @@ export default new Command({
 
         // Store the message ID for updates
         gameManager.setMessageId(game.id, challengeMessage.id);
+
+        // Set timeout to update message if challenge expires (1 minute for pending)
+        setTimeout(async () => {
+            const currentGame = gameManager.getGame(game.id);
+            // Only update if game is still pending (not accepted/declined)
+            if (currentGame && currentGame.status === 'pending') {
+                try {
+                    const timeoutEmbed = createGameEmbed(currentGame as GameSession, challenger, opponent, 'timeout');
+                    await challengeMessage.edit({
+                        content: '⏰ Challenge timed out.',
+                        embeds: [timeoutEmbed],
+                        components: [],
+                    });
+                    gameManager.endGame(game.id);
+                } catch {
+                    // Message may have been deleted
+                }
+            }
+        }, 60000); // 1 minute timeout for pending challenges
     },
 });
 

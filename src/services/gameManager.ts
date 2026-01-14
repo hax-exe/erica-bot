@@ -170,6 +170,19 @@ class GameManager {
     }
 
     /**
+     * Check if a player is in any active or pending game
+     * Returns the game if found, undefined otherwise
+     */
+    isPlayerInGame(playerId: string): AnyGameSession | undefined {
+        for (const game of this.games.values()) {
+            if (game.status !== 'finished' && game.players.includes(playerId)) {
+                return game;
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Update message ID for a game
      */
     setMessageId(gameId: string, messageId: string): void {
