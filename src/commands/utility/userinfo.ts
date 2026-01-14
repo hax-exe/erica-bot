@@ -4,6 +4,7 @@ import {
     GuildMember,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -20,6 +21,13 @@ export default new Command({
 
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
+
+        // Validate target user is in server (skip for self)
+        if (targetUser.id !== interaction.user.id) {
+            const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+            if (!member) return;
+        }
+
         const member = interaction.guild!.members.cache.get(targetUser.id) as GuildMember | undefined;
 
         const badges = targetUser.flags?.toArray().map((flag) => {

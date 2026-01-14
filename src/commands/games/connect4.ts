@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { gameManager, GameSession } from '../../services/gameManager.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 const COLUMN_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
 
@@ -184,6 +185,10 @@ export default new Command({
             });
             return;
         }
+
+        // Validate opponent is in server
+        const opponentMember = await validateMemberWithError(interaction, opponent.id, opponent.tag);
+        if (!opponentMember) return;
 
         // Create the game (starts in pending state)
         const game = gameManager.createConnectFour(

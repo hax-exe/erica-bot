@@ -5,6 +5,7 @@ import {
 import { Command } from '../../types/Command.js';
 import { atomicTransfer } from '../../db/transactions.js';
 import { getEconomySettings, getDefaultEconomySettings } from '../../services/settingsCache.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 // Maximum transfer limit per transaction
 const MAX_TRANSFER_LIMIT = 100000;
@@ -53,6 +54,10 @@ export default new Command({
             });
             return;
         }
+
+        // Validate recipient is in server
+        const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+        if (!member) return;
 
         // Get settings from cache
         const settings = await getEconomySettings(guildId);

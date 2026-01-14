@@ -8,6 +8,7 @@ import { db } from '../../db/index.js';
 import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { getTotalXpForLevel, ensureGuildExists } from '../../services/leveling.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -36,6 +37,10 @@ export default new Command({
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user', true);
         const level = interaction.options.getInteger('level', true);
+
+        // Validate user is in server
+        const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+        if (!member) return;
 
         // Calculate XP for the level
         const xp = getTotalXpForLevel(level);

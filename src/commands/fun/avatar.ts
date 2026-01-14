@@ -3,6 +3,7 @@ import {
     EmbedBuilder,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -18,6 +19,12 @@ export default new Command({
 
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
+
+        // Validate target user is in server (skip for self, skip if not in guild)
+        if (interaction.guild && targetUser.id !== interaction.user.id) {
+            const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+            if (!member) return;
+        }
 
         const embed = new EmbedBuilder()
             .setColor(0x5865f2)

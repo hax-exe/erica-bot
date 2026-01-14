@@ -8,6 +8,7 @@ import { db } from '../../db/index.js';
 import { warnings } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { ensureGuildExists } from '../../services/leveling.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -36,6 +37,10 @@ export default new Command({
         const targetUser = interaction.options.getUser('user', true);
         const reason = interaction.options.getString('reason', true);
         const moderator = interaction.user;
+
+        // Validate user is in server
+        const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+        if (!member) return;
 
         if (targetUser.id === interaction.user.id) {
             await interaction.reply({

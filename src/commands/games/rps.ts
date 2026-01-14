@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { gameManager, RPSSession } from '../../services/gameManager.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 const CHOICE_EMOJIS: { [key: string]: string } = {
     rock: '🪨',
@@ -214,6 +215,10 @@ export default new Command({
             });
             return;
         }
+
+        // Validate opponent is in server
+        const opponentMember = await validateMemberWithError(interaction, opponent.id, opponent.tag);
+        if (!opponentMember) return;
 
         // Create the game (starts in pending state)
         const game = gameManager.createRPS(

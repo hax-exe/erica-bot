@@ -7,6 +7,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { warnings } from '../../db/schema/index.js';
 import { eq, and, desc } from 'drizzle-orm';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -26,6 +27,10 @@ export default new Command({
 
     async execute(interaction, client) {
         const targetUser = interaction.options.getUser('user', true);
+
+        // Validate user is in server
+        const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+        if (!member) return;
 
         const userWarnings = await db.query.warnings.findMany({
             where: and(

@@ -7,6 +7,7 @@ import { db } from '../../db/index.js';
 import { guildMembers } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { getEconomySettings, getDefaultEconomySettings } from '../../services/settingsCache.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,6 +25,12 @@ export default new Command({
 
     async execute(interaction) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
+
+        // Validate target user is in server (skip for self)
+        if (targetUser.id !== interaction.user.id) {
+            const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+            if (!member) return;
+        }
 
         // Get economy settings from cache
         const settings = await getEconomySettings(interaction.guildId!);

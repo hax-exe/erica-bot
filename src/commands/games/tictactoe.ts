@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { gameManager, GameSession } from '../../services/gameManager.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 /**
  * Render Accept/Decline buttons for pending challenge
@@ -163,6 +164,10 @@ export default new Command({
             });
             return;
         }
+
+        // Validate opponent is in server
+        const opponentMember = await validateMemberWithError(interaction, opponent.id, opponent.tag);
+        if (!opponentMember) return;
 
         // Create the game (starts in pending state)
         const game = gameManager.createTicTacToe(

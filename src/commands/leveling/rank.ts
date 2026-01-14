@@ -9,6 +9,7 @@ import { eq, and } from 'drizzle-orm';
 import { getXpProgress } from '../../services/leveling.js';
 import { generateRankCard } from '../../utils/rankCard.js';
 import { getActiveBackgroundId, fetchBackgroundImage } from '../../utils/cloudStorage.js';
+import { validateMemberWithError } from '../../utils/memberValidation.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -26,6 +27,12 @@ export default new Command({
 
     async execute(interaction, _client) {
         const targetUser = interaction.options.getUser('user') || interaction.user;
+
+        // Validate target user is in server (skip for self)
+        if (targetUser.id !== interaction.user.id) {
+            const member = await validateMemberWithError(interaction, targetUser.id, targetUser.tag);
+            if (!member) return;
+        }
 
         await interaction.deferReply();
 
