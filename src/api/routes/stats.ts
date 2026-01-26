@@ -209,8 +209,11 @@ router.get('/bot', async (req: Request, res: Response): Promise<void> => {
         // Calculate total users across all guilds
         const totalUsers = client.guilds.cache.reduce((acc, g) => acc + g.memberCount, 0);
 
-        // Get total guilds tracked in database
-        const [guildCount] = await db.select({ count: count() }).from(guilds);
+        // Get guilds tracked in database that the bot is still in
+        const activeGuildIds = Array.from(client.guilds.cache.keys());
+        const [guildCount] = await db.select({ count: count() })
+            .from(guilds)
+            .where(sql`${guilds.id} = ANY(${activeGuildIds})`);
 
         res.json({
             guilds: {

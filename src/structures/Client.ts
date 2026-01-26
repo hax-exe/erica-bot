@@ -83,6 +83,10 @@ export class ExtendedClient extends Client {
         });
 
         this.music.on('playerStart', async (player, track) => {
+            // Clear playback inactivity timeout since music is now playing
+            const { clearPlaybackInactivityTimeout } = await import('../events/voiceStateUpdate.js');
+            clearPlaybackInactivityTimeout(player.guildId);
+
             const channel = this.channels.cache.get(player.textId!);
             if (!channel?.isTextBased() || !('send' in channel)) return;
 
@@ -265,10 +269,17 @@ export class ExtendedClient extends Client {
                     startInactivityTimeout(player.guildId, player, player.textId, this);
                 }
             }
-            // Note: We no longer destroy the player here - bot stays in channel
+
+            // Start 5-minute playback inactivity timeout (even with users present)
+            const { startPlaybackInactivityTimeout } = await import('../events/voiceStateUpdate.js');
+            startPlaybackInactivityTimeout(player.guildId, player, player.textId, this);
         });
 
         this.music.on('playerDestroy', async (player) => {
+            // Clear playback inactivity timeout
+            const { clearPlaybackInactivityTimeout } = await import('../events/voiceStateUpdate.js');
+            clearPlaybackInactivityTimeout(player.guildId);
+
             // Clean up the Now Playing message when player is destroyed
             try {
                 const messageId = player.data.get('nowPlayingMessageId') as string | undefined;

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { FILTER_PRESETS, applyFilter } from '../../utils/filters.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -35,8 +36,14 @@ export default new Command({
     async execute(interaction, client) {
         const filterName = interaction.options.getString('name', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player || !player.queue.current) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (!validation.player.queue.current) {
             await interaction.reply({
                 content: '❌ No music is currently playing.',
                 ephemeral: true,
@@ -56,7 +63,7 @@ export default new Command({
         await interaction.deferReply();
 
         try {
-            const success = await applyFilter(player, filterName);
+            const success = await applyFilter(validation.player, filterName);
 
             if (!success) {
                 await interaction.editReply('❌ Failed to apply the filter.');
@@ -64,7 +71,7 @@ export default new Command({
             }
 
             // Store the current filter in player data
-            player.data.set('currentFilter', filterName === 'none' ? null : filterName);
+            validation.player.data.set('currentFilter', filterName === 'none' ? null : filterName);
 
             const embed = new EmbedBuilder()
                 .setColor(0x5865f2)
@@ -79,3 +86,4 @@ export default new Command({
         }
     },
 });
+

@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,16 +25,14 @@ export default new Command({
     async execute(interaction, client) {
         const mode = interaction.options.getString('mode', true) as 'none' | 'track' | 'queue';
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player) {
-            await interaction.reply({
-                content: '❌ No music is currently playing.',
-                ephemeral: true,
-            });
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
             return;
         }
 
-        player.setLoop(mode);
+        validation.player.setLoop(mode);
 
         const messages = {
             none: '➡️ Loop disabled',
@@ -44,3 +43,4 @@ export default new Command({
         await interaction.reply(messages[mode]);
     },
 });
+
