@@ -77,7 +77,7 @@ function startPlaybackInactivityTimeout(
     // Clear any existing playback timeout
     clearPlaybackInactivityTimeout(guildId);
 
-    logger.debug({ guildId }, 'Starting 5-minute playback inactivity timeout');
+    logger.debug({ guildId }, 'Starting 2-minute playback inactivity timeout');
 
     const timeout = setTimeout(async () => {
         // Remove from map
@@ -98,7 +98,7 @@ function startPlaybackInactivityTimeout(
             try {
                 const channel = client.channels.cache.get(textChannelId) as TextChannel | undefined;
                 if (channel?.isTextBased() && 'send' in channel) {
-                    await channel.send('👋 Left due to no music playing for 5 minutes. Use `/play` to start again!');
+                    await channel.send('👋 Left due to no music playing for 2 minutes. Use `/play` to start again!');
                 }
             } catch (error) {
                 logger.debug({ error }, 'Failed to send playback inactivity message');
