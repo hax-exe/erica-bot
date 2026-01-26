@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -20,24 +21,22 @@ export default new Command({
     async execute(interaction, client) {
         const position = interaction.options.getInteger('position', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (position > validation.player.queue.length) {
             await interaction.reply({
-                content: '❌ No music is currently playing.',
+                content: `❌ Invalid position. Queue only has ${validation.player.queue.length} song(s).`,
                 ephemeral: true,
             });
             return;
         }
 
-        if (position > player.queue.length) {
-            await interaction.reply({
-                content: `❌ Invalid position. Queue only has ${player.queue.length} song(s).`,
-                ephemeral: true,
-            });
-            return;
-        }
-
-        const removed = player.queue.splice(position - 1, 1)[0];
+        const removed = validation.player.queue.splice(position - 1, 1)[0];
 
         if (!removed) {
             await interaction.reply({
@@ -50,3 +49,4 @@ export default new Command({
         await interaction.reply(`🗑️ Removed **${removed.title}** from the queue.`);
     },
 });
+

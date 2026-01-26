@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -20,8 +21,14 @@ export default new Command({
     async execute(interaction, client) {
         const position = interaction.options.getInteger('position', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player || !player.queue.current) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (!validation.player.queue.current) {
             await interaction.reply({
                 content: '❌ No music is currently playing.',
                 ephemeral: true,
@@ -29,7 +36,7 @@ export default new Command({
             return;
         }
 
-        if (player.queue.length === 0) {
+        if (validation.player.queue.length === 0) {
             await interaction.reply({
                 content: '❌ The queue is empty.',
                 ephemeral: true,
@@ -37,9 +44,9 @@ export default new Command({
             return;
         }
 
-        if (position > player.queue.length) {
+        if (position > validation.player.queue.length) {
             await interaction.reply({
-                content: `❌ Invalid position. The queue only has ${player.queue.length} track(s).`,
+                content: `❌ Invalid position. The queue only has ${validation.player.queue.length} track(s).`,
                 ephemeral: true,
             });
             return;
@@ -48,15 +55,16 @@ export default new Command({
         // Remove all tracks before the target position
         const tracksToRemove = position - 1;
         for (let i = 0; i < tracksToRemove; i++) {
-            player.queue.shift();
+            validation.player.queue.shift();
         }
 
         // Get the track we're jumping to
-        const targetTrack = player.queue[0];
+        const targetTrack = validation.player.queue[0];
 
         // Skip to the target track
-        await player.skip();
+        await validation.player.skip();
 
         await interaction.reply(`⏭️ Jumped to position ${position}: **${targetTrack?.title || 'Unknown'}**`);
     },
 });
+

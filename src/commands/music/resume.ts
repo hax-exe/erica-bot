@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -12,8 +13,14 @@ export default new Command({
 
     async execute(interaction, client) {
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player || !player.queue.current) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (!validation.player.queue.current) {
             await interaction.reply({
                 content: '❌ No music is currently playing.',
                 ephemeral: true,
@@ -21,7 +28,7 @@ export default new Command({
             return;
         }
 
-        if (!player.paused) {
+        if (!validation.player.paused) {
             await interaction.reply({
                 content: '❌ The music is not paused.',
                 ephemeral: true,
@@ -29,7 +36,8 @@ export default new Command({
             return;
         }
 
-        await player.pause(false);
+        await validation.player.pause(false);
         await interaction.reply('▶️ Resumed the music.');
     },
 });
+

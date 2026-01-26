@@ -1,6 +1,7 @@
-import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, MessageFlags, TextChannel } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType, MessageFlags, TextChannel, GuildMember } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { updateNowPlayingMessage } from '../../utils/musicPlayer.js';
+import { validateVoiceChannelForPlay } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,8 +25,7 @@ export default new Command({
         // Defer immediately to avoid 3-second timeout
         await interaction.deferReply({ flags: isUrl ? undefined : MessageFlags.Ephemeral });
 
-        const member = interaction.member;
-        // @ts-expect-error - Voice state exists on GuildMember
+        const member = interaction.member as GuildMember | null;
         const vc = member?.voice?.channel;
 
         if (!vc) {
@@ -35,6 +35,13 @@ export default new Command({
 
         try {
             let player = client.music.players.get(interaction.guildId!);
+
+            // If a player exists, verify user is in the same channel
+            const validation = validateVoiceChannelForPlay(interaction, player);
+            if (!validation.valid) {
+                await interaction.editReply(validation.message);
+                return;
+            }
 
             if (!player) {
                 player = await client.music.createPlayer({

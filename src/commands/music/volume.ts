@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -21,19 +22,18 @@ export default new Command({
     async execute(interaction, client) {
         const volume = interaction.options.getInteger('level', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player) {
-            await interaction.reply({
-                content: '❌ No music is currently playing.',
-                ephemeral: true,
-            });
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
             return;
         }
 
-        player.setVolume(volume);
+        validation.player.setVolume(volume);
 
         const emoji = volume === 0 ? '🔇' : volume < 30 ? '🔈' : volume < 70 ? '🔉' : '🔊';
 
         await interaction.reply(`${emoji} Volume set to **${volume}%**`);
     },
 });
+
