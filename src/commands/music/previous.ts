@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -12,17 +13,15 @@ export default new Command({
 
     async execute(interaction, client) {
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player) {
-            await interaction.reply({
-                content: '❌ No music player is active.',
-                ephemeral: true,
-            });
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
             return;
         }
 
         // Get the previous track from player data
-        const previousTrack = player.data.get('previousTrack') as any;
+        const previousTrack = validation.player.data.get('previousTrack') as any;
 
         if (!previousTrack) {
             await interaction.reply({
@@ -33,8 +32,8 @@ export default new Command({
         }
 
         // Add current track back to queue if there is one
-        if (player.queue.current) {
-            player.queue.unshift(player.queue.current);
+        if (validation.player.queue.current) {
+            validation.player.queue.unshift(validation.player.queue.current);
         }
 
         // Search and play the previous track
@@ -50,8 +49,8 @@ export default new Command({
             }
 
             const track = result.tracks[0]!;
-            player.queue.unshift(track);
-            await player.skip();
+            validation.player.queue.unshift(track);
+            await validation.player.skip();
 
             await interaction.reply(`⏮️ Playing previous track: **${track.title}**`);
         } catch {
@@ -62,3 +61,4 @@ export default new Command({
         }
     },
 });
+

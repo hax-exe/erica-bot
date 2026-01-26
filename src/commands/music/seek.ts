@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -19,8 +20,14 @@ export default new Command({
     async execute(interaction, client) {
         const positionStr = interaction.options.getString('position', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player || !player.queue.current) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (!validation.player.queue.current) {
             await interaction.reply({
                 content: '❌ No music is currently playing.',
                 ephemeral: true,
@@ -37,7 +44,7 @@ export default new Command({
             return;
         }
 
-        const duration = player.queue.current.length || 0;
+        const duration = validation.player.queue.current.length || 0;
         if (position > duration) {
             await interaction.reply({
                 content: '❌ Cannot seek beyond the song duration.',
@@ -46,7 +53,7 @@ export default new Command({
             return;
         }
 
-        await player.shoukaku.seekTo(position);
+        await validation.player.shoukaku.seekTo(position);
 
         await interaction.reply(`⏩ Seeked to \`${positionStr}\``);
     },

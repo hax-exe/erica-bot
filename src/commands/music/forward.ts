@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { validateVoiceChannel } from '../../utils/voiceChannel.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -21,8 +22,14 @@ export default new Command({
     async execute(interaction, client) {
         const seconds = interaction.options.getInteger('seconds', true);
         const player = client.music.players.get(interaction.guildId!);
+        const validation = validateVoiceChannel(interaction, player);
 
-        if (!player || !player.queue.current) {
+        if (!validation.valid) {
+            await interaction.reply({ content: validation.message, ephemeral: true });
+            return;
+        }
+
+        if (!validation.player.queue.current) {
             await interaction.reply({
                 content: '❌ No music is currently playing.',
                 ephemeral: true,
@@ -30,9 +37,9 @@ export default new Command({
             return;
         }
 
-        const track = player.queue.current;
+        const track = validation.player.queue.current;
         const duration = track.length || 0;
-        const currentPosition = player.shoukaku.position;
+        const currentPosition = validation.player.shoukaku.position;
         const newPosition = Math.min(duration - 1000, currentPosition + seconds * 1000);
 
         if (newPosition >= duration - 1000) {
@@ -43,7 +50,7 @@ export default new Command({
             return;
         }
 
-        await player.seek(newPosition);
+        await validation.player.seek(newPosition);
 
         const formatTime = (ms: number) => {
             const s = Math.floor(ms / 1000);
@@ -54,3 +61,4 @@ export default new Command({
         await interaction.reply(`⏩ Fast-forwarded ${seconds} seconds to \`${formatTime(newPosition)}\``);
     },
 });
+

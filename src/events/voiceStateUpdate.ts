@@ -4,11 +4,17 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('voice-state');
 
-// Store inactivity timeouts per guild
+// Store inactivity timeouts per guild (when bot is alone)
 const inactivityTimeouts = new Map<string, NodeJS.Timeout>();
 
-// Inactivity duration: 2 minutes
+// Store playback inactivity timeouts per guild (when no music is playing)
+const playbackInactivityTimeouts = new Map<string, NodeJS.Timeout>();
+
+// Inactivity duration when bot is alone: 2 minutes
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+
+// Playback inactivity duration: 2 minutes
+const PLAYBACK_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
 
 function startInactivityTimeout(
     guildId: string,
@@ -58,6 +64,67 @@ function clearInactivityTimeout(guildId: string): void {
     }
 }
 
+/**
+ * Start a 5-minute timeout when there's no playback.
+ * This runs even when users are present in the channel.
+ */
+function startPlaybackInactivityTimeout(
+    guildId: string,
+    player: any,
+    textChannelId: string | null | undefined,
+    client: any
+): void {
+    // Clear any existing playback timeout
+    clearPlaybackInactivityTimeout(guildId);
+
+    logger.debug({ guildId }, 'Starting 5-minute playback inactivity timeout');
+
+    const timeout = setTimeout(async () => {
+        // Remove from map
+        playbackInactivityTimeouts.delete(guildId);
+
+        // Check if player still exists and is still not playing
+        const currentPlayer = client.music.players.get(guildId);
+        if (!currentPlayer) return;
+
+        // If music started playing in the meantime, don't leave
+        if (currentPlayer.playing || currentPlayer.paused) {
+            logger.debug({ guildId }, 'Playback resumed, cancelling leave');
+            return;
+        }
+
+        // Send inactivity message
+        if (textChannelId) {
+            try {
+                const channel = client.channels.cache.get(textChannelId) as TextChannel | undefined;
+                if (channel?.isTextBased() && 'send' in channel) {
+                    await channel.send('👋 Left due to no music playing for 5 minutes. Use `/play` to start again!');
+                }
+            } catch (error) {
+                logger.debug({ error }, 'Failed to send playback inactivity message');
+            }
+        }
+
+        // Destroy the player
+        logger.info({ guildId }, 'Destroying player due to playback inactivity');
+        currentPlayer.destroy();
+    }, PLAYBACK_INACTIVITY_TIMEOUT_MS);
+
+    playbackInactivityTimeouts.set(guildId, timeout);
+}
+
+/**
+ * Clear the playback inactivity timeout (called when music starts playing)
+ */
+function clearPlaybackInactivityTimeout(guildId: string): void {
+    const timeout = playbackInactivityTimeouts.get(guildId);
+    if (timeout) {
+        clearTimeout(timeout);
+        playbackInactivityTimeouts.delete(guildId);
+        logger.debug({ guildId }, 'Cleared playback inactivity timeout');
+    }
+}
+
 export default new Event({
     name: Events.VoiceStateUpdate,
 
@@ -102,5 +169,11 @@ export default new Event({
     },
 });
 
-// Export for use in other modules if needed
-export { clearInactivityTimeout, startInactivityTimeout };
+// Export for use in other modules
+export {
+    clearInactivityTimeout,
+    startInactivityTimeout,
+    clearPlaybackInactivityTimeout,
+    startPlaybackInactivityTimeout,
+};
+
