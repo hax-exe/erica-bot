@@ -15,9 +15,6 @@ lavalink:
       repository: "https://maven.lavalink.dev/releases"
 
   server:
-    httpConfig:
-      proxyHost: ${PROXY_HOST}
-      proxyPort: ${PROXY_PORT}
     password: ${LAVALINK_PASSWORD}
     sources:
       # MUST be false - youtube-source plugin handles YouTube instead
@@ -56,6 +53,9 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
+    httpConfig:
+      proxyHost: ${PROXY_HOST}
+      proxyPort: ${PROXY_PORT}
     # Client priority for track loading (first = highest priority)
     clients:
       - MUSIC
