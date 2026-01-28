@@ -16,6 +16,9 @@ lavalink:
 
   server:
     password: ${LAVALINK_PASSWORD}
+    httpConfig:
+      proxyHost: ${PROXY_HOST}
+      proxyPort: ${PROXY_PORT}
     sources:
       # MUST be false - youtube-source plugin handles YouTube instead
       youtube: false
@@ -53,9 +56,6 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
-    httpConfig:
-      proxyHost: ${PROXY_HOST}
-      proxyPort: ${PROXY_PORT}
     # Client priority for track loading (first = highest priority)
     clients:
       - MUSIC
