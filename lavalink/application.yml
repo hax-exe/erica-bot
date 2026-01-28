@@ -15,6 +15,9 @@ lavalink:
       repository: "https://maven.lavalink.dev/releases"
 
   server:
+    httpConfig:
+      proxyHost: ${PROXY_HOST}
+      proxyPort: ${PROXY_PORT}
     password: ${LAVALINK_PASSWORD}
     sources:
       # MUST be false - youtube-source plugin handles YouTube instead
