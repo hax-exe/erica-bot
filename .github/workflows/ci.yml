@@ -209,5 +209,5 @@ jobs:
       - name: Post to Discord
         run: |
           curl -H "Content-Type: application/json" \
-            -d "{\"embeds\": [{\"title\": \"🚀 Erica Bot ${{ steps.version.outputs.tag }}\", \"description\": \"A new version has been deployed!\\n\\n**Changes:**\\n${{ steps.changelog.outputs.commits_json }}\", \"color\": 10181046, \"footer\": {\"text\": \"Product of Elysiana Productions\"}}]}" \
+            -d "{\"content\": \"<@&${{ secrets.DISCORD_UPDATE_ROLE_ID }}>\", \"embeds\": [{\"title\": \"🚀 Erica Bot ${{ steps.version.outputs.tag }}\", \"description\": \"A new version has been deployed!\\n\\n**Changes:**\\n${{ steps.changelog.outputs.commits_json }}\", \"color\": 10181046, \"footer\": {\"text\": \"Product of Elysiana Productions\"}}]}" \
             ${{ secrets.DISCORD_PATCH_NOTES_WEBHOOK }}
