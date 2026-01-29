@@ -1,0 +1,90 @@
+# VPS Docker Compose - Bot + Database + Redis
+# Lavalink runs on home server, connected via Tailscale
+services:
+  bot:
+    image: ghcr.io/hax-exe/erica-bot/bot:latest
+    container_name: erica-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3002:3002" # Bot API for health checks
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
+      # Connect to Lavalink on home server via Tailscale IP
+      - LAVALINK_HOST=${LAVALINK_HOST}
+      - LAVALINK_PORT=2333
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - bot-network
+
+  db-migrate:
+    image: node:20-alpine
+    container_name: erica-db-migrate
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://bot:${DB_PASSWORD}@postgres:5432/discord_bot
+    volumes:
+      - ./:/app
+      - migrate-node-modules:/app/node_modules
+    command: sh -c "npm install && npx drizzle-kit push"
+    networks:
+      - bot-network
+    profiles:
+      - migrate
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: erica-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=bot
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=discord_bot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U bot -d discord_bot" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: erica-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  migrate-node-modules:
+
+
+networks:
+  bot-network:
+    driver: bridge

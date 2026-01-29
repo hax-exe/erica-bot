@@ -16,9 +16,6 @@ lavalink:
 
   server:
     password: ${LAVALINK_PASSWORD}
-    httpConfig:
-      proxyHost: ${PROXY_HOST}
-      proxyPort: ${PROXY_PORT}
     sources:
       # MUST be false - youtube-source plugin handles YouTube instead
       youtube: false
