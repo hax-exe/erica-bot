@@ -60,7 +60,7 @@
         "@vitest/coverage-v8": "^4.0.18",
         "drizzle-kit": "^0.31.8",
         "esbuild": "^0.25.0",
-        "eslint": "^9.39.2",
+        "eslint": "^10.0.0",
         "tsx": "^4.19.2",
         "typescript": "^5.7.2",
         "typescript-eslint": "^8.54.0",
