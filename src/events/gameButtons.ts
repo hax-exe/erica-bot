@@ -1,7 +1,7 @@
 import { Events, ButtonInteraction } from 'discord.js';
 import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
-import { gameManager, GameSession, RPSSession, AnyGameSession } from '../services/gameManager.js';
+import { gameManager, GameSession, RPSSession } from '../services/gameManager.js';
 import {
     renderBoard as renderTTTBoard,
     createGameEmbed as createTTTEmbed,

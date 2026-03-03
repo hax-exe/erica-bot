@@ -24,7 +24,7 @@ export default new Command({
             return;
         }
 
-        let player = client.music.players.get(interaction.guildId!);
+        const player = client.music.players.get(interaction.guildId!);
 
         if (player) {
             // Already connected
@@ -42,7 +42,7 @@ export default new Command({
         }
 
         // Create new player
-        player = await client.music.createPlayer({
+        await client.music.createPlayer({
             guildId: interaction.guildId!,
             textId: interaction.channelId,
             voiceId: vc.id,

@@ -35,7 +35,7 @@ export default new Command({
             await interaction.editReply({
                 content: '✅ Onboarding DM sent! Check the server owner\'s DMs.',
             });
-        } catch (error) {
+        } catch {
             await interaction.editReply({
                 content: '❌ Failed to send onboarding DM. The server owner may have DMs disabled.',
             });

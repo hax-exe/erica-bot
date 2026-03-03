@@ -159,7 +159,7 @@ export async function uploadBackground(
     } catch (error) {
         // Rollback database record if S3 upload fails
         await db.delete(guildRankBackgrounds).where(eq(guildRankBackgrounds.id, backgroundId));
-        throw new Error(`Failed to upload to S3: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(`Failed to upload to S3: ${error instanceof Error ? error.message : 'Unknown error'}`, { cause: error });
     }
 
     const result: { id: string; url: string; deletedOldId?: string } = {
