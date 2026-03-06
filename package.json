@@ -39,7 +39,7 @@
         "dotenv": "^17.2.4",
         "drizzle-orm": "^0.45.1",
         "express": "^5.2.1",
-        "express-rate-limit": "^8.2.1",
+        "express-rate-limit": "^8.2.2",
         "helmet": "^8.1.0",
         "ioredis": "^5.9.2",
         "kazagumo": "^3.4.1",
