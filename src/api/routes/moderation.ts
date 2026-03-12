@@ -4,6 +4,7 @@ import { db } from '../../db/index.js';
 import { warnings, moderationSettings } from '../../db/schema/index.js';
 import { eq, and, desc, count } from 'drizzle-orm';
 import { createLogger } from '../../utils/logger.js';
+import { invalidateGuildCache } from '../../services/settingsCache.js';
 import { z } from 'zod';
 
 const logger = createLogger('api:moderation');
@@ -35,36 +36,41 @@ router.get('/:guildId/warnings', requireManageGuild, async (req: Request, res: R
             .where(eq(warnings.guildId, guildId))
             .orderBy(desc(warnings.createdAt));
 
-        // Enrich with user data
-        const enrichedWarnings = await Promise.all(
-            allWarnings.map(async (warning) => {
-                let username = 'Unknown User';
-                let avatar = null;
-                let moderatorName = 'Unknown Moderator';
+        // Enrich with user data — batch-fetch unique user IDs to avoid N+1
+        const uniqueUserIds = [...new Set(allWarnings.flatMap(w => [w.userId, w.moderatorId]))];
+        const userMap = new Map<string, { username: string; avatar: string | null }>();
 
-                try {
-                    const user = await client.users.fetch(warning.userId);
-                    username = user.username;
-                    avatar = user.displayAvatarURL({ size: 64 });
-                } catch {
-                    // User not found
+        // Try cache first, then batch-fetch remaining
+        for (const id of uniqueUserIds) {
+            const cached = client.users.cache.get(id);
+            if (cached) {
+                userMap.set(id, { username: cached.username, avatar: cached.displayAvatarURL({ size: 64 }) });
+            }
+        }
+
+        const uncachedIds = uniqueUserIds.filter(id => !userMap.has(id));
+        if (uncachedIds.length > 0) {
+            const fetched = await Promise.all(
+                uncachedIds.map(id => client.users.fetch(id).catch(() => null))
+            );
+            for (const user of fetched) {
+                if (user) {
+                    userMap.set(user.id, { username: user.username, avatar: user.displayAvatarURL({ size: 64 }) });
                 }
+            }
+        }
 
-                try {
-                    const moderator = await client.users.fetch(warning.moderatorId);
-                    moderatorName = moderator.username;
-                } catch {
-                    // Moderator not found
-                }
+        const enrichedWarnings = allWarnings.map((warning) => {
+            const user = userMap.get(warning.userId);
+            const moderator = userMap.get(warning.moderatorId);
 
-                return {
-                    ...warning,
-                    username,
-                    avatar,
-                    moderatorName,
-                };
-            })
-        );
+            return {
+                ...warning,
+                username: user?.username ?? 'Unknown User',
+                avatar: user?.avatar ?? null,
+                moderatorName: moderator?.username ?? 'Unknown Moderator',
+            };
+        });
 
         res.json(enrichedWarnings);
     } catch (error) {
@@ -233,6 +239,8 @@ router.put('/:guildId/moderation/settings', requireManageGuild, async (req: Requ
             await db.insert(moderationSettings)
                 .values({ guildId, ...settings });
         }
+
+        invalidateGuildCache(guildId);
 
         logger.info({ guildId, moderatorId: req.userId }, 'Moderation settings updated via dashboard');
         res.json({ success: true, message: 'Moderation settings updated' });

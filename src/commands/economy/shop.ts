@@ -5,8 +5,9 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
-import { shopItems, guildMembers, economySettings } from '../../db/schema/index.js';
+import { shopItems, economySettings } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { withTransaction } from '../../db/transactions.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -156,7 +157,7 @@ async function handleBuy(interaction: any): Promise<void> {
     });
     const currencyName = settings?.currencyName ?? 'coins';
 
-    // Get item
+    // Get item (pre-check outside transaction for fast rejection)
     const item = await db.query.shopItems.findFirst({
         where: and(
             eq(shopItems.id, itemId),
@@ -173,49 +174,71 @@ async function handleBuy(interaction: any): Promise<void> {
         return;
     }
 
-    // Check stock
-    if (item.stock !== null && item.stock <= 0) {
-        await interaction.reply({
-            content: '❌ This item is out of stock.',
-            ephemeral: true,
-        });
-        return;
-    }
+    // Perform the purchase atomically: deduct balance + decrement stock in one transaction
+    const result = await withTransaction(async (client) => {
+        // Atomically deduct balance — fails if insufficient funds
+        const balanceResult = await client.query(
+            `UPDATE guild_members
+             SET balance = balance - $1, updated_at = NOW()
+             WHERE guild_id = $2 AND user_id = $3
+             AND balance >= $1
+             RETURNING balance`,
+            [item.price, guildId, userId]
+        );
 
-    // Get user balance
-    const memberData = await db.query.guildMembers.findFirst({
-        where: and(
-            eq(guildMembers.guildId, guildId),
-            eq(guildMembers.odId, userId)
-        ),
+        if (balanceResult.rows.length === 0) {
+            // Get current balance for the error message
+            const currentBalance = await client.query(
+                `SELECT balance FROM guild_members WHERE guild_id = $1 AND user_id = $2`,
+                [guildId, userId]
+            );
+            const balance = currentBalance.rows[0]?.balance ?? 0;
+            return { success: false as const, error: 'insufficient_funds', balance };
+        }
+
+        // Atomically decrement stock if not unlimited — fails if out of stock
+        if (item.stock !== null) {
+            const stockResult = await client.query(
+                `UPDATE shop_items
+                 SET stock = stock - 1
+                 WHERE id = $1 AND stock > 0
+                 RETURNING stock`,
+                [itemId]
+            );
+
+            if (stockResult.rows.length === 0) {
+                // Transaction will roll back, restoring the balance deduction
+                throw new Error('OUT_OF_STOCK');
+            }
+        }
+
+        return {
+            success: true as const,
+            newBalance: balanceResult.rows[0].balance as number,
+        };
+    }).catch((error) => {
+        if (error instanceof Error && error.message === 'OUT_OF_STOCK') {
+            return { success: false as const, error: 'out_of_stock' as const, balance: 0 };
+        }
+        throw error;
     });
 
-    const balance = memberData?.balance ?? 0;
-
-    if (balance < item.price) {
-        await interaction.reply({
-            content: `❌ You don't have enough ${currencyName}. You need ${item.price.toLocaleString()} but have ${balance.toLocaleString()}.`,
-            ephemeral: true,
-        });
+    if (!result.success) {
+        if (result.error === 'out_of_stock') {
+            await interaction.reply({
+                content: '❌ This item is out of stock.',
+                ephemeral: true,
+            });
+        } else {
+            await interaction.reply({
+                content: `❌ You don't have enough ${currencyName}. You need ${item.price.toLocaleString()} but have ${result.balance.toLocaleString()}.`,
+                ephemeral: true,
+            });
+        }
         return;
     }
 
-    // Deduct balance
-    await db.update(guildMembers)
-        .set({ balance: balance - item.price })
-        .where(and(
-            eq(guildMembers.guildId, guildId),
-            eq(guildMembers.odId, userId)
-        ));
-
-    // Update stock if not unlimited
-    if (item.stock !== null) {
-        await db.update(shopItems)
-            .set({ stock: item.stock - 1 })
-            .where(eq(shopItems.id, itemId));
-    }
-
-    // Give role if applicable
+    // Give role if applicable (outside transaction — non-critical side effect)
     if (item.roleId) {
         try {
             const member = await interaction.guild!.members.fetch(userId);
@@ -231,7 +254,7 @@ async function handleBuy(interaction: any): Promise<void> {
         .setDescription(`You bought **${item.name}** for **${item.price.toLocaleString()}** ${currencyName}!`)
         .addFields({
             name: 'New Balance',
-            value: `${(balance - item.price).toLocaleString()} ${currencyName}`,
+            value: `${result.newBalance.toLocaleString()} ${currencyName}`,
         })
         .setTimestamp();
 

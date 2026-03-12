@@ -3,6 +3,7 @@ import { guilds, guildMembers, levelRewards } from '../db/schema/index.js';
 import { eq, and, sql, lte } from 'drizzle-orm';
 import { createLogger } from '../utils/logger.js';
 import { getLevelingSettings, getDefaultLevelingSettings } from './settingsCache.js';
+import type { LevelingSettingsType } from './settingsCache.js';
 
 const _logger = createLogger('leveling');
 
@@ -68,15 +69,18 @@ interface XpGainResult {
 export async function addXp(
     guildId: string,
     userId: string,
-    _baseXp: number = 15
+    _baseXp: number = 15,
+    prefetchedSettings?: LevelingSettingsType | null,
 ): Promise<XpGainResult | null> {
     // Check cooldown from in-memory cache (fast path)
     const cooldownKey = `${guildId}:${userId}`;
     const now = Date.now();
     const lastGain = xpCooldowns.get(cooldownKey);
 
-    // Get guild settings from cache (much faster than DB query)
-    const settings = await getLevelingSettings(guildId);
+    // Use pre-fetched settings or fall back to cache lookup
+    const settings = prefetchedSettings !== undefined
+        ? prefetchedSettings
+        : await getLevelingSettings(guildId);
     const defaults = getDefaultLevelingSettings();
 
     const cooldownMs = (settings?.xpCooldown ?? defaults.xpCooldown) * 1000;
@@ -160,17 +164,23 @@ export async function getRoleRewardsForLevel(
 
 export async function isChannelIgnored(
     guildId: string,
-    channelId: string
+    channelId: string,
+    prefetchedSettings?: LevelingSettingsType | null,
 ): Promise<boolean> {
-    const settings = await getLevelingSettings(guildId);
+    const settings = prefetchedSettings !== undefined
+        ? prefetchedSettings
+        : await getLevelingSettings(guildId);
     return settings?.ignoredChannels?.includes(channelId) ?? false;
 }
 
 export async function hasIgnoredRole(
     guildId: string,
-    roleIds: string[]
+    roleIds: string[],
+    prefetchedSettings?: LevelingSettingsType | null,
 ): Promise<boolean> {
-    const settings = await getLevelingSettings(guildId);
+    const settings = prefetchedSettings !== undefined
+        ? prefetchedSettings
+        : await getLevelingSettings(guildId);
     const ignoredRoles = settings?.ignoredRoles ?? [];
     return roleIds.some((id) => ignoredRoles.includes(id));
 }

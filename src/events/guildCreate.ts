@@ -4,6 +4,7 @@ import { createLogger } from '../utils/logger.js';
 import { db } from '../db/index.js';
 import { guilds, moderationSettings, levelingSettings, economySettings, musicSettings } from '../db/schema/index.js';
 import { sendOnboardingMessage } from '../services/onboarding.js';
+import { invalidateGuildCache } from '../services/settingsCache.js';
 
 const logger = createLogger('guild-create');
 
@@ -34,6 +35,8 @@ export default new Event({
             await db.insert(musicSettings).values({
                 guildId: guild.id,
             }).onConflictDoNothing();
+
+            invalidateGuildCache(guild.id);
 
             logger.info({ guildId: guild.id }, 'Initialized guild settings');
 

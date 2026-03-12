@@ -7,6 +7,7 @@ import { sendOnboardingMessage } from '../../services/onboarding.js';
 import { db } from '../../db/index.js';
 import { guilds } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
+import { invalidateGuildCache } from '../../services/settingsCache.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -24,6 +25,8 @@ export default new Command({
         await db.update(guilds)
             .set({ onboardingCompleted: false, updatedAt: new Date() })
             .where(eq(guilds.id, guild.id));
+
+        invalidateGuildCache(guild.id);
 
         await interaction.reply({
             content: '📬 Sending onboarding DM to the server owner...',

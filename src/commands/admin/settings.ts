@@ -140,6 +140,8 @@ async function handlePrefix(interaction: any): Promise<void> {
         .set({ prefix, updatedAt: new Date() })
         .where(eq(guilds.id, guildId));
 
+    invalidateGuildCache(guildId);
+
     const embed = new EmbedBuilder()
         .setColor(0x00ff00)
         .setTitle('⚙️ Prefix Updated')

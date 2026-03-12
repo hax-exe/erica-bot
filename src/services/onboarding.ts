@@ -281,6 +281,7 @@ async function handleModLogStep(
             await db.update(moderationSettings)
                 .set({ modLogChannelId: channelId, updatedAt: new Date() })
                 .where(eq(moderationSettings.guildId, guild.id));
+            invalidateGuildCache(guild.id);
             collector.stop('selected');
             await handleLevelUpStep(i as StringSelectMenuInteraction, client, guild, message);
         } else if (i.isButton() && i.customId === `onboarding:modlog_skip:${guild.id}`) {
@@ -346,6 +347,7 @@ async function handleLevelUpStep(
             await db.update(levelingSettings)
                 .set({ announceChannelId: channelId, updatedAt: new Date() })
                 .where(eq(levelingSettings.guildId, guild.id));
+            invalidateGuildCache(guild.id);
             collector.stop('selected');
             await finishOnboarding(i as StringSelectMenuInteraction, guild);
         } else if (i.isButton() && i.customId === `onboarding:levelup_skip:${guild.id}`) {

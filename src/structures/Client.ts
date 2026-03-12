@@ -18,6 +18,7 @@ export class ExtendedClient extends Client {
     public commands: Collection<string, Command> = new Collection();
     public cooldowns: Collection<string, Collection<string, number>> = new Collection();
     public music: Kazagumo;
+    private discordRest: REST;
 
     constructor() {
         super({
@@ -42,6 +43,9 @@ export class ExtendedClient extends Client {
                 repliedUser: true,
             },
         });
+
+        // Shared REST instance for Discord API calls (voice status, command deployment, etc.)
+        this.discordRest = new REST().setToken(config.discord.token);
 
         // Initialize Kazagumo (Lavalink wrapper)
         this.music = new Kazagumo(
@@ -95,8 +99,7 @@ export class ExtendedClient extends Client {
                 const voiceChannelId = player.voiceId;
                 if (voiceChannelId) {
                     const statusText = track.title.slice(0, 500);
-                    const rest = new REST().setToken(config.discord.token);
-                    await rest.put(`/channels/${voiceChannelId}/voice-status` as any, {
+                    await this.discordRest.put(`/channels/${voiceChannelId}/voice-status` as any, {
                         body: { status: statusText },
                     });
                 }
@@ -249,8 +252,7 @@ export class ExtendedClient extends Client {
             try {
                 const voiceChannelId = player.voiceId;
                 if (voiceChannelId) {
-                    const rest = new REST().setToken(config.discord.token);
-                    await rest.put(`/channels/${voiceChannelId}/voice-status` as any, {
+                    await this.discordRest.put(`/channels/${voiceChannelId}/voice-status` as any, {
                         body: { status: null },
                     });
                 }
@@ -302,8 +304,7 @@ export class ExtendedClient extends Client {
             try {
                 const voiceChannelId = player.voiceId;
                 if (voiceChannelId) {
-                    const rest = new REST().setToken(config.discord.token);
-                    await rest.put(`/channels/${voiceChannelId}/voice-status` as any, {
+                    await this.discordRest.put(`/channels/${voiceChannelId}/voice-status` as any, {
                         body: { status: null },
                     });
                 }
@@ -314,7 +315,6 @@ export class ExtendedClient extends Client {
     }
 
     async deployCommands(): Promise<void> {
-        const rest = new REST().setToken(config.discord.token);
         const commands = this.commands.map((cmd) => cmd.data.toJSON());
 
         // Run deployment in background to not block bot startup
@@ -325,14 +325,14 @@ export class ExtendedClient extends Client {
 
                 if (config.bot.isDev && config.discord.devGuildId) {
                     // Deploy to dev guild for faster updates
-                    await rest.put(
+                    await this.discordRest.put(
                         Routes.applicationGuildCommands(config.discord.clientId, config.discord.devGuildId),
                         { body: commands }
                     );
                     logger.info(`Deployed ${commands.length} commands to dev guild`);
                 } else {
                     // Deploy globally
-                    await rest.put(
+                    await this.discordRest.put(
                         Routes.applicationCommands(config.discord.clientId),
                         { body: commands }
                     );

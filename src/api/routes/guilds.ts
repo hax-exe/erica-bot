@@ -4,6 +4,7 @@ import { db } from '../../db/index.js';
 import { guilds, moderationSettings, levelingSettings, economySettings, musicSettings } from '../../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '../../utils/logger.js';
+import { invalidateGuildCache } from '../../services/settingsCache.js';
 
 const logger = createLogger('api:guilds');
 const router = Router();
@@ -187,6 +188,8 @@ router.put('/:guildId/settings', requireManageGuild, async (req: Request, res: R
         }
 
         await Promise.all(updates);
+
+        invalidateGuildCache(guildId);
 
         logger.info({ guildId, userId: req.userId }, 'Guild settings updated');
         res.json({ success: true, message: 'Settings updated successfully' });

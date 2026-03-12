@@ -10,6 +10,7 @@ import {
 import { checkMessage, takeAction } from '../services/automod.js';
 import { checkAutoResponders } from '../services/autoResponder.js';
 import { getGuildSettings, getLevelingSettings, getDefaultLevelingSettings } from '../services/settingsCache.js';
+import type { LevelingSettingsType } from '../services/settingsCache.js';
 
 const logger = createLogger('message-xp');
 
@@ -34,23 +35,26 @@ export default new Event({
 
         if (!guild?.levelingEnabled) return;
 
-        // Check if channel is ignored (uses cached settings internally)
-        if (await isChannelIgnored(message.guild.id, message.channel.id)) return;
+        // Fetch leveling settings once for the entire pipeline
+        const levelSettings = await getLevelingSettings(message.guild.id);
 
-        // Check if user has ignored role (uses cached settings internally)
+        // Check if channel is ignored
+        if (await isChannelIgnored(message.guild.id, message.channel.id, levelSettings)) return;
+
+        // Check if user has ignored role
         const member = message.member;
         if (!member) return;
 
         const roleIds = member.roles.cache.map((r) => r.id);
-        if (await hasIgnoredRole(message.guild.id, roleIds)) return;
+        if (await hasIgnoredRole(message.guild.id, roleIds, levelSettings)) return;
 
-        // Add XP (uses cached settings internally)
-        const result = await addXp(message.guild.id, message.author.id);
+        // Add XP
+        const result = await addXp(message.guild.id, message.author.id, undefined, levelSettings);
         if (!result) return; // On cooldown
 
         // Handle level up
         if (result.leveledUp) {
-            await handleLevelUp(message, member, result.newLevel);
+            await handleLevelUp(message, member, result.newLevel, levelSettings);
         }
     },
 });
@@ -58,12 +62,13 @@ export default new Event({
 async function handleLevelUp(
     message: Message,
     member: GuildMember,
-    newLevel: number
+    newLevel: number,
+    levelSettings: LevelingSettingsType | null,
 ): Promise<void> {
     const guildId = message.guild!.id;
 
-    // Get leveling settings from cache
-    const settings = await getLevelingSettings(guildId);
+    // Use pre-fetched leveling settings
+    const settings = levelSettings;
     const defaults = getDefaultLevelingSettings();
 
     // Apply role rewards

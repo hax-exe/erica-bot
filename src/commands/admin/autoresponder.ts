@@ -7,6 +7,7 @@ import { Command } from '../../types/Command.js';
 import { db } from '../../db/index.js';
 import { autoResponders } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { invalidateGuildCache } from '../../services/settingsCache.js';
 
 export default new Command({
     data: new SlashCommandBuilder()
@@ -130,6 +131,8 @@ async function handleAdd(interaction: any): Promise<void> {
         enabled: true,
     });
 
+    invalidateGuildCache(interaction.guildId!);
+
     const embed = new EmbedBuilder()
         .setColor(0x00ff00)
         .setTitle('✅ Auto-Responder Added')
@@ -161,6 +164,8 @@ async function handleRemove(interaction: any): Promise<void> {
         });
         return;
     }
+
+    invalidateGuildCache(interaction.guildId!);
 
     await interaction.reply({
         content: `✅ Removed auto-responder: **${name}**`,
@@ -215,6 +220,8 @@ async function handleToggle(interaction: any): Promise<void> {
     await db.update(autoResponders)
         .set({ enabled: !responder.enabled })
         .where(eq(autoResponders.id, responder.id));
+
+    invalidateGuildCache(interaction.guildId!);
 
     await interaction.reply({
         content: `✅ Auto-responder **${name}** is now ${!responder.enabled ? 'enabled' : 'disabled'}.`,

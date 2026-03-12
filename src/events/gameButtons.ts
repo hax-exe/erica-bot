@@ -1,7 +1,8 @@
 import { Events, ButtonInteraction } from 'discord.js';
 import { Event } from '../types/Event.js';
 import { createLogger } from '../utils/logger.js';
-import { gameManager, GameSession, RPSSession, AnyGameSession } from '../services/gameManager.js';
+import { gameManager, GameSession, RPSSession } from '../services/gameManager.js';
+import { fetchGamePlayers, getGameUI } from '../commands/games/gameUtils.js';
 import {
     renderBoard as renderTTTBoard,
     createGameEmbed as createTTTEmbed,
@@ -21,7 +22,7 @@ const logger = createLogger('game-buttons');
 export default new Event({
     name: Events.InteractionCreate,
 
-    async execute(client, interaction) {
+    async execute(_client, interaction) {
         if (!interaction.isButton()) return;
 
         const customId = interaction.customId;
@@ -83,10 +84,9 @@ async function handleAccept(interaction: ButtonInteraction): Promise<void> {
     }
 
     // Fetch both players
-    const player1 = await interaction.client.users.fetch(game.players[0]).catch(() => null);
-    const player2 = await interaction.client.users.fetch(game.players[1]).catch(() => null);
+    const players = await fetchGamePlayers(interaction.client, game.players);
 
-    if (!player1 || !player2) {
+    if (!players) {
         await interaction.reply({
             content: '❌ Could not fetch player information.',
             ephemeral: true,
@@ -94,34 +94,13 @@ async function handleAccept(interaction: ButtonInteraction): Promise<void> {
         return;
     }
 
-    // Update the message to show the game board
-    if (game.type === 'tictactoe') {
-        const embed = createTTTEmbed(game as GameSession, player1, player2);
-        const components = renderTTTBoard(game as GameSession);
+    const { player1, player2 } = players;
 
-        await interaction.update({
-            content: `Game started! ${player1}'s turn.`,
-            embeds: [embed],
-            components,
-        });
-    } else if (game.type === 'connect4') {
-        const embed = createC4Embed(game as GameSession, player1, player2);
-        const components = renderC4Buttons(game as GameSession);
-
-        await interaction.update({
-            content: `Game started! ${player1}'s turn.`,
-            embeds: [embed],
-            components,
-        });
-    } else if (game.type === 'rps') {
-        const embed = createRPSEmbed(game as RPSSession, player1, player2);
-        const components = renderRPSButtons(game as RPSSession);
-
-        await interaction.update({
-            content: 'Game started! Both players, make your choice!',
-            embeds: [embed],
-            components,
-        });
+    // Use registry to build the active-state payload
+    const adapter = getGameUI(game.type);
+    if (adapter) {
+        const payload = adapter.createActivePayload(game, player1, player2);
+        await interaction.update(payload);
     }
 
     logger.debug({ gameId, playerId }, 'Game accepted via button');
@@ -153,10 +132,9 @@ async function handleDecline(interaction: ButtonInteraction): Promise<void> {
     }
 
     // Fetch both players
-    const player1 = await interaction.client.users.fetch(game.players[0]).catch(() => null);
-    const player2 = await interaction.client.users.fetch(game.players[1]).catch(() => null);
+    const players = await fetchGamePlayers(interaction.client, game.players);
 
-    if (!player1 || !player2) {
+    if (!players) {
         await interaction.update({
             content: '❌ Challenge declined.',
             embeds: [],
@@ -165,26 +143,18 @@ async function handleDecline(interaction: ButtonInteraction): Promise<void> {
         return;
     }
 
-    // Update the message to show declined status
-    if (game.type === 'tictactoe') {
-        const embed = createTTTEmbed(game as GameSession, player1, player2, 'declined');
+    const { player1, player2 } = players;
+
+    // Use registry to build the declined-state payload
+    const adapter = getGameUI(game.type);
+    if (adapter) {
+        const payload = adapter.createDeclinedPayload(game, player1, player2);
+        await interaction.update(payload);
+    } else {
+        // Fallback if no adapter registered
         await interaction.update({
-            content: `${player2} declined the challenge.`,
-            embeds: [embed],
-            components: [],
-        });
-    } else if (game.type === 'connect4') {
-        const embed = createC4Embed(game as GameSession, player1, player2, 'declined');
-        await interaction.update({
-            content: `${player2} declined the challenge.`,
-            embeds: [embed],
-            components: [],
-        });
-    } else if (game.type === 'rps') {
-        const embed = createRPSEmbed(game as RPSSession, player1, player2, { declined: true });
-        await interaction.update({
-            content: `${player2} declined the challenge.`,
-            embeds: [embed],
+            content: '❌ Challenge declined.',
+            embeds: [],
             components: [],
         });
     }
@@ -232,16 +202,17 @@ async function handleTicTacToe(interaction: ButtonInteraction): Promise<void> {
     }
 
     // Fetch both players for embed
-    const player1 = await interaction.client.users.fetch(game.players[0]).catch(() => null);
-    const player2 = await interaction.client.users.fetch(game.players[1]).catch(() => null);
+    const players = await fetchGamePlayers(interaction.client, game.players);
 
-    if (!player1 || !player2) {
+    if (!players) {
         await interaction.reply({
             content: '❌ Could not fetch player information.',
             ephemeral: true,
         });
         return;
     }
+
+    const { player1, player2 } = players;
 
     // Determine game status
     let status: 'win' | 'draw' | undefined;
@@ -303,16 +274,17 @@ async function handleConnectFour(interaction: ButtonInteraction): Promise<void> 
     }
 
     // Fetch both players for embed
-    const player1 = await interaction.client.users.fetch(game.players[0]).catch(() => null);
-    const player2 = await interaction.client.users.fetch(game.players[1]).catch(() => null);
+    const players = await fetchGamePlayers(interaction.client, game.players);
 
-    if (!player1 || !player2) {
+    if (!players) {
         await interaction.reply({
             content: '❌ Could not fetch player information.',
             ephemeral: true,
         });
         return;
     }
+
+    const { player1, player2 } = players;
 
     // Determine game status
     let status: 'win' | 'draw' | undefined;
@@ -374,16 +346,17 @@ async function handleRPS(interaction: ButtonInteraction): Promise<void> {
     }
 
     // Fetch both players for embed
-    const player1 = await interaction.client.users.fetch(game.players[0]).catch(() => null);
-    const player2 = await interaction.client.users.fetch(game.players[1]).catch(() => null);
+    const players = await fetchGamePlayers(interaction.client, game.players);
 
-    if (!player1 || !player2) {
+    if (!players) {
         await interaction.reply({
             content: '❌ Could not fetch player information.',
             ephemeral: true,
         });
         return;
     }
+
+    const { player1, player2 } = players;
 
     if (result.bothChosen) {
         // Both players have chosen - reveal results

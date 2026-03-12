@@ -78,11 +78,27 @@ export async function saveMusicState(
 }
 
 /**
+ * Collect keys matching a pattern using SCAN (non-blocking, O(1) per call)
+ */
+async function scanKeys(pattern: string): Promise<string[]> {
+    const redis = getRedisClient();
+    return new Promise((resolve, reject) => {
+        const keys: string[] = [];
+        const stream = redis.scanStream({ match: pattern, count: 100 });
+        stream.on('data', (batch: string[]) => {
+            keys.push(...batch);
+        });
+        stream.on('end', () => resolve(keys));
+        stream.on('error', reject);
+    });
+}
+
+/**
  * Load saved music states from Redis
  */
 async function loadMusicStates(): Promise<MusicPlayerState[]> {
     const redis = getRedisClient();
-    const keys = await redis.keys('restart:music:*');
+    const keys = await scanKeys('restart:music:*');
 
     if (keys.length === 0) return [];
 
@@ -179,11 +195,15 @@ export async function restoreMusicPlayers(client: ExtendedClient): Promise<void>
             }
             tracksToQueue.push(...state.queue);
 
-            for (const trackInfo of tracksToQueue) {
-                if (!trackInfo.uri) continue;
+            // Search all tracks concurrently instead of sequentially
+            const searchResults = await Promise.all(
+                tracksToQueue
+                    .filter(t => !!t.uri)
+                    .map(t => client.music.search(t.uri, { requester: null }).catch(() => null))
+            );
 
-                const result = await client.music.search(trackInfo.uri, { requester: null });
-                const track = result.tracks[0];
+            for (const result of searchResults) {
+                const track = result?.tracks[0];
                 if (track) {
                     player.queue.add(track);
                 }
@@ -235,7 +255,7 @@ export async function restoreMusicPlayers(client: ExtendedClient): Promise<void>
  */
 async function clearMusicStates(): Promise<void> {
     const redis = getRedisClient();
-    const keys = await redis.keys('restart:music:*');
+    const keys = await scanKeys('restart:music:*');
 
     if (keys.length > 0) {
         await redis.del(...keys);

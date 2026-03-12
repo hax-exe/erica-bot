@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { guilds, economySettings, levelingSettings, moderationSettings } from '../db/schema/index.js';
+import { guilds, economySettings, levelingSettings, moderationSettings, autoResponders } from '../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { SimpleCache } from '../utils/cache.js';
 import { createLogger } from '../utils/logger.js';
@@ -12,14 +12,16 @@ const CACHE_TTL = 5 * 60 * 1000;
 // Type definitions for cached settings
 type GuildSettings = typeof guilds.$inferSelect;
 type EconomySettingsType = typeof economySettings.$inferSelect;
-type LevelingSettingsType = typeof levelingSettings.$inferSelect;
+export type LevelingSettingsType = typeof levelingSettings.$inferSelect;
 type ModerationSettingsType = typeof moderationSettings.$inferSelect;
+type AutoResponderType = typeof autoResponders.$inferSelect;
 
 // Caches for different setting types
 const guildSettingsCache = new SimpleCache<GuildSettings | null>();
 const economySettingsCache = new SimpleCache<EconomySettingsType | null>();
 const levelingSettingsCache = new SimpleCache<LevelingSettingsType | null>();
 const moderationSettingsCache = new SimpleCache<ModerationSettingsType | null>();
+const autoRespondersCache = new SimpleCache<AutoResponderType[]>();
 
 export async function getGuildSettings(guildId: string): Promise<GuildSettings | null> {
     const cached = guildSettingsCache.get(guildId);
@@ -77,12 +79,27 @@ export async function getModerationSettings(guildId: string): Promise<Moderation
     return settings;
 }
 
+export async function getAutoResponders(guildId: string): Promise<AutoResponderType[]> {
+    const cached = autoRespondersCache.get(guildId);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const responders = await db.query.autoResponders.findMany({
+        where: eq(autoResponders.guildId, guildId),
+    });
+
+    autoRespondersCache.set(guildId, responders, CACHE_TTL);
+    return responders;
+}
+
 // call when settings are updated
 export function invalidateGuildCache(guildId: string): void {
     guildSettingsCache.delete(guildId);
     economySettingsCache.delete(guildId);
     levelingSettingsCache.delete(guildId);
     moderationSettingsCache.delete(guildId);
+    autoRespondersCache.delete(guildId);
     logger.debug({ guildId }, 'Invalidated settings cache for guild');
 }
 
@@ -91,6 +108,7 @@ export function clearAllCaches(): void {
     economySettingsCache.clear();
     levelingSettingsCache.clear();
     moderationSettingsCache.clear();
+    autoRespondersCache.clear();
     logger.debug('Cleared all settings caches');
 }
 

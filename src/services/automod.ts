@@ -1,8 +1,8 @@
 import { Message, EmbedBuilder, TextChannel } from 'discord.js';
 import { db } from '../db/index.js';
-import { moderationSettings, warnings } from '../db/schema/index.js';
-import { eq } from 'drizzle-orm';
+import { warnings } from '../db/schema/index.js';
 import { createLogger } from '../utils/logger.js';
+import { getModerationSettings } from './settingsCache.js';
 
 const logger = createLogger('automod');
 
@@ -26,10 +26,8 @@ export async function checkMessage(message: Message): Promise<AutoModResult> {
         return { shouldDelete: false };
     }
 
-    // Get moderation settings
-    const settings = await db.query.moderationSettings.findFirst({
-        where: eq(moderationSettings.guildId, message.guild.id),
-    });
+    // Get moderation settings (cached, 5-min TTL)
+    const settings = await getModerationSettings(message.guild.id);
 
     if (!settings?.autoModEnabled) {
         return { shouldDelete: false };

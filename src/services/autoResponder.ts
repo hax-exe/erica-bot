@@ -1,8 +1,6 @@
 import { Message } from 'discord.js';
-import { db } from '../db/index.js';
-import { autoResponders } from '../db/schema/index.js';
-import { eq } from 'drizzle-orm';
 import { createLogger } from '../utils/logger.js';
+import { getAutoResponders } from './settingsCache.js';
 
 const logger = createLogger('auto-responder');
 
@@ -16,9 +14,7 @@ const MAX_RESPONSE_LENGTH = 2000;
 export async function checkAutoResponders(message: Message): Promise<boolean> {
     if (!message.guild || message.author.bot) return false;
 
-    const responders = await db.query.autoResponders.findMany({
-        where: eq(autoResponders.guildId, message.guild.id),
-    });
+    const responders = await getAutoResponders(message.guild.id);
 
     const enabledResponders = responders.filter((r) => r.enabled);
 

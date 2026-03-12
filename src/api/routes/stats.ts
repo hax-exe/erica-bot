@@ -104,36 +104,52 @@ router.get('/:guildId/stats/leaderboard', requireManageGuild, async (req: Reques
             .orderBy(desc(guildMembers.xp))
             .limit(limit);
 
-        // Enrich with Discord data
-        const enrichedMembers = await Promise.all(
-            topMembers.map(async (member, index) => {
-                let username = 'Unknown User';
-                let avatar = null;
-                let displayName = 'Unknown User';
+        // Batch-fetch user data to avoid N+1 API calls
+        const userIds = topMembers.map(m => m.odId);
+        const userMap = new Map<string, { username: string; avatar: string | null; displayName: string }>();
 
-                try {
-                    const user = await client.users.fetch(member.odId);
-                    username = user.username;
-                    avatar = user.displayAvatarURL({ size: 64 });
+        // Use guild member cache first (already available, no API call)
+        for (const id of userIds) {
+            const guildMember = guild.members.cache.get(id);
+            if (guildMember) {
+                userMap.set(id, {
+                    username: guildMember.user.username,
+                    avatar: guildMember.user.displayAvatarURL({ size: 64 }),
+                    displayName: guildMember.displayName,
+                });
+            }
+        }
 
-                    const guildMember = guild.members.cache.get(member.odId);
-                    displayName = guildMember?.displayName || username;
-                } catch {
-                    // User not found
+        // Fetch remaining uncached users
+        const uncachedIds = userIds.filter(id => !userMap.has(id));
+        if (uncachedIds.length > 0) {
+            const fetched = await Promise.all(
+                uncachedIds.map(id => client.users.fetch(id).catch(() => null))
+            );
+            for (const user of fetched) {
+                if (user) {
+                    userMap.set(user.id, {
+                        username: user.username,
+                        avatar: user.displayAvatarURL({ size: 64 }),
+                        displayName: user.username,
+                    });
                 }
+            }
+        }
 
-                return {
-                    rank: index + 1,
-                    odId: member.odId,
-                    username,
-                    displayName,
-                    avatar,
-                    xp: member.xp,
-                    level: member.level,
-                    totalMessages: member.totalMessages,
-                };
-            })
-        );
+        const enrichedMembers = topMembers.map((member, index) => {
+            const userData = userMap.get(member.odId);
+            return {
+                rank: index + 1,
+                odId: member.odId,
+                username: userData?.username ?? 'Unknown User',
+                displayName: userData?.displayName ?? 'Unknown User',
+                avatar: userData?.avatar ?? null,
+                xp: member.xp,
+                level: member.level,
+                totalMessages: member.totalMessages,
+            };
+        });
 
         res.json(enrichedMembers);
     } catch (error) {
@@ -165,31 +181,49 @@ router.get('/:guildId/stats/economy', requireManageGuild, async (req: Request, r
             .orderBy(desc(sql`${guildMembers.balance} + ${guildMembers.bank}`))
             .limit(limit);
 
-        // Enrich with Discord data
-        const enrichedMembers = await Promise.all(
-            topMembers.map(async (member, index) => {
-                let username = 'Unknown User';
-                let avatar = null;
+        // Batch-fetch user data to avoid N+1 API calls
+        const userIds = topMembers.map(m => m.odId);
+        const userMap = new Map<string, { username: string; avatar: string | null }>();
 
-                try {
-                    const user = await client.users.fetch(member.odId);
-                    username = user.username;
-                    avatar = user.displayAvatarURL({ size: 64 });
-                } catch {
-                    // User not found
+        // Use guild member cache first
+        for (const id of userIds) {
+            const guildMember = guild.members.cache.get(id);
+            if (guildMember) {
+                userMap.set(id, {
+                    username: guildMember.user.username,
+                    avatar: guildMember.user.displayAvatarURL({ size: 64 }),
+                });
+            }
+        }
+
+        // Fetch remaining uncached users
+        const uncachedIds = userIds.filter(id => !userMap.has(id));
+        if (uncachedIds.length > 0) {
+            const fetched = await Promise.all(
+                uncachedIds.map(id => client.users.fetch(id).catch(() => null))
+            );
+            for (const user of fetched) {
+                if (user) {
+                    userMap.set(user.id, {
+                        username: user.username,
+                        avatar: user.displayAvatarURL({ size: 64 }),
+                    });
                 }
+            }
+        }
 
-                return {
-                    rank: index + 1,
-                    odId: member.odId,
-                    username,
-                    avatar,
-                    balance: member.balance,
-                    bank: member.bank,
-                    totalWealth: (member.balance || 0) + (member.bank || 0),
-                };
-            })
-        );
+        const enrichedMembers = topMembers.map((member, index) => {
+            const userData = userMap.get(member.odId);
+            return {
+                rank: index + 1,
+                odId: member.odId,
+                username: userData?.username ?? 'Unknown User',
+                avatar: userData?.avatar ?? null,
+                balance: member.balance,
+                bank: member.bank,
+                totalWealth: (member.balance || 0) + (member.bank || 0),
+            };
+        });
 
         res.json(enrichedMembers);
     } catch (error) {

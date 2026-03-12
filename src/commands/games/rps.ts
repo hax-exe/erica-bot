@@ -8,63 +8,19 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { gameManager, RPSSession } from '../../services/gameManager.js';
-import { validateMemberWithError } from '../../utils/memberValidation.js';
+import {
+    renderChallengeButtons,
+    createChallengeEmbed,
+    validateChallengeStart,
+    scheduleChallengeTimeout,
+    registerGameUI,
+} from './gameUtils.js';
 
 const CHOICE_EMOJIS: { [key: string]: string } = {
     rock: '🪨',
     paper: '📄',
     scissors: '✂️',
 };
-
-/**
- * Render Accept/Decline buttons for pending challenge
- */
-function renderChallengeButtons(game: RPSSession): ActionRowBuilder<ButtonBuilder>[] {
-    const row = new ActionRowBuilder<ButtonBuilder>();
-
-    row.addComponents(
-        new ButtonBuilder()
-            .setCustomId(`game_accept_${game.id}`)
-            .setLabel('Accept')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('✅'),
-        new ButtonBuilder()
-            .setCustomId(`game_decline_${game.id}`)
-            .setLabel('Decline')
-            .setStyle(ButtonStyle.Danger)
-            .setEmoji('❌')
-    );
-
-    return [row];
-}
-
-/**
- * Create the challenge embed (pending state)
- */
-function createChallengeEmbed(
-    game: RPSSession,
-    challenger: User,
-    opponent: User
-): EmbedBuilder {
-    return new EmbedBuilder()
-        .setTitle('🎮 Rock Paper Scissors Challenge!')
-        .setColor(0xfee75c)
-        .setDescription(`${challenger} has challenged ${opponent} to Rock Paper Scissors!`)
-        .addFields(
-            {
-                name: 'Challenger',
-                value: `${game.playerSymbols[challenger.id]} ${challenger}`,
-                inline: true,
-            },
-            {
-                name: 'Opponent',
-                value: `${game.playerSymbols[opponent.id]} ${opponent}`,
-                inline: true,
-            }
-        )
-        .setFooter({ text: 'Challenge expires in 1 minute' })
-        .setTimestamp();
-}
 
 /**
  * Render the RPS choice buttons
@@ -181,6 +137,29 @@ function createGameEmbed(
     return embed;
 }
 
+// Register UI adapter for the accept/decline button handler
+registerGameUI('rps', {
+    createActivePayload(game, player1, player2) {
+        const typedGame = game as RPSSession;
+        const embed = createGameEmbed(typedGame, player1, player2);
+        const components = renderButtons(typedGame);
+        return {
+            content: 'Game started! Both players, make your choice!',
+            embeds: [embed],
+            components,
+        };
+    },
+    createDeclinedPayload(game, player1, player2) {
+        const typedGame = game as RPSSession;
+        const embed = createGameEmbed(typedGame, player1, player2, { declined: true });
+        return {
+            content: `${player2} declined the challenge.`,
+            embeds: [embed],
+            components: [],
+        };
+    },
+});
+
 export default new Command({
     data: new SlashCommandBuilder()
         .setName('rps')
@@ -199,46 +178,9 @@ export default new Command({
         const opponent = interaction.options.getUser('opponent', true);
         const challenger = interaction.user;
 
-        // Validation
-        if (opponent.id === challenger.id) {
-            await interaction.reply({
-                content: "❌ You can't play against yourself!",
-                ephemeral: true,
-            });
-            return;
-        }
-
-        if (opponent.bot) {
-            await interaction.reply({
-                content: "❌ You can't play against a bot!",
-                ephemeral: true,
-            });
-            return;
-        }
-
-        // Validate opponent is in server
-        const opponentMember = await validateMemberWithError(interaction, opponent.id, opponent.tag);
-        if (!opponentMember) return;
-
-        // Check if challenger is already in a game
-        const challengerGame = gameManager.isPlayerInGame(challenger.id);
-        if (challengerGame) {
-            await interaction.reply({
-                content: '❌ You are already in a game! Finish or wait for it to expire first.',
-                ephemeral: true,
-            });
-            return;
-        }
-
-        // Check if opponent is already in a game
-        const opponentGame = gameManager.isPlayerInGame(opponent.id);
-        if (opponentGame) {
-            await interaction.reply({
-                content: `❌ ${opponent} is already in a game! They need to finish or wait for it to expire.`,
-                ephemeral: true,
-            });
-            return;
-        }
+        // Shared validation
+        const valid = await validateChallengeStart(interaction, opponent);
+        if (!valid) return;
 
         // Create the game (starts in pending state)
         const game = gameManager.createRPS(
@@ -247,8 +189,13 @@ export default new Command({
             interaction.channelId
         );
 
-        const embed = createChallengeEmbed(game, challenger, opponent);
-        const components = renderChallengeButtons(game);
+        const embed = createChallengeEmbed({
+            gameName: 'Rock Paper Scissors',
+            challenger,
+            opponent,
+            playerSymbols: game.playerSymbols,
+        });
+        const components = renderChallengeButtons(game.id);
 
         // Send ephemeral confirmation to challenger
         await interaction.reply({
@@ -269,29 +216,19 @@ export default new Command({
         // Store the message ID for updates
         gameManager.setMessageId(game.id, challengeMessage.id);
 
-        // Set timeout to update message if challenge expires (1 minute for pending)
-        setTimeout(async () => {
-            const currentGame = gameManager.getGame(game.id);
-            // Only update if game is still pending (not accepted/declined)
-            if (currentGame && currentGame.status === 'pending') {
-                try {
-                    const timeoutEmbed = createGameEmbed(currentGame as RPSSession, challenger, opponent, { declined: false });
-                    timeoutEmbed.setDescription('⏰ **Challenge timed out.**');
-                    timeoutEmbed.setColor(0x95a5a6);
-                    await challengeMessage.edit({
-                        content: '⏰ Challenge timed out.',
-                        embeds: [timeoutEmbed],
-                        components: [],
-                    });
-                    gameManager.endGame(game.id);
-                } catch {
-                    // Message may have been deleted
-                }
-            }
-        }, 60000); // 1 minute timeout for pending challenges
+        // Schedule pending challenge timeout
+        scheduleChallengeTimeout({
+            gameId: game.id,
+            challengeMessage,
+            createTimeoutEmbed: () => {
+                const timeoutEmbed = createGameEmbed(game, challenger, opponent, { declined: false });
+                timeoutEmbed.setDescription('⏰ **Challenge timed out.**');
+                timeoutEmbed.setColor(0x95a5a6);
+                return timeoutEmbed;
+            },
+        });
     },
 });
 
 // Export helper functions for use in button handler
-export { renderButtons, createGameEmbed, CHOICE_EMOJIS, renderChallengeButtons, createChallengeEmbed };
-
+export { renderButtons, createGameEmbed, CHOICE_EMOJIS };
