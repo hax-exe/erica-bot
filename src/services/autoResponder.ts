@@ -39,7 +39,7 @@ export async function checkAutoResponders(message: Message): Promise<boolean> {
     return false;
 }
 
-function matchesTrigger(content: string, trigger: string, type: string): boolean {
+export function matchesTrigger(content: string, trigger: string, type: string): boolean {
     const lowerContent = content.toLowerCase();
     const lowerTrigger = trigger.toLowerCase();
 
@@ -57,7 +57,7 @@ function matchesTrigger(content: string, trigger: string, type: string): boolean
 }
 
 // test regex with timeout to prevent ReDoS
-function safeRegexTest(content: string, pattern: string): boolean {
+export function safeRegexTest(content: string, pattern: string): boolean {
     try {
         // Validate regex isn't too complex
         if (!isRegexSafe(pattern)) {
@@ -86,7 +86,7 @@ function safeRegexTest(content: string, pattern: string): boolean {
 }
 
 // heuristic check for dangerous regex patterns
-function isRegexSafe(pattern: string): boolean {
+export function isRegexSafe(pattern: string): boolean {
     // Patterns that are often involved in ReDoS
     const dangerousPatterns = [
         /(\.\*){3,}/, // Multiple consecutive wildcards

@@ -13,9 +13,9 @@ const spamTracker = new Map<string, {
     timestamps: number[];
 }>();
 
-const DISCORD_INVITE_REGEX = /(discord\.(gg|io|me|li)|discordapp\.com\/invite)\/[a-zA-Z0-9]+/gi;
+export const DISCORD_INVITE_REGEX = /(discord\.(gg|io|me|li)|discordapp\.com\/invite)\/[a-zA-Z0-9]+/gi;
 
-interface AutoModResult {
+export interface AutoModResult {
     shouldDelete: boolean;
     reason?: string;
     action?: 'warn' | 'mute' | 'kick' | 'ban';
@@ -76,7 +76,7 @@ export async function checkMessage(message: Message): Promise<AutoModResult> {
     return { shouldDelete: false };
 }
 
-function checkBannedWords(content: string, bannedWords: string[]): AutoModResult {
+export function checkBannedWords(content: string, bannedWords: string[]): AutoModResult {
     if (bannedWords.length === 0) {
         return { shouldDelete: false };
     }
@@ -96,7 +96,7 @@ function checkBannedWords(content: string, bannedWords: string[]): AutoModResult
     return { shouldDelete: false };
 }
 
-async function checkInvites(message: Message, allowedInvites: string[]): Promise<AutoModResult> {
+export async function checkInvites(message: Message, allowedInvites: string[]): Promise<AutoModResult> {
     const invites = message.content.match(DISCORD_INVITE_REGEX);
 
     if (!invites) {
@@ -118,7 +118,7 @@ async function checkInvites(message: Message, allowedInvites: string[]): Promise
     return { shouldDelete: false };
 }
 
-function checkSpam(message: Message): AutoModResult {
+export function checkSpam(message: Message): AutoModResult {
     const key = `${message.guild!.id}:${message.author.id}`;
     const now = Date.now();
     const timeWindow = 5000; // 5 seconds
@@ -169,7 +169,7 @@ function checkSpam(message: Message): AutoModResult {
     return { shouldDelete: false };
 }
 
-function checkExcessiveCaps(content: string): AutoModResult {
+export function checkExcessiveCaps(content: string): AutoModResult {
     if (content.length < 10) {
         return { shouldDelete: false };
     }
@@ -192,7 +192,7 @@ function checkExcessiveCaps(content: string): AutoModResult {
     return { shouldDelete: false };
 }
 
-function checkExcessiveEmojis(content: string): AutoModResult {
+export function checkExcessiveEmojis(content: string): AutoModResult {
     // Match both unicode emojis and Discord custom emojis
     const emojiRegex = /(\p{Emoji_Presentation}|\p{Extended_Pictographic}|<a?:\w+:\d+>)/gu;
     const emojis = content.match(emojiRegex) || [];
@@ -207,7 +207,7 @@ function checkExcessiveEmojis(content: string): AutoModResult {
     return { shouldDelete: false };
 }
 
-function checkMassMentions(message: Message): AutoModResult {
+export function checkMassMentions(message: Message): AutoModResult {
     const mentions = message.mentions.users.size + message.mentions.roles.size;
 
     if (mentions > 5) {

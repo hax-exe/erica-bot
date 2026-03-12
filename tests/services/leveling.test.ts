@@ -1,47 +1,34 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-// Reimplementing the functions for testing without importing from source
-// (avoids config validation during tests)
+// Mock dependencies that trigger config/db initialization at import time
+vi.mock('../../src/db/index.js', () => ({
+    db: {
+        query: { guildMembers: { findFirst: vi.fn() } },
+        insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn() }) }),
+        update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn() }) }),
+    },
+}));
 
-function getXpForLevel(level: number): number {
-    return 5 * Math.pow(level, 2) + 50 * level + 100;
-}
+vi.mock('../../src/services/settingsCache.js', () => ({
+    getLevelingSettings: vi.fn().mockResolvedValue(null),
+    getDefaultLevelingSettings: () => ({
+        xpPerMessage: 15,
+        xpCooldown: 60,
+        xpMultiplier: 100,
+        announceEnabled: true,
+        announceMessage: '🎉 Congratulations {user}! You reached level {level}!',
+        ignoredChannels: [] as string[],
+        ignoredRoles: [] as string[],
+    }),
+}));
 
-function getTotalXpForLevel(level: number): number {
-    let total = 0;
-    for (let i = 0; i < level; i++) {
-        total += getXpForLevel(i);
-    }
-    return total;
-}
-
-function getLevelFromXp(xp: number): number {
-    let level = 0;
-    let requiredXp = getXpForLevel(level);
-    let totalXp = 0;
-
-    while (totalXp + requiredXp <= xp) {
-        totalXp += requiredXp;
-        level++;
-        requiredXp = getXpForLevel(level);
-    }
-
-    return level;
-}
-
-function getXpProgress(xp: number): { current: number; required: number; percentage: number } {
-    const level = getLevelFromXp(xp);
-    const totalXpForCurrentLevel = getTotalXpForLevel(level);
-    const xpInCurrentLevel = xp - totalXpForCurrentLevel;
-    const xpRequiredForNextLevel = getXpForLevel(level);
-    const percentage = Math.floor((xpInCurrentLevel / xpRequiredForNextLevel) * 100);
-
-    return {
-        current: xpInCurrentLevel,
-        required: xpRequiredForNextLevel,
-        percentage,
-    };
-}
+// Import real source functions after mocks are set up
+const {
+    getXpForLevel,
+    getTotalXpForLevel,
+    getLevelFromXp,
+    getXpProgress,
+} = await import('../../src/services/leveling.js');
 
 describe('Leveling Service', () => {
     describe('getXpForLevel', () => {
@@ -63,6 +50,12 @@ describe('Leveling Service', () => {
             // 5 * 100 + 50 * 10 + 100 = 500 + 500 + 100 = 1100
             expect(getXpForLevel(10)).toBe(1100);
         });
+
+        it('should increase monotonically', () => {
+            for (let i = 0; i < 50; i++) {
+                expect(getXpForLevel(i + 1)).toBeGreaterThan(getXpForLevel(i));
+            }
+        });
     });
 
     describe('getTotalXpForLevel', () => {
@@ -80,9 +73,14 @@ describe('Leveling Service', () => {
         });
 
         it('should return cumulative XP for level 5', () => {
-            // Sum of XP for levels 0-4
             const expected = getXpForLevel(0) + getXpForLevel(1) + getXpForLevel(2) + getXpForLevel(3) + getXpForLevel(4);
             expect(getTotalXpForLevel(5)).toBe(expected);
+        });
+
+        it('should increase monotonically', () => {
+            for (let i = 0; i < 50; i++) {
+                expect(getTotalXpForLevel(i + 1)).toBeGreaterThan(getTotalXpForLevel(i));
+            }
         });
     });
 
@@ -114,6 +112,13 @@ describe('Leveling Service', () => {
             expect(getTotalXpForLevel(level)).toBeLessThanOrEqual(xp);
             expect(getTotalXpForLevel(level + 1)).toBeGreaterThan(xp);
         });
+
+        it('should be the inverse of getTotalXpForLevel at exact boundaries', () => {
+            for (let level = 0; level < 20; level++) {
+                const totalXp = getTotalXpForLevel(level);
+                expect(getLevelFromXp(totalXp)).toBe(level);
+            }
+        });
     });
 
     describe('getXpProgress', () => {
@@ -136,6 +141,23 @@ describe('Leveling Service', () => {
             // At level 1, total XP needed was 100, so 150 - 100 = 50 into level 1
             expect(progress.current).toBe(50);
             expect(progress.required).toBe(155); // XP needed for level 1
+        });
+
+        it('should return 0 current at exact level boundaries', () => {
+            for (let level = 0; level < 10; level++) {
+                const totalXp = getTotalXpForLevel(level);
+                const progress = getXpProgress(totalXp);
+                expect(progress.current).toBe(0);
+                expect(progress.required).toBe(getXpForLevel(level));
+            }
+        });
+
+        it('should keep percentage between 0 and 99', () => {
+            for (let xp = 0; xp < 5000; xp += 37) {
+                const progress = getXpProgress(xp);
+                expect(progress.percentage).toBeGreaterThanOrEqual(0);
+                expect(progress.percentage).toBeLessThan(100);
+            }
         });
     });
 });
