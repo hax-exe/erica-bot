@@ -41,10 +41,5 @@ postgres-data/
 # Misc
 *.tsbuildinfo
 
-# Dashboard
-dashboard/node_modules/
-dashboard/.next/
-dashboard/out/
-
 # Lavalink plugin cache
 lavalink/plugins/
