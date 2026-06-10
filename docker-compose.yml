@@ -1,0 +1,55 @@
+services:
+  # ── PostgreSQL ───────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: erica-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erica
+      POSTGRES_PASSWORD: erica
+      POSTGRES_DB: erica
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U erica -d erica']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Lavalink ─────────────────────────────────
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: erica-lavalink
+    restart: unless-stopped
+    ports:
+      - '2333:2333'
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+    environment:
+      _JAVA_OPTIONS: '-Xmx512m -Xms128m'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:2333/version || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Erica Bot ────────────────────────────────
+  erica:
+    build: .
+    container_name: erica-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://erica:erica@postgres:5432/erica
+      LAVALINK_HOST: lavalink
+      LAVALINK_PORT: 2333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavalink:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

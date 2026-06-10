@@ -1,0 +1,13 @@
+{
+  "errors": {
+    "generic": "An unexpected error occurred. Please try again later.",
+    "missingPermissions": "You don't have permission to use this command.",
+    "moderatorOnly": "This command is restricted to moderators.",
+    "voiceChannelRequired": "You need to be in a voice channel to use this command."
+  },
+  "common": {
+    "noReason": "No reason provided",
+    "success": "Success",
+    "cancelled": "Action cancelled."
+  }
+}

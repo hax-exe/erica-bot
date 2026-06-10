@@ -1,0 +1,47 @@
+{
+  "name": "erica-bot",
+  "version": "1.0.0",
+  "description": "Erica — A multi-purpose Discord bot built with Sapphire Framework",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "start": "bun dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "@sapphire/framework": "^5.5.0",
+    "@sapphire/pieces": "^4.3.2",
+    "@sapphire/plugin-logger": "^4.1.0",
+    "@sapphire/plugin-i18next": "^8.0.0",
+    "@sapphire/plugin-api": "^8.3.1",
+    "@sapphire/plugin-hmr": "^3.0.2",
+    "@sapphire/plugin-scheduled-tasks": "^10.0.4",
+    "@sapphire/plugin-subcommands": "^7.0.1",
+    "@sapphire/utilities": "^3.17.0",
+    "@sapphire/time-utilities": "^1.7.14",
+    "@sapphire/decorators": "^6.1.0",
+    "@sapphire/discord.js-utilities": "^7.3.0",
+    "@sapphire/result": "^2.6.6",
+    "shoukaku": "^4.3.0",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9",
+    "zod": "^3.23.8",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "spotify-url-info": "^3.2.18",
+    "youtube-sr": "^4.3.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "bun-types": "^1.3.14",
+    "drizzle-kit": "^0.30.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3"
+  }
+}
