@@ -1,6 +1,6 @@
 # Docker configuration for production deployment
 # Using Debian-slim instead of Alpine for @napi-rs/canvas compatibility
-FROM node:25-slim AS base
+FROM node:26-slim AS base
 
 # Install runtime dependencies for @napi-rs/canvas
 RUN apt-get update && apt-get install -y --no-install-recommends \
