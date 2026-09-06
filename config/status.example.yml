@@ -1,0 +1,32 @@
+# Copy to config/status.yml and fill in your services.
+# Reload at runtime with: /info status reload
+
+intervalMinutes: 5
+
+# Sends one alert when a service changes state, plus an optional recovery notice.
+alerts:
+  enabled: true
+  channelId: "123456789012345678"
+  roleId: "123456789012345678"
+  notifyRecovery: true
+  pingOnRecovery: false
+
+categories:
+  - id: web
+    label: Web Services
+    services:
+      # HTTP GET — online if status < 500
+      - id: website
+        label: Website
+        type: http
+        url: https://example.com
+
+  - id: game
+    label: Game Servers
+    services:
+      # TCP connect check
+      - id: proxy
+        label: Proxy
+        type: tcp
+        host: play.example.com
+        port: 25565

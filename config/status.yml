@@ -1,0 +1,47 @@
+# Status page services — edit then run /info status reload
+intervalMinutes: 5
+
+# Outage alerts. Set IDs here or use STATUS_ALERT_CHANNEL_ID / STATUS_ALERT_ROLE_ID.
+alerts:
+  enabled: true
+  channelId: "1534693434567163995"
+  roleId: "1534693426917019695"
+  notifyRecovery: true
+  pingOnRecovery: false
+
+categories:
+  - id: game
+    label: Game Servers
+    services:
+      - id: proxy
+        label: Proxy
+        type: tcp
+        host: bedrock.originearth.live
+        port: 25565
+      - id: lobby-1
+        label: Lobby 1
+        type: tcp
+        host: 172.19.0.1
+        port: 30051
+      - id: earth
+        label: Earth
+        type: tcp
+        host: 172.19.0.1
+        port: 30055
+
+  - id: databases
+    label: Databases
+    services:
+      - id: database1
+        label: Server Database
+        type: tcp
+        host: bedrock.originearth.live
+        port: 3306
+
+  - id: bots
+    label: Bots
+    services:
+      - id: erica
+        label: Erica
+        type: http
+        url: http://localhost:3001/api/health

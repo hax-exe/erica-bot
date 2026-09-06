@@ -1,0 +1,314 @@
+# Ticket system config for Erica.
+# Copy to tickets.yml and fill in Discord snowflake IDs (Developer Mode → Copy ID).
+# After edits: /ticket reload then /ticket panel
+
+# Optional: only apply this config in one guild. Omit for a single-guild bot.
+# guildId: "123456789012345678"
+
+panel:
+  channelId: "1534693435750219879"
+  title: Origin Earth Support Center
+  description: |
+    Need help? Pick a category below.
+    Our staff will be with you shortly.
+  color: "#FFFFFF"
+  closeConfirmation: true
+  dmOnOpen: true
+  dmOnClose: true
+  # Discord category to move closed tickets into (null = delete the channel)
+  closedCategoryId: "1534693435934511146"
+  # Locked voice channels renamed live as Support Status sidebar labels
+  statusChannels:
+    openTicketsChannelId: "1534693435506688005"   # "Open Tickets: N"
+    totalTicketsChannelId: "1534693435506688006"  # "Total Tickets: N"
+    avgRatingChannelId: "1534693435506688007"     # "Rated ⭐ X.XX /5"
+    avgTimeChannelId: "1534693435506688008"       # "Avg Time: …"
+
+categories:
+  - id: appeals
+    label: Appeals
+    emoji: "⚖️"
+    description: Appeal a punishment or moderation action
+    discordCategoryId: "1535044888331288768"
+    staffRoleIds:
+      - "1534693426891722857"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Thanks for submitting an appeal.
+      Please be patient and do not ping staff while your appeal is reviewed.
+    color: "#F59E0B"
+    maxOpenTickets: 1
+    questions:
+      - id: punishment
+        type: select
+        label: What are you appealing?
+        required: true
+        placeholder: Select a punishment
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: ban
+            label: Ban
+          - value: mute
+            label: Mute / timeout
+          - value: warning
+            label: Warning
+          - value: other
+            label: Other moderation action
+
+      - id: reason
+        type: text
+        label: What reason were you given?
+        style: short
+        placeholder: The punishment reason
+        required: true
+        maxLength: 200
+
+      - id: appeal
+        type: text
+        label: Why should this action be reconsidered?
+        style: paragraph
+        placeholder: Explain clearly and honestly
+        required: true
+        maxLength: 1000
+
+      - id: proof
+        type: file
+        label: Supporting evidence
+        description: Screenshots or other relevant files
+        required: false
+        minValues: 0
+        maxValues: 5
+
+      - id: honest
+        type: checkbox
+        label: The information above is truthful
+        description: False information may close your appeal
+        default: false
+
+  - id: reports
+    label: Reports
+    emoji: "🚨"
+    description: Report a player, staff member, or serious issue
+    discordCategoryId: "1534693435750219883"
+    staffRoleIds:
+      - "1534693426891722857"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Your report has been submitted privately.
+      Please do not contact the reported user about this ticket.
+    color: "#EF4444"
+    maxOpenTickets: 1
+    questions:
+      - id: target
+        type: text
+        label: Who or what are you reporting?
+        style: short
+        placeholder: Username, user ID, or subject
+        required: true
+        maxLength: 200
+
+      - id: details
+        type: text
+        label: What happened?
+        description: Include dates, context, and relevant details
+        style: paragraph
+        placeholder: Describe the incident
+        required: true
+        maxLength: 1000
+
+      - id: evidence
+        type: file
+        label: Evidence
+        description: Screenshots, clips, or other proof
+        required: true
+        minValues: 1
+        maxValues: 5
+
+      - id: accurate
+        type: checkbox
+        label: This report is accurate and in good faith
+        description: Abuse of reports may result in action
+        default: false
+
+  - id: questions-bugs
+    label: Questions & Bugs
+    emoji: "🐛"
+    description: Ask a question or report a server bug
+    discordCategoryId: "1535046019740471356"
+    staffRoleIds:
+      - "1534693426891722857"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Thanks for reaching out.
+      Staff will review your question or bug report shortly.
+    color: "#8B5CF6"
+    maxOpenTickets: 1
+    questions:
+      - id: type
+        type: select
+        label: What can we help with?
+        required: true
+        placeholder: Select a topic
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: question
+            label: General question
+            emoji: "❓"
+          - value: bug
+            label: Bug report
+            emoji: "🐛"
+
+      - id: platform
+        type: select
+        label: Where does this apply?
+        required: true
+        placeholder: Select a platform
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: java
+            label: Java Edition
+            emoji: "☕"
+          - value: bedrock
+            label: Bedrock Edition
+            emoji: "📱"
+          - value: discord
+            label: Discord
+            emoji: "💬"
+          - value: website
+            label: Website
+            emoji: "🌐"
+
+      - id: details
+        type: text
+        label: Describe your question or bug
+        description: For bugs, include steps to reproduce it
+        style: paragraph
+        placeholder: Give us as much detail as possible
+        required: true
+        maxLength: 1000
+
+      - id: attachments
+        type: file
+        label: Screenshots or recordings
+        description: Optional supporting files
+        required: false
+        minValues: 0
+        maxValues: 5
+
+  - id: support
+    label: General Support
+    emoji: "🛟"
+    description: Account, purchase, gameplay, or other support
+    discordCategoryId: "1534693435750219880"
+    staffRoleIds:
+      - "1534693426891722857"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Thanks for opening a support ticket.
+      Please provide any additional context while you wait for staff.
+    color: "#3B82F6"
+    maxOpenTickets: 1
+    questions:
+      - id: issue
+        type: text
+        label: What do you need help with?
+        description: Be as specific as possible
+        style: paragraph
+        placeholder: Describe your issue
+        required: true
+        maxLength: 1000
+
+      - id: platform
+        type: select
+        label: Which platform?
+        required: false
+        placeholder: Select a platform
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: java
+            label: Java Edition
+            emoji: "☕"
+          - value: bedrock
+            label: Bedrock Edition
+            emoji: "📱"
+          - value: discord
+            label: Discord
+            emoji: "💬"
+          - value: website
+            label: Website
+            emoji: "🌐"
+
+      - id: attachments
+        type: file
+        label: Screenshots or files
+        description: Optional supporting information
+        required: false
+        minValues: 0
+        maxValues: 5
+
+  # Hidden from ticket panels and staff selectors until enabled.
+  - id: billing
+    label: Billing
+    enabled: false
+    emoji: "💳"
+    description: Purchases, payments, invoices, and store issues
+    discordCategoryId: "1534693435750219884"
+    staffRoleIds:
+      - "1534693426917019696"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Thanks for contacting billing support.
+      Never share passwords or full payment-card details in this ticket.
+    color: "#10B981"
+    maxOpenTickets: 1
+    questions:
+      - id: topic
+        type: select
+        label: What is your billing issue?
+        required: true
+        placeholder: Select a billing topic
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: purchase
+            label: Purchase issue
+          - value: payment
+            label: Payment failed
+          - value: missing-item
+            label: Missing item or rank
+          - value: refund
+            label: Refund request
+          - value: invoice
+            label: Receipt or invoice
+          - value: other
+            label: Other billing issue
+
+      - id: order
+        type: text
+        label: Order or transaction ID
+        description: Leave blank if you do not have one
+        style: short
+        placeholder: Order ID
+        required: false
+        maxLength: 200
+
+      - id: details
+        type: text
+        label: Describe the issue
+        description: Do not include full card or account details
+        style: paragraph
+        placeholder: Explain what happened
+        required: true
+        maxLength: 1000
+
+      - id: evidence
+        type: file
+        label: Receipt or screenshots
+        description: Optional proof with sensitive details hidden
+        required: false
+        minValues: 0
+        maxValues: 5

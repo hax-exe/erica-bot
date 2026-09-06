@@ -1,386 +1,347 @@
+import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
+import { MessageFlags } from 'discord.js';
+import { errorReply, successReply } from '../../lib/components.js';
+import { db, schema } from '../../lib/database.js';
 
-import { EricaEmbed } from '../../lib/utils/embed.js';
-import { Paginator } from '../../lib/utils/paginator.js';
-import { formatDuration } from '../../lib/utils/time.js';
-
-const FILTER_PRESETS: Record<string, Record<string, unknown>> = {
-  bassboost: {
-    equalizer: [
-      { band: 0, gain: 0.6 },
-      { band: 1, gain: 0.67 },
-      { band: 2, gain: 0.67 },
-      { band: 3, gain: 0.4 },
-      { band: 4, gain: -0.5 },
-      { band: 5, gain: 0.15 },
-      { band: 6, gain: -0.45 },
-      { band: 7, gain: 0.23 },
-      { band: 8, gain: 0.35 },
-      { band: 9, gain: 0.45 },
-      { band: 10, gain: 0.55 },
-      { band: 11, gain: 0.6 },
-      { band: 12, gain: 0.55 },
-      { band: 13, gain: 0 }
-    ]
-  },
-  nightcore: {
-    timescale: { speed: 1.3, pitch: 1.3, rate: 1.0 }
-  },
-  vaporwave: {
-    timescale: { speed: 0.85, pitch: 0.8, rate: 1.0 },
-    equalizer: [
-      { band: 0, gain: 0.3 },
-      { band: 1, gain: 0.3 }
-    ]
-  },
-  '8d': {
-    rotation: { rotationHz: 0.2 }
-  },
-  karaoke: {
-    karaoke: { level: 1.0, monoLevel: 1.0, filterBand: 220.0, filterWidth: 100.0 }
-  },
-  tremolo: {
-    tremolo: { frequency: 4.0, depth: 0.75 }
-  },
-  vibrato: {
-    vibrato: { frequency: 4.0, depth: 0.75 }
-  },
-  reset: {}
-};
-
-const FILTER_NAMES = Object.keys(FILTER_PRESETS);
-
-const LOOP_MODES = ['off', 'track', 'queue'] as const;
-
+@ApplyOptions<Subcommand.Options>({
+	name: 'music',
+	description: 'Control music playback in your voice channel.',
+	subcommands: [
+		{ name: 'autoplay', chatInputRun: 'chatInputAutoplay' },
+		{ name: 'clearqueue', chatInputRun: 'chatInputClearQueue' },
+		{ name: 'filter', chatInputRun: 'chatInputFilter' },
+		{ name: 'history', chatInputRun: 'chatInputHistory' },
+		{ name: 'leave', chatInputRun: 'chatInputLeave' },
+		{ name: 'loop', chatInputRun: 'chatInputLoop' },
+		{ name: 'lyrics', chatInputRun: 'chatInputLyrics' },
+		{
+			name: 'playlist',
+			type: 'group',
+			entries: [
+				{ name: 'save', chatInputRun: 'chatInputPlaylistSave' },
+				{ name: 'load', chatInputRun: 'chatInputPlaylistLoad' },
+				{ name: 'list', chatInputRun: 'chatInputPlaylistList' },
+				{ name: 'view', chatInputRun: 'chatInputPlaylistView' },
+				{ name: 'delete', chatInputRun: 'chatInputPlaylistDelete' },
+			],
+		},
+		{ name: 'remove', chatInputRun: 'chatInputRemove' },
+		{ name: 'seek', chatInputRun: 'chatInputSeek' },
+		{ name: 'setup-music', chatInputRun: 'chatInputSetupMusic' },
+		{ name: 'shuffle', chatInputRun: 'chatInputShuffle' },
+		{ name: 'tts', chatInputRun: 'chatInputTts' },
+		{ name: 'maxvolume', chatInputRun: 'chatInputMaxVolume' },
+	],
+})
 export class MusicCommand extends Subcommand {
-  public constructor(context: Subcommand.LoaderContext, options: Subcommand.Options) {
-    super(context, {
-      ...options,
-      name: 'music',
-      description: 'Music commands',
-      subcommands: [
-        { name: 'play', chatInputRun: 'chatInputPlay' },
-        { name: 'skip', chatInputRun: 'chatInputSkip' },
-        { name: 'stop', chatInputRun: 'chatInputStop' },
-        { name: 'pause', chatInputRun: 'chatInputPause' },
-        { name: 'resume', chatInputRun: 'chatInputResume' },
-        { name: 'queue', chatInputRun: 'chatInputQueue' },
-        { name: 'nowplaying', chatInputRun: 'chatInputNowPlaying' },
-        { name: 'volume', chatInputRun: 'chatInputVolume' },
-        { name: 'loop', chatInputRun: 'chatInputLoop' },
-        { name: 'filter', chatInputRun: 'chatInputFilter' }
-      ]
-    });
-  }
-
-  public override registerApplicationCommands(registry: Subcommand.Registry) {
-    registry.registerChatInputCommand((builder) =>
-      builder
-        .setName('music')
-        .setDescription('Music commands')
-        .setDMPermission(false)
-        .addSubcommand((sub) =>
-          sub
-            .setName('play')
-            .setDescription('Play a song or add it to the queue')
-            .addStringOption((opt) => opt.setName('query').setDescription('Song name or URL').setRequired(true))
-        )
-        .addSubcommand((sub) => sub.setName('skip').setDescription('Skip the current track'))
-        .addSubcommand((sub) => sub.setName('stop').setDescription('Stop playback and disconnect'))
-        .addSubcommand((sub) => sub.setName('pause').setDescription('Pause the current track'))
-        .addSubcommand((sub) => sub.setName('resume').setDescription('Resume the current track'))
-        .addSubcommand((sub) => sub.setName('queue').setDescription('View the current queue'))
-        .addSubcommand((sub) => sub.setName('nowplaying').setDescription('Show the currently playing track'))
-        .addSubcommand((sub) =>
-          sub
-            .setName('volume')
-            .setDescription('Set the playback volume')
-            .addIntegerOption((opt) => opt.setName('level').setDescription('Volume level (0-100)').setRequired(true).setMinValue(0).setMaxValue(100))
-        )
-        .addSubcommand((sub) => sub.setName('loop').setDescription('Cycle loop mode: off → track → queue'))
-        .addSubcommand((sub) =>
-          sub
-            .setName('filter')
-            .setDescription('Apply an audio filter preset')
-            .addStringOption((opt) =>
-              opt
-                .setName('preset')
-                .setDescription('The filter preset to apply')
-                .setRequired(true)
-                .addChoices(...FILTER_NAMES.map((name) => ({ name, value: name })))
-            )
-        )
-    );
-  }
-
-  private get music() {
-    return (this.container.client as any).music;
-  }
-
-  public async chatInputPlay(interaction: Subcommand.ChatInputCommandInteraction) {
-    const member = interaction.member as any;
-    const voiceChannel = member?.voice?.channel;
-
-    if (!voiceChannel) {
-      return interaction.reply({
-        embeds: [EricaEmbed.error().setDescription('You need to be in a voice channel to use this command.')],
-        ephemeral: true
-      });
-    }
-
-    await interaction.deferReply();
-
-    const query = interaction.options.getString('query', true);
-    const node = this.music.shoukaku.nodes.values().next().value;
-
-    if (!node) {
-      return interaction.editReply({ embeds: [EricaEmbed.error().setDescription('No available audio nodes. Please try again later.')] });
-    }
-
-    const result = await node.rest.resolve(`ytsearch:${query.startsWith('http') ? query : query}`);
-
-    if (!result?.data || (Array.isArray(result.data) && result.data.length === 0)) {
-      return interaction.editReply({ embeds: [EricaEmbed.error().setDescription(`No results found for **${query}**.`)] });
-    }
-
-    const track = Array.isArray(result.data) ? result.data[0] : result.data;
-    const trackInfo = {
-      title: track.info.title,
-      uri: track.info.uri,
-      duration: track.info.length,
-      author: track.info.author,
-      requester: interaction.user,
-      encoded: track.encoded
-    };
-
-    let queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue) {
-      queue = await this.music.createQueue(interaction.guildId!, interaction.channelId, voiceChannel.id);
-    }
-
-    queue.add(trackInfo);
-
-    const embed = EricaEmbed.success()
-      .setTitle('Track Enqueued')
-      .setDescription(`[**${trackInfo.title}**](${trackInfo.uri})`)
-      .addFields(
-        { name: 'Author', value: trackInfo.author, inline: true },
-        { name: 'Duration', value: formatDuration(trackInfo.duration), inline: true },
-        { name: 'Position', value: queue.tracks.length === 0 ? 'Now Playing' : `#${queue.tracks.length}`, inline: true }
-      )
-      .setThumbnail(`https://img.youtube.com/vi/${this.extractVideoId(trackInfo.uri)}/hqdefault.jpg`);
-
-    return interaction.editReply({ embeds: [embed] });
-  }
-
-  public async chatInputSkip(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    const skippedTitle = queue.current.title;
-    queue.skip();
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription(`⏭ Skipped **${skippedTitle}**.`)]
-    });
-  }
-
-  public async chatInputStop(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    this.music.destroyQueue(interaction.guildId!);
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription('⏹ Stopped playback and disconnected.')]
-    });
-  }
-
-  public async chatInputPause(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    queue.player.setPaused(true);
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription('⏸ Paused the current track.')]
-    });
-  }
-
-  public async chatInputResume(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    queue.player.setPaused(false);
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription('▶️ Resumed the current track.')]
-    });
-  }
-
-  public async chatInputQueue(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || (!queue.current && queue.tracks.length === 0)) {
-      return interaction.reply({ embeds: [EricaEmbed.info().setDescription('The queue is empty.')], ephemeral: true });
-    }
-
-    const itemsPerPage = 10;
-    const tracks = queue.tracks;
-    const pages: EricaEmbed[] = [];
-
-    const nowPlaying = queue.current
-      ? `🎶 **Now Playing:** [${queue.current.title}](${queue.current.uri}) — ${formatDuration(queue.current.duration)}\nRequested by ${queue.current.requester}\n\n`
-      : '';
-
-    if (tracks.length === 0) {
-      const embed = new EricaEmbed()
-        .setTitle('Music Queue')
-        .setDescription(`${nowPlaying}No upcoming tracks in the queue.`)
-        .setFooter({ text: `Loop: ${queue.loop} • Volume: ${queue.volume}%` });
-      pages.push(embed);
-    } else {
-      for (let i = 0; i < tracks.length; i += itemsPerPage) {
-        const pageTracks = tracks.slice(i, i + itemsPerPage);
-        const description =
-          (i === 0 ? nowPlaying : '') +
-          '**Up Next:**\n' +
-          pageTracks
-            .map((track: any, idx: number) => `\`${i + idx + 1}.\` [${track.title}](${track.uri}) — ${formatDuration(track.duration)} (${track.requester})`)
-            .join('\n');
-
-        const embed = new EricaEmbed()
-          .setTitle('Music Queue')
-          .setDescription(description)
-          .setFooter({
-            text: `Page ${Math.floor(i / itemsPerPage) + 1} of ${Math.ceil(tracks.length / itemsPerPage)} • ${tracks.length} tracks • Loop: ${queue.loop} • Volume: ${queue.volume}%`
-          });
-
-        pages.push(embed);
-      }
-    }
-
-    const paginator = new Paginator(pages);
-    return paginator.send(interaction);
-  }
-
-  public async chatInputNowPlaying(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.info().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    const track = queue.current;
-    const position = queue.player.position;
-    const duration = track.duration;
-    const progress = this.createProgressBar(position, duration);
-
-    const embed = new EricaEmbed()
-      .setTitle('Now Playing')
-      .setDescription(`[**${track.title}**](${track.uri})`)
-      .addFields(
-        { name: 'Author', value: track.author, inline: true },
-        { name: 'Requested By', value: `${track.requester}`, inline: true },
-        { name: 'Volume', value: `${queue.volume}%`, inline: true },
-        { name: 'Progress', value: `${formatDuration(position)} ${progress} ${formatDuration(duration)}`, inline: false }
-      )
-      .setThumbnail(`https://img.youtube.com/vi/${this.extractVideoId(track.uri)}/hqdefault.jpg`);
-
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  public async chatInputVolume(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    const level = interaction.options.getInteger('level', true);
-    queue.setVolume(level);
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription(`🔊 Volume set to **${level}%**.`)]
-    });
-  }
-
-  public async chatInputLoop(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    const currentIndex = LOOP_MODES.indexOf(queue.loop as (typeof LOOP_MODES)[number]);
-    const nextMode = LOOP_MODES[(currentIndex + 1) % LOOP_MODES.length]!;
-    queue.setLoop(nextMode);
-
-    const modeEmojis: Record<string, string> = {
-      off: '▶️ Loop disabled',
-      track: '🔂 Looping current track',
-      queue: '🔁 Looping the entire queue'
-    };
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription(modeEmojis[nextMode]!)]
-    });
-  }
-
-  public async chatInputFilter(interaction: Subcommand.ChatInputCommandInteraction) {
-    const queue = this.music.getQueue(interaction.guildId!);
-
-    if (!queue || !queue.current) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('There is nothing playing right now.')], ephemeral: true });
-    }
-
-    const preset = interaction.options.getString('preset', true);
-    const filterOptions = FILTER_PRESETS[preset];
-
-    if (!filterOptions) {
-      return interaction.reply({ embeds: [EricaEmbed.error().setDescription('Invalid filter preset.')], ephemeral: true });
-    }
-
-    await queue.player.setGlobalVolume(queue.volume);
-    await queue.player.setFilterVolume(1.0);
-
-    if (preset === 'reset') {
-      await queue.player.clearFilters();
-      return interaction.reply({
-        embeds: [EricaEmbed.success().setDescription('🎛️ Filters have been reset.')]
-      });
-    }
-
-    await queue.player.setFilters(filterOptions);
-
-    return interaction.reply({
-      embeds: [EricaEmbed.success().setDescription(`🎛️ Applied the **${preset}** filter preset.`)]
-    });
-  }
-
-  private createProgressBar(current: number, total: number, length = 15): string {
-    const progress = Math.round((current / total) * length);
-
-    const filledBar = '▬'.repeat(progress);
-    const remaining = '▬'.repeat(length - progress);
-    return `${filledBar}🔘${remaining}`;
-  }
-
-  private extractVideoId(uri: string): string {
-    const match = uri?.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return match?.[1] ?? '';
-  }
+	public override registerApplicationCommands(registry: Subcommand.Registry) {
+		registry.registerChatInputCommand((builder) =>
+			builder
+				.setName('music')
+				.setDescription('Control music playback in your voice channel.')
+				// ── autoplay ───────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('autoplay')
+						.setDescription('Toggle NodeLink autoplay — queues similar tracks when the queue ends.')
+						.addBooleanOption((o) =>
+							o.setName('enabled').setDescription('Turn autoplay on or off (omit to toggle).').setRequired(false),
+						),
+				)
+				// ── clearqueue ─────────────────────────────────────────────────────────
+				.addSubcommand((sub) => sub.setName('clearqueue').setDescription('Clear the current music queue.'))
+				// ── filter ─────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('filter')
+						.setDescription('Apply an audio filter to the playback.')
+						.addStringOption((o) =>
+							o
+								.setName('name')
+								.setDescription('The audio filter to apply (omit to clear).')
+								.addChoices(
+									{ name: 'Clear Filter', value: 'clear' },
+									{ name: '8D (Spatial)', value: '8d' },
+									{ name: 'Bass Boost', value: 'bassboost' },
+									{ name: 'Nightcore (Sped up)', value: 'nightcore' },
+									{ name: 'Vaporwave (Slowed)', value: 'vaporwave' },
+									{ name: 'Karaoke', value: 'karaoke' },
+									{ name: 'Lowpass (Muffled)', value: 'lowpass' },
+								)
+								.setRequired(false),
+						),
+				)
+				// ── history ────────────────────────────────────────────────────────────
+				.addSubcommand((sub) => sub.setName('history').setDescription('View recently played tracks in this session.'))
+				// ── leave ──────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub.setName('leave').setDescription('Disconnect the bot from the voice channel and clear queue.'),
+				)
+				// ── loop ───────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('loop')
+						.setDescription('Loop the current track or queue.')
+						.addStringOption((o) =>
+							o
+								.setName('mode')
+								.setDescription('Loop mode (omit to toggle).')
+								.addChoices(
+									{ name: '❌ Off', value: 'none' },
+									{ name: '🔂 Track', value: 'track' },
+									{ name: '🔁 Queue', value: 'queue' },
+								)
+								.setRequired(false),
+						),
+				)
+				// ── lyrics ─────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('lyrics')
+						.setDescription('Get lyrics for the currently playing track or search for a track.')
+						.addStringOption((o) =>
+							o
+								.setName('query')
+								.setDescription('Search for a track by name/artist.')
+								.setAutocomplete(true)
+								.setRequired(false),
+						),
+				)
+				// ── playlist ───────────────────────────────────────────────────────────
+				.addSubcommandGroup((group) =>
+					group
+						.setName('playlist')
+						.setDescription('Manage your saved personal playlists.')
+						.addSubcommand((sub) =>
+							sub
+								.setName('save')
+								.setDescription('Save the current active queue as a playlist.')
+								.addStringOption((o) =>
+									o.setName('name').setDescription('Name for the playlist.').setMaxLength(50).setRequired(true),
+								),
+						)
+						.addSubcommand((sub) =>
+							sub
+								.setName('load')
+								.setDescription('Load a saved playlist into the queue.')
+								.addStringOption((o) =>
+									o.setName('name').setDescription('Name of the playlist to load.').setRequired(true),
+								),
+						)
+						.addSubcommand((sub) => sub.setName('list').setDescription('List your saved playlists.'))
+						.addSubcommand((sub) =>
+							sub
+								.setName('view')
+								.setDescription('View the tracks in a saved playlist.')
+								.addStringOption((o) =>
+									o.setName('name').setDescription('Name of the playlist to view.').setRequired(true),
+								),
+						)
+						.addSubcommand((sub) =>
+							sub
+								.setName('delete')
+								.setDescription('Delete one of your saved playlists.')
+								.addStringOption((o) =>
+									o.setName('name').setDescription('Name of the playlist to delete.').setRequired(true),
+								),
+						),
+				)
+				// ── remove ─────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('remove')
+						.setDescription('Remove a track from the queue.')
+						.addIntegerOption((o) =>
+							o
+								.setName('position')
+								.setDescription('Queue position of the track to remove.')
+								.setMinValue(1)
+								.setRequired(true),
+						),
+				)
+				// ── seek ───────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('seek')
+						.setDescription('Seek to a specific time in the current track.')
+						.addStringOption((o) =>
+							o.setName('time').setDescription('Position to seek to (e.g. 1m30s, 45s, 1:30).').setRequired(true),
+						),
+				)
+				// ── setup-music ────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('setup-music')
+						.setDescription('Set up or destroy a dedicated music requests channel.')
+						.addStringOption((o) =>
+							o
+								.setName('action')
+								.setDescription('Setup action.')
+								.setRequired(true)
+								.addChoices({ name: 'Setup channel', value: 'setup' }, { name: 'Destroy channel', value: 'destroy' }),
+						),
+				)
+				// ── shuffle ────────────────────────────────────────────────────────────
+				.addSubcommand((sub) => sub.setName('shuffle').setDescription('Shuffle the current queue.'))
+				// ── tts ────────────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('tts')
+						.setDescription('Speak text in your voice channel.')
+						.addStringOption((o) =>
+							o
+								.setName('text')
+								.setDescription('The message to speak (max 200 characters).')
+								.setMaxLength(200)
+								.setRequired(true),
+						)
+						.addStringOption((o) =>
+							o
+								.setName('language')
+								.setDescription('The language to use (default is server default).')
+								.setRequired(false)
+								.addChoices(
+									{ name: 'English (US)', value: 'en' },
+									{ name: 'Spanish', value: 'es' },
+									{ name: 'French', value: 'fr' },
+									{ name: 'German', value: 'de' },
+									{ name: 'Japanese', value: 'ja' },
+									{ name: 'Chinese', value: 'zh' },
+									{ name: 'Portuguese', value: 'pt' },
+									{ name: 'Italian', value: 'it' },
+									{ name: 'Russian', value: 'ru' },
+									{ name: 'Korean', value: 'ko' },
+								),
+						),
+				)
+				// ── maxvolume ──────────────────────────────────────────────────────────
+				.addSubcommand((sub) =>
+					sub
+						.setName('maxvolume')
+						.setDescription('Set the maximum music playback volume limit for this server.')
+						.addIntegerOption((o) =>
+							o
+								.setName('level')
+								.setDescription('Maximum volume level (0–200). Default is 100.')
+								.setMinValue(0)
+								.setMaxValue(200)
+								.setRequired(true),
+						),
+				),
+		);
+	}
+
+	public override async autocompleteRun(interaction: any) {
+		const subcommand = interaction.options.getSubcommand(true);
+		if (subcommand === 'lyrics') {
+			const { LyricsHandler } = await import('../../lib/music/handlers/lyrics.js');
+			return new LyricsHandler().autocompleteRun(interaction);
+		}
+	}
+
+	public async chatInputAutoplay(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { AutoPlayHandler } = await import('../../lib/music/handlers/autoplay.js');
+		return new AutoPlayHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputClearQueue(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { ClearQueueHandler } = await import('../../lib/music/handlers/clearqueue.js');
+		return new ClearQueueHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputFilter(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { FilterHandler } = await import('../../lib/music/handlers/filter.js');
+		return new FilterHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputHistory(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { HistoryHandler } = await import('../../lib/music/handlers/history.js');
+		return new HistoryHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputLeave(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LeaveHandler } = await import('../../lib/music/handlers/leave.js');
+		return new LeaveHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputLoop(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LoopHandler } = await import('../../lib/music/handlers/loop.js');
+		return new LoopHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputLyrics(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LyricsHandler } = await import('../../lib/music/handlers/lyrics.js');
+		return new LyricsHandler().chatInputRun(interaction);
+	}
+
+	// ── playlist subcommands ───────────────────────────────────────────────────────
+	public async chatInputPlaylistSave(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { PlaylistHandler } = await import('../../lib/music/handlers/playlist.js');
+		return new PlaylistHandler().runSave(interaction);
+	}
+
+	public async chatInputPlaylistLoad(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { PlaylistHandler } = await import('../../lib/music/handlers/playlist.js');
+		return new PlaylistHandler().runLoad(interaction);
+	}
+
+	public async chatInputPlaylistList(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { PlaylistHandler } = await import('../../lib/music/handlers/playlist.js');
+		return new PlaylistHandler().runList(interaction);
+	}
+
+	public async chatInputPlaylistView(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { PlaylistHandler } = await import('../../lib/music/handlers/playlist.js');
+		return new PlaylistHandler().runView(interaction);
+	}
+
+	public async chatInputPlaylistDelete(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { PlaylistHandler } = await import('../../lib/music/handlers/playlist.js');
+		return new PlaylistHandler().runDelete(interaction);
+	}
+
+	// ── general music subcommands ──────────────────────────────────────────────────
+
+	public async chatInputRemove(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { RemoveHandler } = await import('../../lib/music/handlers/remove.js');
+		return new RemoveHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputSeek(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { SeekHandler } = await import('../../lib/music/handlers/seek.js');
+		return new SeekHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputSetupMusic(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { SetupMusicHandler } = await import('../../lib/music/handlers/setup-music.js');
+		return new SetupMusicHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputShuffle(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { ShuffleHandler } = await import('../../lib/music/handlers/shuffle.js');
+		return new ShuffleHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputTts(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { TtsHandler } = await import('../../lib/music/handlers/tts.js');
+		return new TtsHandler().chatInputRun(interaction);
+	}
+
+	public async chatInputMaxVolume(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
+
+		const level = interaction.options.getInteger('level', true);
+		await db
+			.insert(schema.guilds)
+			.values({ id: interaction.guildId, maxVolumeLimit: level })
+			.onDuplicateKeyUpdate({
+				set: { maxVolumeLimit: level },
+			});
+
+		return interaction.editReply(successReply(`Maximum volume limit set to **${level}%**.`));
+	}
 }

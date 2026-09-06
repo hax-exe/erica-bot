@@ -1,52 +1,36 @@
-# ──────────────────────────────────────────────
-# Stage 1 — Install dependencies
-# ──────────────────────────────────────────────
-FROM oven/bun:1 AS deps
-
+# ── Deps stage ────────────────────────────────────────────────────────────────
+FROM oven/bun:alpine AS deps
 WORKDIR /app
 
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile --production=false
+RUN NODE_ENV=production bun install --frozen-lockfile
 
-# ──────────────────────────────────────────────
-# Stage 2 — Build TypeScript
-# ──────────────────────────────────────────────
-FROM oven/bun:1 AS build
-
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM oven/bun:alpine AS runner
 WORKDIR /app
+
+# Install fonts for Canvas / Skia to correctly render unicode and emojis
+RUN apk add --no-cache fontconfig ttf-dejavu font-noto font-noto-emoji font-noto-cjk ttf-liberation ttf-freefont \
+    && fc-cache -f
+
+RUN addgroup -S -g 1001 erica && adduser -S -u 1001 -G erica erica
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.json tsup.config.* ./
-COPY src ./src
+COPY package.json ./
+COPY src/ ./src/
+COPY assets/ ./assets/
+COPY drizzle/ ./drizzle/
+COPY drizzle.config.ts ./
+COPY tsconfig.json ./
+COPY config/ ./config/
+COPY scripts/ ./scripts/
 
-RUN bun run build
-
-# Prune dev dependencies for production
-RUN bun install --frozen-lockfile --production
-
-# ──────────────────────────────────────────────
-# Stage 3 — Production runtime
-# ──────────────────────────────────────────────
-FROM oven/bun:1-slim AS production
-
-WORKDIR /app
-
-ENV NODE_ENV=production
-
-# Create non-root user for security
-RUN addgroup --system --gid 1001 erica && \
-    adduser --system --uid 1001 --ingroup erica erica
-
-COPY --from=build --chown=erica:erica /app/dist ./dist
-COPY --from=build --chown=erica:erica /app/node_modules ./node_modules
-COPY --from=build --chown=erica:erica /app/package.json ./package.json
-
-# Copy Drizzle migrations if they exist
-COPY --from=build --chown=erica:erica /app/drizzle ./drizzle
-
-# Copy i18n language files
-COPY --from=build --chown=erica:erica /app/src/languages ./src/languages
+RUN mkdir -p /app/data && chown -R erica:erica /app
 
 USER erica
 
-CMD ["bun", "dist/index.js"]
+ENV NODE_ENV=production
+# Requires DATABASE_URL=mysql://user:pass@host:3306/dbname
+# /app/data is still used for ticket transcripts and other local files.
+
+CMD ["sh", "-c", "bun src/migrate.ts && bun src/index.ts"]
