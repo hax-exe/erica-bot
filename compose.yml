@@ -1,0 +1,102 @@
+# Erica + NodeLink (Moonlink-compatible audio server)
+#
+# Start (loads secrets for ${VAR} interpolation from .env.prod):
+#   docker compose --env-file .env.prod up -d
+#
+# Or copy/symlink .env.prod → .env (Compose auto-loads `.env` for interpolation).
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: erica_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-erica}
+      MYSQL_USER: ${MYSQL_USER:-erica}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+    volumes:
+      - erica_mysql:/var/lib/mysql
+    networks:
+      - erica
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-p${MYSQL_ROOT_PASSWORD:-changeme}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  nodelink:
+    image: performanc/nodelink:latest
+    # Pin for reproducible deploys, e.g. performanc/nodelink:3.7.0
+    container_name: erica_nodelink
+    restart: unless-stopped
+    environment:
+      NODELINK_SERVER_HOST: '0.0.0.0'
+      NODELINK_SERVER_PORT: '3000'
+      NODELINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+      # Spotify (same credentials Erica uses for search/autocomplete)
+      NODELINK_SOURCES_SPOTIFY_ENABLED: 'true'
+      NODELINK_SOURCES_SPOTIFY_CLIENTID: ${SPOTIFY_CLIENT_ID:-}
+      NODELINK_SOURCES_SPOTIFY_CLIENTSECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      # Optional: set NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN in .env.prod if YouTube needs it
+      NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN: ${NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN:-}
+      # Android/Web have SABR; AndroidVR/TV alone yield "No streaming data"
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_PLAYBACK: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_RESOLVE: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
+      # Empty [] is ignored by NodeLink (falsy). Prefer Deezer; disable SoundCloud rips.
+      NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: '["deezer"]'
+      NODELINK_SOURCES_SOUNDCLOUD_ENABLED: 'false'
+      NODELINK_DEFAULTSEARCHSOURCE: '["youtube","deezer"]'
+      NODELINK_UNIFIEDSEARCHSOURCES: '["youtube","deezer"]'
+      NODELINK_SOURCES_JIOSAAVN_ENABLED: 'false'
+      NODELINK_SOURCES_GAANA_ENABLED: 'false'
+      NODELINK_AUDIO_QUALITY: 'high'
+    expose:
+      - '3000'
+    # Uncomment for host-machine debugging only (not required for the bot container):
+    # ports:
+    #   - '127.0.0.1:3000:3000'
+    networks:
+      - erica
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:3000/version\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  bot:
+    image: ghcr.io/origin-earth/erica:latest
+    # build: .   # uncomment to build locally instead
+    container_name: erica_bot
+    restart: unless-stopped
+    depends_on:
+      nodelink:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    volumes:
+      - erica_data:/app/data
+    env_file: .env.prod
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-erica}:${MYSQL_PASSWORD:-changeme}@mysql:3306/${MYSQL_DATABASE:-erica}
+      # Override any localhost NodeLink from env_file — talk to the sidecar
+      LAVALINK_HOST: nodelink
+      LAVALINK_PORT: '3000'
+      LAVALINK_SECURE: 'false'
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+    networks:
+      - erica
+
+volumes:
+  erica_data:
+  erica_mysql:
+
+networks:
+  erica:
+    driver: bridge

@@ -1,43 +1,19 @@
-import { SlashCommandBuilder } from 'discord.js';
-import { Command } from '../../types/Command.js';
-import { validateVoiceChannel } from '../../utils/voiceChannel.js';
+import { ApplyOptions } from '@sapphire/decorators';
+import { Command } from '@sapphire/framework';
 
-export default new Command({
-    data: new SlashCommandBuilder()
-        .setName('pause')
-        .setDescription('Pause the current song'),
-    category: 'music',
-    cooldown: 3,
-    guildOnly: true,
-    requiredModule: 'music',
+@ApplyOptions<Command.Options>({
+	name: 'pause',
+	description: 'Pause the current playback.',
+})
+export class PauseCommand extends Command {
+	public override registerApplicationCommands(registry: Command.Registry) {
+		registry.registerChatInputCommand((builder) =>
+			builder.setName('pause').setDescription('Pause the current playback.'),
+		);
+	}
 
-    async execute(interaction, client) {
-        const player = client.music.players.get(interaction.guildId!);
-        const validation = validateVoiceChannel(interaction, player);
-
-        if (!validation.valid) {
-            await interaction.reply({ content: validation.message, ephemeral: true });
-            return;
-        }
-
-        if (!validation.player.queue.current) {
-            await interaction.reply({
-                content: '❌ No music is currently playing.',
-                ephemeral: true,
-            });
-            return;
-        }
-
-        if (validation.player.paused) {
-            await interaction.reply({
-                content: '❌ The music is already paused. Use `/resume` to continue.',
-                ephemeral: true,
-            });
-            return;
-        }
-
-        await validation.player.pause(true);
-        await interaction.reply('⏸️ Paused the music.');
-    },
-});
-
+	public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
+		const { PauseHandler } = await import('../../lib/music/handlers/pause.js');
+		return new PauseHandler().chatInputRun(interaction);
+	}
+}

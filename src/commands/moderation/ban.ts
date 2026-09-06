@@ -1,180 +1,229 @@
+import { ApplyOptions } from '@sapphire/decorators';
+import { Command } from '@sapphire/framework';
+import { type ComponentType, MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
+import { eq } from 'drizzle-orm';
 import {
-    SlashCommandBuilder,
-    EmbedBuilder,
-    PermissionFlagsBits,
-    GuildMember,
-} from 'discord.js';
-import { Command } from '../../types/Command.js';
+	Colors,
+	CV2_FLAG,
+	confirmCancelRow,
+	errorReply,
+	makeContainer,
+	separator,
+	successReply,
+} from '../../lib/components.js';
+import { db, schema } from '../../lib/database.js';
+import {
+	checkHierarchy,
+	createInfraction,
+	dispatchModLog,
+	handleReasonAutocomplete,
+} from '../../lib/ModerationUtil.js';
+import { autocompleteDuration, DURATION_HINT, humanDuration, parseDuration } from '../../lib/parseDuration.js';
 
-export default new Command({
-    data: new SlashCommandBuilder()
-        .setName('ban')
-        .setDescription('Ban a user from the server')
-        .addUserOption((option) =>
-            option
-                .setName('user')
-                .setDescription('The user to ban')
-                .setRequired(true)
-        )
-        .addStringOption((option) =>
-            option
-                .setName('reason')
-                .setDescription('Reason for the ban')
-                .setMaxLength(500)
-        )
-        .addIntegerOption((option) =>
-            option
-                .setName('delete_days')
-                .setDescription('Number of days of messages to delete (0-7)')
-                .setMinValue(0)
-                .setMaxValue(7)
-        )
-        .addStringOption((option) =>
-            option
-                .setName('duration')
-                .setDescription('Temporary ban duration (e.g., 1h, 1d, 7d)')
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
-    category: 'moderation',
-    cooldown: 3,
-    guildOnly: true,
-    requiredModule: 'moderation',
+@ApplyOptions<Command.Options>({
+	name: 'ban',
+	description: 'Ban a member from the server.',
+	preconditions: ['Moderation'],
+})
+export class BanCommand extends Command {
+	public override registerApplicationCommands(registry: Command.Registry) {
+		registry.registerChatInputCommand((builder) =>
+			builder
+				.setName('ban')
+				.setDescription('Ban a member from the server.')
+				.addUserOption((o) => o.setName('user').setDescription('The user to ban.').setRequired(true))
+				.addStringOption((o) =>
+					o.setName('reason').setDescription('Reason for the ban.').setRequired(false).setAutocomplete(true),
+				)
+				.addStringOption((o) =>
+					o
+						.setName('duration')
+						.setDescription('Temp ban duration (e.g. 7d, 24h). Omit for permanent.')
+						.setRequired(false)
+						.setAutocomplete(true),
+				)
+				.addIntegerOption((o) =>
+					o
+						.setName('delete_days')
+						.setDescription('Number of days of messages to delete (0–7).')
+						.setMinValue(0)
+						.setMaxValue(7)
+						.setRequired(false),
+				)
+				.addAttachmentOption((o) =>
+					o
+						.setName('proof')
+						.setDescription('Proof attachment (required if configured by server staff).')
+						.setRequired(false),
+				),
+		);
+	}
 
-    async execute(interaction) {
-        const targetUser = interaction.options.getUser('user', true);
-        const reason = interaction.options.getString('reason') || 'No reason provided';
-        const deleteDays = interaction.options.getInteger('delete_days') || 0;
-        const duration = interaction.options.getString('duration');
-        const moderator = interaction.user;
+	public override async autocompleteRun(interaction: Command.AutocompleteInteraction) {
+		const focused = interaction.options.getFocused(true);
+		if (focused.name === 'duration') {
+			return interaction.respond(autocompleteDuration(focused.value));
+		}
+		return handleReasonAutocomplete(interaction);
+	}
 
-        if (targetUser.id === interaction.user.id) {
-            await interaction.reply({
-                content: '❌ You cannot ban yourself.',
-                ephemeral: true,
-            });
-            return;
-        }
+	public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (targetUser.id === interaction.client.user?.id) {
-            await interaction.reply({
-                content: '❌ I cannot ban myself.',
-                ephemeral: true,
-            });
-            return;
-        }
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
 
-        // Get guild member (may be null if user is not in server)
-        const targetMember = interaction.guild!.members.cache.get(targetUser.id) as GuildMember | undefined;
-        const botMember = interaction.guild!.members.me;
-        const executingMember = interaction.member as GuildMember;
+		if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) {
+			return interaction.editReply(errorReply('You do not have permission to ban members.'));
+		}
 
-        if (!botMember) {
-            await interaction.reply({
-                content: '❌ Could not verify bot permissions.',
-                ephemeral: true,
-            });
-            return;
-        }
+		const target = interaction.options.getUser('user', true);
+		const reason = interaction.options.getString('reason') ?? 'No reason provided';
+		const deleteDays = interaction.options.getInteger('delete_days') ?? 0;
+		const durationStr = interaction.options.getString('duration');
+		const proofAttachment = interaction.options.getAttachment('proof');
+		const guild = interaction.guild;
 
-        // Check role hierarchy if member is in server
-        if (targetMember) {
-            if (targetMember.roles.highest.position >= botMember.roles.highest.position) {
-                await interaction.reply({
-                    content: '❌ I cannot ban this user. Their role is higher than or equal to mine.',
-                    ephemeral: true,
-                });
-                return;
-            }
+		let durationMs: number | undefined;
+		if (durationStr) {
+			const parsed = parseDuration(durationStr);
+			if (!parsed) return interaction.editReply(errorReply(`Invalid duration. ${DURATION_HINT}`));
+			durationMs = parsed;
+		}
 
-            if (targetMember.roles.highest.position >= executingMember.roles.highest.position) {
-                await interaction.reply({
-                    content: '❌ You cannot ban this user. Their role is higher than or equal to yours.',
-                    ephemeral: true,
-                });
-                return;
-            }
+		const member = guild.members.cache.get(target.id);
+		if (member) {
+			if (!member.bannable) {
+				return interaction.editReply(
+					errorReply("I can't ban this member — my role is too low, or I'm missing the Ban Members permission."),
+				);
+			}
+			if (member.id === interaction.user.id) {
+				return interaction.editReply(errorReply('You cannot ban yourself.'));
+			}
+			const h = checkHierarchy(interaction.member, member);
+			if (!h.ok) return interaction.editReply(errorReply(h.reason));
+		}
 
-            if (!targetMember.bannable) {
-                await interaction.reply({
-                    content: '❌ I cannot ban this user.',
-                    ephemeral: true,
-                });
-                return;
-            }
-        }
+		const guildRow = await db.query.guilds.findFirst({ where: eq(schema.guilds.id, guild.id) });
+		const proofRequired = guildRow?.proofRequired ?? false;
+		const requireReview = guildRow?.requireReview ?? false;
 
-        // Parse duration if provided
-        let durationMs: number | undefined;
-        let durationText = 'Permanent';
-        if (duration) {
-            durationMs = parseDuration(duration);
-            if (!durationMs) {
-                await interaction.reply({
-                    content: '❌ Invalid duration format. Use formats like: 1h, 1d, 7d, 30d',
-                    ephemeral: true,
-                });
-                return;
-            }
-            durationText = duration;
-        }
+		if (proofRequired && !proofAttachment) {
+			return interaction.editReply(
+				errorReply(
+					'Proof is required to execute punishments on this server. Please upload an attachment using the `proof` option.',
+				),
+			);
+		}
 
-        // DM the user before banning
-        try {
-            await targetUser.send({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0xff0000)
-                        .setTitle(`🔨 You were banned from ${interaction.guild!.name}`)
-                        .addFields(
-                            { name: 'Reason', value: reason },
-                            { name: 'Duration', value: durationText },
-                        )
-                        .setTimestamp(),
-                ],
-            });
-        } catch {
-            // User has DMs disabled
-        }
+		if (requireReview) {
+			const confirmId = `confirm-${interaction.id}`;
+			const cancelId = `cancel-${interaction.id}`;
+			const reviewContainer = makeContainer({ color: Colors.Warning, header: 'Review Ban' });
+			reviewContainer.addTextDisplayComponents(
+				new TextDisplayBuilder().setContent(
+					`Please review and confirm the following punishment:\n\n` +
+						`• **Action** Ban\n` +
+						`• **User** ${target.username} (${target.id})\n` +
+						`• **Reason** ${reason}` +
+						(durationStr ? `\n• **Duration** ${durationStr}` : '') +
+						(proofAttachment ? `\n• **Proof** Attached (${proofAttachment.name})` : ''),
+				),
+			);
+			reviewContainer.addSeparatorComponents(separator());
+			reviewContainer.addActionRowComponents(confirmCancelRow(confirmId, cancelId));
 
-        // Ban the user
-        await interaction.guild!.members.ban(targetUser, {
-            reason: `${reason} | Banned by ${moderator.tag}`,
-            deleteMessageSeconds: deleteDays * 24 * 60 * 60,
-        });
+			const reply = await interaction.editReply({ components: [reviewContainer], flags: CV2_FLAG });
 
-        const embed = new EmbedBuilder()
-            .setColor(0xff0000)
-            .setTitle('🔨 User Banned')
-            .setThumbnail(targetUser.displayAvatarURL())
-            .addFields(
-                { name: 'User', value: `${targetUser.tag} (${targetUser.id})`, inline: true },
-                { name: 'Moderator', value: moderator.tag, inline: true },
-                { name: 'Duration', value: durationText, inline: true },
-                { name: 'Messages Deleted', value: `${deleteDays} day(s)`, inline: true },
-                { name: 'Reason', value: reason },
-            )
-            .setTimestamp();
+			const collector = reply.createMessageComponentCollector<ComponentType.Button>({
+				filter: (i) => i.user.id === interaction.user.id && (i.customId === confirmId || i.customId === cancelId),
+				time: 60_000,
+				max: 1,
+			});
 
-        await interaction.reply({ embeds: [embed] });
+			const confirmed = await new Promise<boolean>((resolve) => {
+				collector.on('collect', async (i) => {
+					if (i.customId === confirmId) {
+						await i.deferUpdate();
+						resolve(true);
+					} else {
+						const cancelledContainer = makeContainer({ color: Colors.Neutral });
+						cancelledContainer.addTextDisplayComponents(
+							new TextDisplayBuilder().setContent('Punishment execution cancelled.'),
+						);
+						await i.update({ components: [cancelledContainer], flags: CV2_FLAG });
+						resolve(false);
+					}
+				});
 
-        // TODO: Schedule unban for temporary bans using a job scheduler
-        // For now, temp bans would need manual implementation with a scheduler like node-cron
-    },
-});
+				collector.on('end', async (_, reasonCollected) => {
+					if (reasonCollected === 'time') {
+						const timedOutContainer = makeContainer({ color: Colors.Neutral });
+						timedOutContainer.addTextDisplayComponents(
+							new TextDisplayBuilder().setContent('Punishment review timed out.'),
+						);
+						await interaction.editReply({ components: [timedOutContainer], flags: CV2_FLAG }).catch(() => null);
+						resolve(false);
+					}
+				});
+			});
 
-function parseDuration(duration: string): number | undefined {
-    const match = duration.match(/^(\d+)(h|d|w|m)$/i);
-    if (!match) return undefined;
+			if (!confirmed) return;
+		}
 
-    const value = parseInt(match[1]!, 10);
-    const unit = match[2]!.toLowerCase();
+		try {
+			const banDmColor = durationMs ? Colors.Moderation : Colors.Error;
+			const banLabel = durationMs ? `temporarily banned for **${humanDuration(durationMs)}**` : 'permanently banned';
+			const dm = makeContainer({ color: banDmColor, header: `You have been banned from ${guild.name}` });
+			dm.addTextDisplayComponents(
+				new TextDisplayBuilder().setContent(`**Reason** ${reason}\n-# You were ${banLabel}.`),
+			);
+			await target.send({ components: [dm], flags: CV2_FLAG }).catch(() => null);
 
-    const multipliers: Record<string, number> = {
-        h: 60 * 60 * 1000,      // hours
-        d: 24 * 60 * 60 * 1000, // days
-        w: 7 * 24 * 60 * 60 * 1000, // weeks
-        m: 30 * 24 * 60 * 60 * 1000, // months (approximate)
-    };
+			await guild.bans.create(target.id, {
+				reason: `[${interaction.user.username}] ${reason}`,
+				deleteMessageSeconds: deleteDays * 86400,
+			});
 
-    return value * (multipliers[unit] || 0);
+			const infraction = await createInfraction({
+				guildId: guild.id,
+				userId: target.id,
+				moderatorId: interaction.user.id,
+				type: 'ban',
+				reason,
+				duration: durationMs,
+				proofUrl: proofAttachment?.url ?? null,
+			});
+
+			if (durationMs) {
+				await db.insert(schema.tempbans).values({
+					guildId: guild.id,
+					userId: target.id,
+					expiresAt: new Date(Date.now() + durationMs),
+					caseId: infraction.caseId,
+				});
+			}
+
+			await dispatchModLog({
+				guild,
+				targetUser: target,
+				moderator: interaction.user,
+				type: 'ban',
+				reason,
+				caseId: infraction.caseId,
+				duration: durationMs,
+				proofAttachment,
+			});
+
+			const durationNote = durationMs ? ` for **${humanDuration(durationMs)}**` : ' permanently';
+			return interaction.editReply(
+				successReply(`**${target.username}** has been banned${durationNote}. Case \`${infraction.caseId}\`.`),
+			);
+		} catch (err) {
+			this.container.logger.error(err);
+			return interaction.editReply(errorReply('Failed to ban the user. Do I have the correct permissions?'));
+		}
+	}
 }

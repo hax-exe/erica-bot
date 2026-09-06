@@ -1,59 +1,36 @@
-# Docker configuration for production deployment
-# Using Debian-slim instead of Alpine for @napi-rs/canvas compatibility
-FROM node:25-slim AS base
-
-# Install runtime dependencies for @napi-rs/canvas
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcairo2 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libjpeg62-turbo \
-    libgif7 \
-    librsvg2-2 \
-    libpixman-1-0 \
-    fontconfig \
-    fonts-dejavu-core \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/* \
-    && fc-cache -f -v
-
-# Install dependencies only when needed
-FROM base AS deps
+# ── Deps stage ────────────────────────────────────────────────────────────────
+FROM oven/bun:alpine AS deps
 WORKDIR /app
 
-# Install build dependencies for native modules
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg62-turbo-dev \
-    libgif-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY package.json bun.lock* ./
+RUN NODE_ENV=production bun install --frozen-lockfile
 
-# Copy package files
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
-
-# Production stage
-FROM base AS runner
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM oven/bun:alpine AS runner
 WORKDIR /app
+
+# Install fonts for Canvas / Skia to correctly render unicode and emojis
+RUN apk add --no-cache fontconfig ttf-dejavu font-noto font-noto-emoji font-noto-cjk ttf-liberation ttf-freefont \
+    && fc-cache -f
+
+RUN addgroup -S -g 1001 erica && adduser -S -u 1001 -G erica erica
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
+COPY src/ ./src/
+COPY assets/ ./assets/
+COPY drizzle/ ./drizzle/
+COPY drizzle.config.ts ./
+COPY tsconfig.json ./
+COPY config/ ./config/
+COPY scripts/ ./scripts/
+
+RUN mkdir -p /app/data && chown -R erica:erica /app
+
+USER erica
 
 ENV NODE_ENV=production
+# Requires DATABASE_URL=mysql://user:pass@host:3306/dbname
+# /app/data is still used for ticket transcripts and other local files.
 
-# Create non-root user
-RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 bot
-
-# Copy production dependencies
-COPY --from=deps --chown=bot:nodejs /app/node_modules ./node_modules
-
-# Copy pre-built dist from CI artifact (passed via build context)
-COPY --chown=bot:nodejs dist ./dist
-COPY --chown=bot:nodejs package.json ./
-
-USER bot
-
-CMD ["node", "dist/index.js"]
-
+CMD ["sh", "-c", "bun src/migrate.ts && bun src/index.ts"]

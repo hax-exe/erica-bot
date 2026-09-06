@@ -1,0 +1,93 @@
+# Ticket system config for Erica.
+# Copy to tickets.yml and fill in Discord snowflake IDs (Developer Mode → Copy ID).
+# After edits: /ticket reload then /ticket panel
+
+# Optional: only apply this config in one guild. Omit for a single-guild bot.
+# guildId: "123456789012345678"
+
+panel:
+  channelId: "PANEL_CHANNEL_ID"
+  title: Support Tickets
+  description: |
+    Need help? Pick a category below.
+    Our staff will be with you shortly.
+  color: "#9370DB"
+  closeConfirmation: true
+  dmOnOpen: true
+  dmOnClose: false
+  # Discord category to move closed tickets into (null = delete the channel)
+  closedCategoryId: null
+  # Locked voice channels renamed live as Support Status sidebar labels
+  statusChannels:
+    openTicketsChannelId: null   # "Open Tickets: N"
+    totalTicketsChannelId: null  # "Total Tickets: N"
+    avgRatingChannelId: null     # "Rated ⭐ X.XX /5"
+    avgTimeChannelId: null       # "Avg Time: …"
+
+categories:
+  - id: support
+    label: General Support
+    emoji: "❓"
+    description: Account, gameplay, or other questions
+    discordCategoryId: "DISCORD_CATEGORY_ID"
+    staffRoleIds:
+      - "STAFF_ROLE_ID"
+    nameTemplate: "{category}-{username}"
+    openMessage: |
+      Thanks for opening a ticket — staff will be with you shortly.
+      Please describe your issue below.
+    color: "#5865F2"
+    maxOpenTickets: 1
+    # Max 5 questions (Discord modal Label limit)
+    questions:
+      - id: issue
+        type: text
+        label: What do you need help with?
+        description: Be as specific as you can
+        style: paragraph
+        placeholder: Describe your issue…
+        required: true
+        maxLength: 1000
+
+      - id: platform
+        type: select
+        label: Which platform?
+        required: true
+        placeholder: Choose one
+        minValues: 1
+        maxValues: 1
+        options:
+          - value: java
+            label: Java Edition
+            emoji: "☕"
+          - value: bedrock
+            label: Bedrock
+            emoji: "📱"
+
+      - id: topics
+        type: checkboxGroup
+        label: Topics that apply
+        required: false
+        minValues: 0
+        maxValues: 3
+        options:
+          - value: lag
+            label: Lag / performance
+          - value: ban
+            label: Ban appeal related
+          - value: other
+            label: Something else
+
+      - id: rules
+        type: checkbox
+        label: I have read the rules
+        description: Acknowledgement
+        default: false
+
+      - id: proof
+        type: file
+        label: Screenshots / proof
+        description: Optional attachments
+        required: false
+        minValues: 0
+        maxValues: 5

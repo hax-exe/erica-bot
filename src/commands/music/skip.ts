@@ -1,37 +1,28 @@
-import { SlashCommandBuilder } from 'discord.js';
-import { Command } from '../../types/Command.js';
-import { validateVoiceChannel } from '../../utils/voiceChannel.js';
+import { ApplyOptions } from '@sapphire/decorators';
+import { Command } from '@sapphire/framework';
 
-export default new Command({
-    data: new SlashCommandBuilder()
-        .setName('skip')
-        .setDescription('Skip the current song'),
-    category: 'music',
-    cooldown: 3,
-    guildOnly: true,
-    requiredModule: 'music',
+@ApplyOptions<Command.Options>({
+	name: 'skip',
+	description: 'Skip the current track.',
+})
+export class SkipCommand extends Command {
+	public override registerApplicationCommands(registry: Command.Registry) {
+		registry.registerChatInputCommand((builder) =>
+			builder
+				.setName('skip')
+				.setDescription('Skip the current track.')
+				.addIntegerOption((o) =>
+					o
+						.setName('to')
+						.setDescription('Skip directly to a specific queue position.')
+						.setMinValue(1)
+						.setRequired(false),
+				),
+		);
+	}
 
-    async execute(interaction, client) {
-        const player = client.music.players.get(interaction.guildId!);
-        const validation = validateVoiceChannel(interaction, player);
-
-        if (!validation.valid) {
-            await interaction.reply({ content: validation.message, ephemeral: true });
-            return;
-        }
-
-        if (!validation.player.queue.current) {
-            await interaction.reply({
-                content: '❌ Nothing to skip.',
-                ephemeral: true,
-            });
-            return;
-        }
-
-        const currentTrack = validation.player.queue.current;
-        await validation.player.skip();
-
-        await interaction.reply(`⏭️ Skipped **${currentTrack.title}**`);
-    },
-});
-
+	public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
+		const { SkipHandler } = await import('../../lib/music/handlers/skip.js');
+		return new SkipHandler().chatInputRun(interaction);
+	}
+}

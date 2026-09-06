@@ -1,81 +1,102 @@
-import { ExtendedClient, loadEvents } from './structures/index.js';
-import { disconnectDatabase } from './db/index.js';
-import { createLogger } from './utils/logger.js';
-import { startApiServer } from './api/index.js';
-import { disconnectRedis } from './services/redis.js';
-import { saveMusicState, saveGameState, notifyShutdown, stopStateCheckpoint } from './services/stateManager.js';
+import '@sapphire/plugin-logger/register';
+import '@sapphire/plugin-subcommands/register';
 
-const logger = createLogger('main');
+import { join } from 'node:path';
+import { ApplicationCommandRegistries, container, RegisterBehavior, SapphireClient } from '@sapphire/framework';
+import { GatewayIntentBits, Partials } from 'discord.js';
+import { Connectors } from 'moonlink.js';
+import { startApiServer } from './lib/ApiServer.js';
+import { closeDatabase } from './lib/database.js';
+import { createMusicManager } from './lib/MusicManager.js';
 
-async function main(): Promise<void> {
-    const client = new ExtendedClient();
-    let isShuttingDown = false;
+// Sync all slash commands every restart by bulk-overwriting
+ApplicationCommandRegistries.setDefaultBehaviorWhenNotIdentical(RegisterBehavior.BulkOverwrite);
 
-    const shutdown = async (signal: string) => {
-        // Prevent double-shutdown
-        if (isShuttingDown) return;
-        isShuttingDown = true;
+const client = new SapphireClient({
+	intents: [
+		GatewayIntentBits.Guilds,
+		GatewayIntentBits.GuildMembers,
+		GatewayIntentBits.GuildModeration,
+		GatewayIntentBits.GuildMessages,
+		GatewayIntentBits.GuildMessageReactions,
+		GatewayIntentBits.GuildVoiceStates,
+		GatewayIntentBits.GuildInvites,
+		GatewayIntentBits.MessageContent,
+		GatewayIntentBits.DirectMessages, // required to receive button/modal interactions from DM review requests
+		GatewayIntentBits.GuildMessagePolls,
+	],
+	partials: [
+		Partials.GuildMember,
+		Partials.Message,
+		Partials.Channel,
+		Partials.Reaction,
+		Partials.Poll,
+		Partials.PollAnswer,
+	],
+	logger: {
+		level: process.env.NODE_ENV === 'production' ? 30 : 20, // info in prod, debug in dev
+	},
+	loadMessageCommandListeners: false,
+	baseUserDirectory: join(__dirname),
+});
 
-        logger.info(`Received ${signal}, shutting down gracefully...`);
+// Set up Moonlink — the DiscordJs connector handles init() and raw packet forwarding
+const music = createMusicManager();
+music.use(new Connectors.DiscordJs(), client);
+container.music = music;
 
-        try {
-            // Stop periodic checkpointing
-            stopStateCheckpoint();
+const LOGIN_TIMEOUT_MS = 30_000;
+let apiServer: ReturnType<typeof Bun.serve> | null = null;
+let shuttingDown = false;
 
-            // Notify users in active music channels
-            await notifyShutdown(client);
+async function shutdown(signal: string, exitCode: number): Promise<void> {
+	if (shuttingDown) return;
+	shuttingDown = true;
+	client.logger.info(`[shutdown] ${signal} received; shutting down cleanly.`);
 
-            // Save state to Redis before destroying
-            logger.info('Saving music state...');
-            await saveMusicState(client.music.players);
-            logger.info('Saving game state...');
-            await saveGameState();
-
-            // Grace period for in-flight commands
-            await new Promise(r => setTimeout(r, 2000));
-
-            for (const player of client.music.players.values()) {
-                player.destroy();
-            }
-
-            await disconnectRedis();
-            client.destroy();
-            await disconnectDatabase();
-
-            logger.info('Shutdown complete');
-        } catch (error) {
-            logger.error({ error }, 'Error during shutdown');
-        }
-
-        process.exit(0);
-    };
-
-    // Handle both SIGINT (Ctrl+C) and SIGTERM
-    process.on('SIGINT', () => { shutdown('SIGINT'); });
-    process.on('SIGTERM', () => { shutdown('SIGTERM'); });
-
-    process.on('uncaughtException', (error) => {
-        logger.fatal({ error }, 'Uncaught exception');
-        process.exit(1);
-    });
-
-    process.on('unhandledRejection', (reason) => {
-        if (reason instanceof Error) {
-            logger.error({ err: reason }, 'Unhandled rejection');
-        } else {
-            logger.error({ reason }, 'Unhandled rejection');
-        }
-    });
-
-    try {
-        logger.info('Starting Erica Bot...');
-        await loadEvents(client);
-        await client.start();
-        startApiServer(client);
-    } catch (error) {
-        logger.fatal({ error }, 'Failed to start bot');
-        process.exit(1);
-    }
+	apiServer?.stop(true);
+	await Promise.allSettled(music.players.all.map((player) => player.destroy()));
+	client.destroy();
+	await closeDatabase();
+	process.exit(exitCode);
 }
 
-main();
+process.on('unhandledRejection', (reason) => {
+	client.logger.error('[unhandledRejection]', reason);
+});
+
+process.on('uncaughtException', (error) => {
+	client.logger.fatal('[uncaughtException]', error);
+	void shutdown('uncaughtException', 1);
+});
+if (process.env.NODE_ENV === 'production') {
+	process.once('SIGINT', () => void shutdown('SIGINT', 0));
+	process.once('SIGTERM', () => void shutdown('SIGTERM', 0));
+}
+
+void (async () => {
+	try {
+		client.logger.info('Starting Erica...');
+		const { loadTicketsConfig } = await import('./lib/TicketsConfig.js');
+		loadTicketsConfig();
+		client.logger.info('Loaded config/tickets.yml');
+		const { loadStatusConfig } = await import('./lib/StatusUtil.js');
+		loadStatusConfig();
+		client.logger.info('Loaded config/status.yml');
+		// Health is always served. Website/MC/config routes remain opt-in.
+		apiServer = startApiServer({ fullApiEnabled: process.env.BOT_API_ENABLED === 'true' });
+		await Promise.race([
+			client.login(process.env.DISCORD_TOKEN),
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() => reject(new Error('Discord login timed out after 30s — Discord may be unavailable')),
+					LOGIN_TIMEOUT_MS,
+				),
+			),
+		]);
+	} catch (error) {
+		client.logger.fatal(error);
+		client.destroy();
+		process.exit(1);
+	}
+})();
