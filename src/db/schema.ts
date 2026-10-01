@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, datetime, int, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { bigint, boolean, datetime, int, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 
 // Per-guild configuration
 export const guilds = mysqlTable('guilds', {
@@ -46,7 +46,7 @@ export const infractions = mysqlTable(
 		moderatorId: varchar('moderator_id', { length: 64 }).notNull(),
 		type: varchar('type', { length: 64 }).$type<InfractionType>().notNull(),
 		reason: text('reason').notNull().default('No reason provided'),
-		duration: int('duration'), // milliseconds, null if permanent
+		duration: bigint('duration', { mode: 'number' }), // milliseconds, null if permanent
 		caseId: varchar('case_id', { length: 64 }).notNull(),
 		createdAt: datetime('created_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
 		untimeoutLogged: boolean('untimeout_logged').notNull().default(false),
@@ -281,13 +281,13 @@ export const xp = mysqlTable(
 		userId: varchar('user_id', { length: 64 }).notNull(),
 		totalXp: int('total_xp').notNull().default(0),
 		level: int('level').notNull().default(0),
-		lastMessageAt: int('last_message_at'), // unix ms, null until first message
+		lastMessageAt: bigint('last_message_at', { mode: 'number' }), // unix ms, null until first message
 		accentColor: varchar('accent_color', { length: 64 }),
 		backgroundType: varchar('background_type', { length: 64 })
 			.$type<'color' | 'image' | 'preset'>()
 			.notNull()
 			.default('color'),
-		backgroundValue: varchar('background_value', { length: 64 }),
+		backgroundValue: varchar('background_value', { length: 512 }),
 	},
 	(t) => [uniqueIndex('xp_guild_user_uniq').on(t.guildId, t.userId)],
 );
@@ -623,7 +623,7 @@ export const reminders = mysqlTable('reminders', {
 	guildId: varchar('guild_id', { length: 64 }),
 	content: text('content').notNull(),
 	remindAt: datetime('remind_at', { mode: 'date' }).notNull(),
-	intervalMs: int('interval_ms'), // non-null = recurring
+	intervalMs: bigint('interval_ms', { mode: 'number' }), // non-null = recurring
 	done: boolean('done').notNull().default(false),
 	createdAt: datetime('created_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -682,7 +682,7 @@ export const warnEscalation = mysqlTable(
 		guildId: varchar('guild_id', { length: 64 }).notNull(),
 		threshold: int('threshold').notNull(),
 		action: varchar('action', { length: 64 }).$type<'timeout' | 'kick' | 'ban'>().notNull(),
-		durationMs: int('duration_ms'),
+		durationMs: bigint('duration_ms', { mode: 'number' }),
 	},
 	(t) => [uniqueIndex('warn_escalation_uniq').on(t.guildId, t.threshold)],
 );
@@ -911,7 +911,7 @@ export const socialFeeds = mysqlTable(
 		platform: varchar('platform', { length: 64 }).$type<SocialPlatform>().notNull(),
 		handle: varchar('handle', { length: 255 }).notNull(), // normalised: YouTube channel ID, lowercase twitch user, etc.
 		displayName: varchar('display_name', { length: 255 }).notNull(), // human-readable label shown in /feed list
-		lastPostId: varchar('last_post_id', { length: 64 }),
+		lastPostId: varchar('last_post_id', { length: 512 }),
 		createdAt: datetime('created_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
 	},
 	(t) => [uniqueIndex('social_feeds_uniq').on(t.guildId, t.platform, t.handle)],
@@ -925,7 +925,7 @@ export const honeypotChannels = mysqlTable('honeypot_channels', {
 	guildId: varchar('guild_id', { length: 64 }).notNull(),
 	channelId: varchar('channel_id', { length: 64 }).primaryKey(),
 	punishment: varchar('punishment', { length: 64 }).$type<HoneypotPunishment>().notNull().default('ban'),
-	duration: int('duration'), // Milliseconds
+	duration: bigint('duration', { mode: 'number' }), // Milliseconds
 	messageId: varchar('message_id', { length: 64 }), // The warning message ID posted in that channel
 	createdAt: datetime('created_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
 });

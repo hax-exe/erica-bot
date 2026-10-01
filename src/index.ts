@@ -9,6 +9,17 @@ import { startApiServer } from './lib/ApiServer.js';
 import { closeDatabase } from './lib/database.js';
 import { createMusicManager } from './lib/MusicManager.js';
 
+// Fail fast with a clear message instead of discord.js's generic "invalid token" error at login.
+// (DATABASE_URL is validated in lib/database.ts, which is evaluated as an import before this line.)
+const discordToken = process.env.DISCORD_TOKEN?.trim();
+if (!discordToken) {
+	throw new Error('DISCORD_TOKEN is required (bot token from the Discord Developer Portal → your app → Bot)');
+}
+
+// Privileged intent — only request it when it is also enabled in the Developer Portal,
+// otherwise Discord rejects the login (close code 4014).
+const presenceIntentEnabled = process.env.DISCORD_PRESENCE_INTENT === 'true';
+
 // Sync all slash commands every restart by bulk-overwriting
 ApplicationCommandRegistries.setDefaultBehaviorWhenNotIdentical(RegisterBehavior.BulkOverwrite);
 
@@ -24,6 +35,9 @@ const client = new SapphireClient({
 		GatewayIntentBits.MessageContent,
 		GatewayIntentBits.DirectMessages, // required to receive button/modal interactions from DM review requests
 		GatewayIntentBits.GuildMessagePolls,
+		GatewayIntentBits.GuildScheduledEvents, // scheduled event subscribe/unsubscribe logging
+		// presenceUpdate logging + the "Online" server-stats counter
+		...(presenceIntentEnabled ? [GatewayIntentBits.GuildPresences] : []),
 	],
 	partials: [
 		Partials.GuildMember,
@@ -86,7 +100,7 @@ void (async () => {
 		// Health is always served. Website/MC/config routes remain opt-in.
 		apiServer = startApiServer({ fullApiEnabled: process.env.BOT_API_ENABLED === 'true' });
 		await Promise.race([
-			client.login(process.env.DISCORD_TOKEN),
+			client.login(discordToken),
 			new Promise<never>((_, reject) =>
 				setTimeout(
 					() => reject(new Error('Discord login timed out after 30s — Discord may be unavailable')),
