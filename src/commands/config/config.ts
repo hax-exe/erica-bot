@@ -279,31 +279,42 @@ export class ConfigCommand extends Subcommand {
 		}
 
 		// Create and save the new webhook before deleting the old one, so a failure keeps the working URL.
-		let webhookUrl: string;
+		const avatarUrl = interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 });
+		const webhookName = {
+			logWebhookUrl: WEBHOOK_NAMES.logs,
+			modLogWebhookUrl: WEBHOOK_NAMES.modLogs,
+			ticketLogWebhookUrl: WEBHOOK_NAMES.ticketLogs,
+			reportWebhookUrl: WEBHOOK_NAMES.reportLogs,
+		}[urlField];
+		const createWebhook = () =>
+			channel
+				.createWebhook({ name: webhookName, avatar: avatarUrl, reason: `Set by ${interaction.user.tag} via /config` })
+				.then((wh) => wh.url);
+
+		let webhookUrl: string | null = null;
+		let oldDeleted = false;
 		try {
-			const avatarUrl = interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 });
-			const webhookName = {
-				logWebhookUrl: WEBHOOK_NAMES.logs,
-				modLogWebhookUrl: WEBHOOK_NAMES.modLogs,
-				ticketLogWebhookUrl: WEBHOOK_NAMES.ticketLogs,
-				reportWebhookUrl: WEBHOOK_NAMES.reportLogs,
-			}[urlField];
-			const wh = await channel.createWebhook({
-				name: webhookName,
-				avatar: avatarUrl,
-				reason: `Set by ${interaction.user.tag} via /config`,
-			});
-			webhookUrl = wh.url;
-		} catch {
+			webhookUrl = await createWebhook();
+		} catch (err) {
+			// The channel already has Discord's maximum of 15 webhooks: free the old log webhook first, retry once.
+			if ((err as { code?: unknown } | null)?.code === 30007 && existingUrl) {
+				await tryDeleteWebhook(existingUrl);
+				oldDeleted = true;
+				webhookUrl = await createWebhook().catch(() => null);
+			}
+		}
+		if (!webhookUrl) {
+			// Never keep a URL that points at the webhook just deleted.
+			if (oldDeleted) await this.upsert(interaction.guildId, { [urlField]: null });
 			return interaction.editReply(
 				errorReply(
-					`Failed to create a webhook in <#${channel.id}>. Make sure I have the **Manage Webhooks** permission in that channel.`,
+					`Failed to create a webhook in <#${channel.id}>. Make sure I have the **Manage Webhooks** permission in that channel and that it has fewer than 15 webhooks.`,
 				),
 			);
 		}
 
 		await this.upsert(interaction.guildId, { [urlField]: webhookUrl });
-		if (existingUrl && existingUrl !== webhookUrl) await tryDeleteWebhook(existingUrl);
+		if (existingUrl && !oldDeleted && existingUrl !== webhookUrl) await tryDeleteWebhook(existingUrl);
 		return interaction.editReply(successReply(`${label} logs will be posted in <#${channel.id}>.`));
 	}
 

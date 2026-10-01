@@ -16,12 +16,14 @@ import { Colors, CV2_FLAG } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { humanDuration } from '../../lib/parseDuration.js';
 
-/** Discord errors that no retry can fix: unknown channel/guild/member/role, missing access/permissions, DMs closed. */
-const PERMANENT_DISCORD_ERRORS = new Set([10003, 10004, 10007, 10011, 50001, 50007, 50013]);
+/** Discord errors after which a reminder can never be delivered: unknown channel/guild, DMs closed. */
+const UNDELIVERABLE_ERRORS = new Set([10003, 10004, 50007]);
+/** Also give up on one-off reminders after these (unknown member/role, missing access/permissions). */
+const ONE_OFF_GIVE_UP_ERRORS = new Set([...UNDELIVERABLE_ERRORS, 10007, 10011, 50001, 50013]);
 
-function permanentDiscordErrorCode(err: unknown): number | null {
+function discordErrorCode(err: unknown): number | null {
 	const code = (err as { code?: unknown } | null)?.code;
-	return typeof code === 'number' && PERMANENT_DISCORD_ERRORS.has(code) ? code : null;
+	return typeof code === 'number' ? code : null;
 }
 
 @ApplyOptions<Listener.Options>({
@@ -133,8 +135,11 @@ export class ReminderSchedulerListener extends Listener<typeof Events.ClientRead
 								.where(and(eq(schema.reminders.id, reminder.id), eq(schema.reminders.done, false)));
 						}
 					} catch (err) {
-						const code = permanentDiscordErrorCode(err);
-						if (code !== null) {
+						const code = discordErrorCode(err);
+						// Recurring reminders are only dropped when they can never be delivered again — a
+						// temporary permission problem must not end a daily reminder for good.
+						const giveUpCodes = reminder.intervalMs ? UNDELIVERABLE_ERRORS : ONE_OFF_GIVE_UP_ERRORS;
+						if (code !== null && giveUpCodes.has(code)) {
 							// Unknown channel / no access / DMs closed… — retrying every minute would never succeed.
 							await giveUp(reminder, `Discord error ${code} (${(err as Error).message}).`);
 						} else {

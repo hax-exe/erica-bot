@@ -287,12 +287,14 @@ export class AutomodCommand extends Subcommand {
 		let moduleNote = '';
 		if (enabled) {
 			const moduleState = await this.automodModuleState(interaction.guildId);
-			if (moduleState === 'global-off') {
-				moduleNote =
-					'\n-# AutoMod is disabled globally by the bot owner, so rules will not run until it is re-enabled.';
-			} else if (moduleState === 'guild-off') {
+			if (moduleState !== 'on') {
+				// Turn this server's module on — also while AutoMod is disabled globally, so the rules run as
+				// soon as the bot owner re-enables it.
 				await setModule(interaction.guildId, 'automod', true);
-				moduleNote = '\n-# The **AutoMod** module was off for this server, so I turned it on.';
+				moduleNote =
+					moduleState === 'global-off'
+						? '\n-# AutoMod is disabled globally by the bot owner, so rules will not run until it is re-enabled.'
+						: '\n-# The **AutoMod** module was off for this server, so I turned it on.';
 			}
 		}
 
