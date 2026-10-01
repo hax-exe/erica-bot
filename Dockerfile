@@ -2,7 +2,8 @@
 FROM oven/bun:alpine AS deps
 WORKDIR /app
 
-COPY package.json bun.lock* ./
+# bunfig.toml carries the install settings (isolated linker) the lockfile was produced with
+COPY package.json bun.lock* bunfig.toml ./
 RUN NODE_ENV=production bun install --frozen-lockfile
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────

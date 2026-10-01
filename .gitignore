@@ -6,12 +6,10 @@ dist/
 .next/
 out/
 
-# Environment files (NEVER COMMIT THESE)
+# Environment files (NEVER COMMIT THESE) — only .env.example is tracked
 .env
-.env.local
-.env.*.local
-.env.production
-.env.development
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -32,11 +30,8 @@ lavalink/logs/
 # Testing
 coverage/
 
-# Drizzle
-drizzle/meta/
-
-# Docker volumes (local data)
-postgres-data/
+# Local runtime data (ticket transcripts, etc.)
+/data/
 
 # Misc
 *.tsbuildinfo

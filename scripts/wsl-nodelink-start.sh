@@ -2,12 +2,15 @@
 set -euo pipefail
 export PATH="/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/Git/bin:${HOME}/.local/node/bin:${PATH}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
 DEST="${HOME}/NodeLink"
-ENV_FILE="/mnt/d/Projects/AloraMC/Erica/.env.dev"
-NODELINK_ENV="/mnt/d/Projects/AloraMC/Erica/scripts/nodelink.env"
+ENV_FILE="${REPO_DIR}/.env.dev"
+NODELINK_ENV="${SCRIPT_DIR}/nodelink.env"
 
 if [[ ! -d "$DEST" ]]; then
-  echo "NodeLink not installed. Run scripts/wsl-nodelink-setup.sh first." >&2
+  echo "NodeLink not found at $DEST. Clone NodeLink (github.com/PerformanC/NodeLink) there and run 'npm install' first." >&2
   exit 1
 fi
 

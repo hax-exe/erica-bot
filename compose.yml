@@ -1,9 +1,11 @@
-# Erica + NodeLink (Moonlink-compatible audio server)
+# Erica + MySQL + NodeLink (Moonlink-compatible audio server)
 #
 # Start (loads secrets for ${VAR} interpolation from .env.prod):
 #   docker compose --env-file .env.prod up -d
 #
 # Or copy/symlink .env.prod → .env (Compose auto-loads `.env` for interpolation).
+# The bot container reads every other setting (MINECRAFT_SERVER_IP, API_ALLOWED_ORIGINS,
+# DISCORD_PRESENCE_INTENT, …) from .env.prod via `env_file`; see .env.example.
 
 services:
   mysql:
@@ -71,7 +73,7 @@ services:
       start_period: 40s
 
   bot:
-    image: ghcr.io/origin-earth/erica:latest
+    image: ghcr.io/hax-exe/erica-bot:latest
     # build: .   # uncomment to build locally instead
     container_name: erica_bot
     restart: unless-stopped
