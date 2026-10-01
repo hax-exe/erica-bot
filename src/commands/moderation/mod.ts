@@ -1613,10 +1613,29 @@ export class ModCommand extends Subcommand {
 
 		if (!row || row.done) return interaction.editReply(errorReply(`No active timed role with ID \`${id}\`.`));
 
-		await db.update(schema.timedRoles).set({ done: true }).where(eq(schema.timedRoles.id, id));
+		// Same policy as giving the role: Manage Roles, and a role below both the bot and the invoker.
+		const role = interaction.guild.roles.cache.get(row.roleId);
+		if (role) {
+			const problem = checkAssignableRole(interaction.member, role);
+			if (problem) return interaction.editReply(errorReply(problem));
+		} else if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+			return interaction.editReply(errorReply('You need the **Manage Roles** permission to manage roles.'));
+		}
 
 		const member = await interaction.guild.members.fetch(row.userId).catch(() => null);
-		if (member) await member.roles.remove(row.roleId).catch(() => null);
+		if (member?.roles.cache.has(row.roleId)) {
+			const removed = await member.roles
+				.remove(row.roleId, `Timed role revoked by ${interaction.user.username}`)
+				.then(() => true)
+				.catch(() => false);
+			if (!removed) {
+				return interaction.editReply(
+					errorReply(`I couldn't remove <@&${row.roleId}> — check my permissions and role position.`),
+				);
+			}
+		}
+
+		await db.update(schema.timedRoles).set({ done: true }).where(eq(schema.timedRoles.id, id));
 
 		return interaction.editReply(successReply(`Revoked <@&${row.roleId}> from <@${row.userId}>.`));
 	}

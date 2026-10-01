@@ -81,6 +81,8 @@ const INFRACTION_EMOJI: Record<string, string> = {
 
 /** Discord caps the text of one CV2 message at 4000 characters; keep headroom for headers and the footer line. */
 const HISTORY_TEXT_BUDGET = 3800;
+/** Max length of an edited case reason (the Edit Reason modal input). */
+const CASE_REASON_MAX_LENGTH = 500;
 const HISTORY_REASON_LENGTH = 200;
 
 @ApplyOptions<Listener.Options>({
@@ -327,13 +329,23 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 					.setTitle('Edit Case Reason')
 					.addComponents(
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
-							new TextInputBuilder()
-								.setCustomId('reason')
-								.setLabel('New Reason')
-								.setStyle(TextInputStyle.Paragraph)
-								.setRequired(true)
-								.setValue(infraction.reason)
-								.setMaxLength(500),
+							// A pre-filled value longer than max_length makes Discord reject the whole modal, and
+							// merged/long reasons can exceed it — only pre-fill reasons that fit.
+							infraction.reason.length <= CASE_REASON_MAX_LENGTH
+								? new TextInputBuilder()
+										.setCustomId('reason')
+										.setLabel('New Reason')
+										.setStyle(TextInputStyle.Paragraph)
+										.setRequired(true)
+										.setValue(infraction.reason)
+										.setMaxLength(CASE_REASON_MAX_LENGTH)
+								: new TextInputBuilder()
+										.setCustomId('reason')
+										.setLabel('New Reason')
+										.setStyle(TextInputStyle.Paragraph)
+										.setRequired(true)
+										.setPlaceholder('The current reason is too long to edit here — enter a replacement.')
+										.setMaxLength(CASE_REASON_MAX_LENGTH),
 						),
 					);
 
@@ -343,9 +355,6 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 			// ── Case Delete ───────────────────────────────────────────────────────
 			if (action === 'case_delete') {
 				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-				if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-					return interaction.editReply(errorReply('You need the **Manage Server** permission to delete cases.'));
-				}
 				const caseId = targetId;
 				const infraction = await getInfractionByCase(interaction.guild.id, caseId);
 				if (!infraction) {

@@ -13,7 +13,7 @@ import {
 	TextDisplayBuilder,
 	userMention,
 } from 'discord.js';
-import { and, eq, gte } from 'drizzle-orm';
+import { and, eq, gte, ne } from 'drizzle-orm';
 import {
 	Colors,
 	CV2_FLAG,
@@ -1059,11 +1059,15 @@ export class CaseCommand extends Subcommand {
 				.where(eq(schema.tempbans.caseId, sourceCase.caseId));
 		}
 
-		// Retain linkedCaseId if targetCase doesn't have one but a source case does
-		let newLinkedCaseId = targetCase.linkedCaseId;
+		// Retain linkedCaseId if targetCase doesn't have one but a source case does. A link to a case that
+		// is being merged away (or to the target itself) would dangle, so it is dropped.
+		const mergedIds = new Set(sourceCases.map((c) => c.caseId));
+		const isUsableLink = (id: string | null): id is string =>
+			id != null && id !== targetCase.caseId && !mergedIds.has(id);
+		let newLinkedCaseId = isUsableLink(targetCase.linkedCaseId) ? targetCase.linkedCaseId : null;
 		if (!newLinkedCaseId) {
 			for (const sourceCase of sourceCases) {
-				if (sourceCase.linkedCaseId) {
+				if (isUsableLink(sourceCase.linkedCaseId)) {
 					newLinkedCaseId = sourceCase.linkedCaseId;
 					break;
 				}
@@ -1071,11 +1075,18 @@ export class CaseCommand extends Subcommand {
 		}
 
 		// Re-target infractions linking to the source cases to point to targetCase instead
+		// (except the target itself, whose link is set below).
 		for (const sourceCase of sourceCases) {
 			await db
 				.update(schema.infractions)
 				.set({ linkedCaseId: targetCase.caseId })
-				.where(and(eq(schema.infractions.guildId, guild.id), eq(schema.infractions.linkedCaseId, sourceCase.caseId)));
+				.where(
+					and(
+						eq(schema.infractions.guildId, guild.id),
+						eq(schema.infractions.linkedCaseId, sourceCase.caseId),
+						ne(schema.infractions.caseId, targetCase.caseId),
+					),
+				);
 		}
 
 		// Combine reasons

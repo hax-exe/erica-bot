@@ -43,6 +43,20 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 			return interaction.editReply(errorReply('Could not find the target channel.'));
 		}
 
+		// Mirror Discord's own rule: @everyone and non-mentionable roles need Mention Everyone in that channel.
+		if (pingType === 'r' && pingId) {
+			const role = pingId === interaction.guildId ? null : interaction.guild.roles.cache.get(pingId);
+			const needsMentionEveryone = pingId === interaction.guildId || (role != null && !role.mentionable);
+			if (
+				needsMentionEveryone &&
+				!channel.permissionsFor(interaction.member)?.has(PermissionFlagsBits.MentionEveryone)
+			) {
+				return interaction.editReply(
+					errorReply('You need the **Mention @everyone, @here, and All Roles** permission to ping that role there.'),
+				);
+			}
+		}
+
 		// Reconstruct the ping from the encoded type + ID, allowing exactly that one mention to notify.
 		// The @everyone role is only pinged by the literal `@everyone` text, not its `<@&id>` role mention.
 		let ping: { content: string; allowedMentions: MessageMentionOptions } | undefined;
