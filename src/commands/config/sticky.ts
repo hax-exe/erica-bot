@@ -11,8 +11,11 @@ import {
 } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { Colors, CV2_FLAG, errorReply, makeContainer, successReply, warningReply } from '../../lib/components.js';
+import { joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
 import { parseDuration } from '../../lib/parseDuration.js';
+
+const MAX_SELECT_OPTIONS = 25;
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'sticky',
@@ -166,18 +169,19 @@ export class StickyCommand extends Subcommand {
 
 		const container = makeContainer({ color: Colors.Info });
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(`**Sticky Messages (${rows.length})**\n${lines.join('\n')}`),
+			new TextDisplayBuilder().setContent(`**Sticky Messages (${rows.length})**\n${joinLinesCapped(lines, 2000)}`),
 		);
 
 		const selectMenu = new StringSelectMenuBuilder()
 			.setCustomId('mod:sticky_clear_select')
 			.setPlaceholder('Select a channel to clear its sticky...');
 
+		// Select menus hold at most 25 options.
 		selectMenu.addOptions(
-			rows.map((r) => {
+			rows.slice(0, MAX_SELECT_OPTIONS).map((r) => {
 				const ch = interaction.guild.channels.cache.get(r.channelId);
 				return new StringSelectMenuOptionBuilder()
-					.setLabel(ch ? `#${ch.name}` : `Channel ${r.channelId}`)
+					.setLabel((ch ? `#${ch.name}` : `Channel ${r.channelId}`).slice(0, 100))
 					.setDescription(r.content.slice(0, 50))
 					.setValue(r.channelId)
 					.setEmoji('🗑️');
@@ -186,6 +190,13 @@ export class StickyCommand extends Subcommand {
 
 		const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 		container.addActionRowComponents(row);
+		if (rows.length > MAX_SELECT_OPTIONS) {
+			container.addTextDisplayComponents(
+				new TextDisplayBuilder().setContent(
+					`-# The menu lists the first ${MAX_SELECT_OPTIONS} stickies — use \`/sticky clear\` with a \`channel\` for the rest.`,
+				),
+			);
+		}
 
 		return interaction.editReply({ components: [container], flags: CV2_FLAG });
 	}

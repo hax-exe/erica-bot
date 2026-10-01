@@ -14,8 +14,12 @@ import {
 import { eq } from 'drizzle-orm';
 import { CV2_FLAG } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 const DEFAULT_MESSAGE = '🚀 {user} just boosted **{server}**! Thank you so much! 💜';
+
+/** A boost whose premiumSince is newer than this is treated as new when the old member is uncached. */
+const RECENT_BOOST_MS = 2 * 60_000;
 
 function resolveBoostMessage(template: string, member: GuildMember, boostCount: number): string {
 	return template
@@ -32,9 +36,14 @@ function resolveBoostMessage(template: string, member: GuildMember, boostCount: 
 })
 export class BoostAnnouncementListener extends Listener<typeof Events.GuildMemberUpdate> {
 	public override async run(oldMember: GuildMember | PartialGuildMember, newMember: GuildMember) {
-		// Detect new boost: didn't have premium before, has it now
-		const wasBoosting = oldMember.premiumSince != null;
-		const isBoosting = newMember.premiumSince != null;
+		// Detect new boost: didn't have premium before, has it now.
+		// A partial (uncached) old member has no premiumSince to compare against, so only count it
+		// as a new boost when premiumSince is brand new — otherwise any update on an existing booster
+		// would announce a false boost.
+		const isBoosting = newMember.premiumSinceTimestamp != null;
+		const wasBoosting = oldMember.partial
+			? isBoosting && Date.now() - newMember.premiumSinceTimestamp! > RECENT_BOOST_MS
+			: oldMember.premiumSince != null;
 		if (wasBoosting || !isBoosting) return;
 
 		const cfg = await db.query.boostSettings.findFirst({
@@ -66,7 +75,7 @@ export class BoostAnnouncementListener extends Listener<typeof Events.GuildMembe
 		}
 
 		// ── Milestone check ──────────────────────────────────────────────────────
-		const milestones: number[] = JSON.parse(cfg.milestones);
+		const milestones = safeJsonParse<number[]>(cfg.milestones, []);
 		if (!milestones.includes(boostCount)) return;
 
 		const milestoneChannelId = cfg.milestoneChannelId ?? cfg.channelId;

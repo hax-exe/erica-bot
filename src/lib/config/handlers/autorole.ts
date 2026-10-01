@@ -50,7 +50,7 @@ export class AutoroleHandler {
 		});
 
 		if (!rows.length)
-			return interaction.editReply(errorReply('No auto-roles configured. Use `/autorole add` to add one.'));
+			return interaction.editReply(errorReply('No auto-roles configured. Use `/mod autorole add` to add one.'));
 
 		const c = makeContainer({ color: Colors.Info, header: 'Auto Roles' });
 		c.addSeparatorComponents(separator());

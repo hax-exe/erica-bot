@@ -11,7 +11,7 @@ const cooldowns = new Map<string, number>();
 
 export class AutoresponderMessageListener extends Listener {
 	public constructor(context: Listener.LoaderContext) {
-		super(context, { event: 'messageCreate' });
+		super(context, { name: 'autoresponderMessageCreate', event: 'messageCreate' });
 	}
 
 	public async run(message: Message) {

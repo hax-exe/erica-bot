@@ -13,6 +13,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { invalidateBotBlacklistCache } from '../../lib/BlacklistUtil.js';
 import { errorReply, successReply, warningReply } from '../../lib/components.js';
+import { clip, joinLinesCapped } from '../../lib/config/listFormat.js';
 import {
 	autocompleteColumns,
 	autocompleteTables,
@@ -38,8 +39,8 @@ import {
 } from '../../lib/DbAdminUtil.js';
 import { db, schema } from '../../lib/database.js';
 import {
-	getGlobalModules,
 	getOrCreateModules,
+	invalidateModuleCache,
 	MODULE_LABELS,
 	MODULES,
 	setGlobalModule,
@@ -61,6 +62,12 @@ function formatUptime(ms: number): string {
 	if (m || h || d) parts.push(`${m}m`);
 	parts.push(`${sec}s`);
 	return parts.join(' ');
+}
+
+/** `/admin db` writes bypass setModule() and the blacklist helpers, so drop the matching in-memory caches. */
+function invalidateCachesFor(tableName: string): void {
+	if (tableName === 'guild_modules' || tableName === 'global_modules') invalidateModuleCache();
+	else if (tableName === 'bot_blacklist') invalidateBotBlacklistCache();
 }
 
 function tableOption(o: any, required = true) {
@@ -589,11 +596,11 @@ export class AdminCommand extends Subcommand {
 
 		const lines = entries.map((e, i) => {
 			const ts = time(Math.floor(e.createdAt.getTime() / 1000), TimestampStyles.ShortDate);
-			return `\`${i + 1}.\` <@${e.userId}> (\`${e.userId}\`) — ${e.reason} — added by <@${e.addedById}> ${ts}`;
+			return `\`${i + 1}.\` <@${e.userId}> (\`${e.userId}\`) — ${clip(e.reason)} — added by <@${e.addedById}> ${ts}`;
 		});
 
 		return interaction.editReply(
-			`**Bot Blacklist** (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})\n\n${lines.join('\n')}`,
+			`**Bot Blacklist** (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})\n\n${joinLinesCapped(lines)}`,
 		);
 	}
 
@@ -610,6 +617,14 @@ export class AdminCommand extends Subcommand {
 			return interaction.editReply(errorReply('Invalid guild ID — must be a Discord snowflake.'));
 		}
 
+		// Read the global kill-switch row without creating it: a freshly inserted row carries the schema
+		// defaults (AutoMod off), which would silently disable AutoMod everywhere just by viewing.
+		// No row means no kill-switches, i.e. every module is globally enabled.
+		const globalEnabled = async () => {
+			const row = await db.query.globalModules.findFirst({ where: eq(schema.globalModules.id, 1) });
+			return (m: (typeof MODULES)[number]) => row?.[m] !== false;
+		};
+
 		// ── View mode (no module provided) ──────────────────────────────────────
 		if (!module) {
 			if (guildId) {
@@ -617,8 +632,8 @@ export class AdminCommand extends Subcommand {
 				const lines = MODULES.map((m) => `${row[m] ? '🟢' : '🔴'} **${MODULE_LABELS[m]}**`);
 				return interaction.editReply(`### Module Status for \`${guildId}\`\n\n${lines.join('\n')}`);
 			}
-			const row = await getGlobalModules();
-			const lines = MODULES.map((m) => `${row[m] ? '🟢' : '🔴'} **${MODULE_LABELS[m]}**`);
+			const isOn = await globalEnabled();
+			const lines = MODULES.map((m) => `${isOn(m) ? '🟢' : '🔴'} **${MODULE_LABELS[m]}**`);
 			return interaction.editReply(`### Global Module Status\n\n${lines.join('\n')}`);
 		}
 
@@ -629,20 +644,22 @@ export class AdminCommand extends Subcommand {
 				const state = row[module] ? 'enabled 🟢' : 'disabled 🔴';
 				return interaction.editReply(warningReply(`**${MODULE_LABELS[module]}** is ${state} in \`${guildId}\`.`));
 			}
-			const row = await getGlobalModules();
-			const state = row[module] ? 'enabled 🟢' : 'disabled 🔴';
+			const isOn = await globalEnabled();
+			const state = isOn(module) ? 'enabled 🟢' : 'disabled 🔴';
 			return interaction.editReply(warningReply(`**${MODULE_LABELS[module]}** is globally ${state}.`));
 		}
 
 		// ── Toggle ───────────────────────────────────────────────────────────────
 		if (guildId) {
 			await setModule(guildId, module, enabled);
+			invalidateModuleCache(guildId);
 			return interaction.editReply(
 				successReply(`**${MODULE_LABELS[module]}** ${enabled ? 'enabled 🟢' : 'disabled 🔴'} for \`${guildId}\`.`),
 			);
 		}
 
 		await setGlobalModule(module, enabled);
+		invalidateModuleCache();
 		return interaction.editReply(
 			successReply(
 				`**${MODULE_LABELS[module]}** globally ${enabled ? 'enabled 🟢' : 'disabled 🔴'}${!enabled ? ' — overrides all per-guild settings.' : '.'}`,
@@ -733,6 +750,7 @@ export class AdminCommand extends Subcommand {
 			const column = interaction.options.getString('column', true);
 			const value = interaction.options.getString('value', true);
 			const { meta, row } = await setColumn(table, key, column, value, interaction.user.id);
+			invalidateCachesFor(meta.name);
 			return interaction.editReply(buildResultReply(`Updated \`${meta.name}.${column}\``, formatRowsJson([row])));
 		} catch (err) {
 			return interaction.editReply(errorReply(err instanceof Error ? err.message : 'Failed.'));
@@ -747,6 +765,7 @@ export class AdminCommand extends Subcommand {
 			const table = interaction.options.getString('table', true);
 			const data = interaction.options.getString('data', true);
 			const { meta, row, insertId } = await insertRow(table, data, interaction.user.id);
+			invalidateCachesFor(meta.name);
 			if (row) {
 				return interaction.editReply(buildResultReply(`Inserted into \`${meta.name}\``, formatRowsJson([row])));
 			}
@@ -768,6 +787,7 @@ export class AdminCommand extends Subcommand {
 			const table = interaction.options.getString('table', true);
 			const key = interaction.options.getString('key', true);
 			const { meta, deleted } = await deleteRow(table, key, interaction.user.id);
+			invalidateCachesFor(meta.name);
 			return interaction.editReply(buildResultReply(`Deleted from \`${meta.name}\``, formatRowsJson([deleted])));
 		} catch (err) {
 			return interaction.editReply(errorReply(err instanceof Error ? err.message : 'Failed.'));
@@ -881,6 +901,7 @@ export class AdminCommand extends Subcommand {
 			const key = interaction.options.getString('key', true);
 			const data = interaction.options.getString('data', true);
 			const { meta, row } = await patchRow(table, key, data, interaction.user.id);
+			invalidateCachesFor(meta.name);
 			return interaction.editReply(buildResultReply(`Patched \`${meta.name}\``, formatRowsJson([row])));
 		} catch (err) {
 			return interaction.editReply(errorReply(err instanceof Error ? err.message : 'Failed.'));
@@ -896,6 +917,7 @@ export class AdminCommand extends Subcommand {
 			const key = interaction.options.getString('key', true);
 			const overrides = interaction.options.getString('overrides');
 			const { meta, row, insertId } = await cloneRow(table, key, interaction.user.id, overrides);
+			invalidateCachesFor(meta.name);
 			if (row) {
 				return interaction.editReply(buildResultReply(`Cloned \`${meta.name}\``, formatRowsJson([row])));
 			}
@@ -925,6 +947,7 @@ export class AdminCommand extends Subcommand {
 				filterValue,
 				confirmAll,
 			});
+			invalidateCachesFor(meta.name);
 			return interaction.editReply(
 				successReply(`Updated **${affected}** row${affected === 1 ? '' : 's'} on \`${meta.name}.${column}\`.`),
 			);
@@ -947,6 +970,7 @@ export class AdminCommand extends Subcommand {
 				filterValue,
 				confirmAll,
 			});
+			invalidateCachesFor(meta.name);
 			return interaction.editReply(
 				successReply(`Purged **${affected}** row${affected === 1 ? '' : 's'} from \`${meta.name}\`.`),
 			);

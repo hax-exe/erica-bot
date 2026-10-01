@@ -5,6 +5,9 @@ import { Colors, logContainer } from '../../lib/components.js';
 import { formatUser, sendLog } from '../../lib/LoggingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
+/** A boost whose premiumSince is newer than this is treated as new when the old member is uncached. */
+const RECENT_BOOST_MS = 2 * 60_000;
+
 @ApplyOptions<Listener.Options>({
 	name: 'guildMemberUpdateLogging',
 	event: Events.GuildMemberUpdate,
@@ -12,16 +15,17 @@ import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 export class GuildMemberUpdateListener extends Listener<typeof Events.GuildMemberUpdate> {
 	public override async run(oldMember: GuildMember | PartialGuildMember, newMember: GuildMember) {
 		if (newMember.user.bot) return;
-		// Every check below compares against the old state. A partial (uncached) old member has no
-		// boost/avatar/pending data, which would read as a change and log false events.
-		if (oldMember.partial) return;
 		if (!(await isModuleEnabled(newMember.guild.id, 'logging'))) return;
 
 		const userValue = `${formatUser(newMember.id, newMember.user.username)}`;
 
 		// ── Nitro boost status ────────────────────────────────────────────────────
-		const wasBoosting = oldMember.premiumSinceTimestamp != null;
+		// A partial (uncached) old member has no premiumSince to compare against: only a boost whose
+		// premiumSince is brand new counts as "started", so existing boosters don't log false events.
 		const isBoosting = newMember.premiumSinceTimestamp != null;
+		const wasBoosting = oldMember.partial
+			? isBoosting && Date.now() - newMember.premiumSinceTimestamp! > RECENT_BOOST_MS
+			: oldMember.premiumSinceTimestamp != null;
 
 		if (!wasBoosting && isBoosting) {
 			await sendLog(
@@ -44,6 +48,10 @@ export class GuildMemberUpdateListener extends Listener<typeof Events.GuildMembe
 				}),
 			).catch(() => null);
 		}
+
+		// Every check below compares against the old state. A partial (uncached) old member has no
+		// avatar/pending data, which would read as a change and log false events.
+		if (oldMember.partial) return;
 
 		// ── Server profile avatar ─────────────────────────────────────────────────
 		const oldAvatar = oldMember.avatar ?? null;

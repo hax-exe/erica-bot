@@ -67,7 +67,7 @@ export class ReactionRoleCommand extends Subcommand {
 							o
 								.setName('label')
 								.setDescription('Label shown on the button/option.')
-								.setMaxLength(100)
+								.setMaxLength(80) // button labels cap at 80 characters
 								.setRequired(true),
 						)
 						.addStringOption((o) =>

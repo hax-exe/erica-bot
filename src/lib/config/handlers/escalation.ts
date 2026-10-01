@@ -122,7 +122,9 @@ export class EscalationHandler {
 		});
 
 		if (!rules.length) {
-			return interaction.editReply(errorReply('No escalation rules configured. Use `/escalation add` to create one.'));
+			return interaction.editReply(
+				errorReply('No escalation rules configured. Use `/mod escalation add` to create one.'),
+			);
 		}
 
 		const lines = rules.map((r) => {

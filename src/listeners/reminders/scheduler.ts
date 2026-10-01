@@ -16,6 +16,14 @@ import { Colors, CV2_FLAG } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { humanDuration } from '../../lib/parseDuration.js';
 
+/** Discord errors that no retry can fix: unknown channel/guild/member/role, missing access/permissions, DMs closed. */
+const PERMANENT_DISCORD_ERRORS = new Set([10003, 10004, 10007, 10011, 50001, 50007, 50013]);
+
+function permanentDiscordErrorCode(err: unknown): number | null {
+	const code = (err as { code?: unknown } | null)?.code;
+	return typeof code === 'number' && PERMANENT_DISCORD_ERRORS.has(code) ? code : null;
+}
+
 @ApplyOptions<Listener.Options>({
 	name: 'reminderScheduler',
 	event: Events.ClientReady,
@@ -33,17 +41,27 @@ export class ReminderSchedulerListener extends Listener<typeof Events.ClientRead
 					where: and(eq(schema.reminders.done, false), lte(schema.reminders.remindAt, now)),
 				});
 
+				/** Retire a reminder that can never be delivered (guarded on remindAt so a concurrent reschedule wins). */
+				const giveUp = async (reminder: (typeof due)[number], why: string) => {
+					client.logger.warn(`[ReminderScheduler] Dropping reminder ${reminder.id}: ${why}`);
+					await db
+						.update(schema.reminders)
+						.set({ done: true })
+						.where(
+							and(
+								eq(schema.reminders.id, reminder.id),
+								eq(schema.reminders.done, false),
+								eq(schema.reminders.remindAt, reminder.remindAt),
+							),
+						)
+						.catch((err) => client.logger.error(`[ReminderScheduler] Failed to retire reminder ${reminder.id}:`, err));
+				};
+
 				for (const reminder of due) {
 					try {
-						const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
+						const channel = await client.channels.fetch(reminder.channelId);
 						if (!channel?.isTextBased()) {
-							// Channel gone — stop retrying one-off reminders
-							if (!reminder.intervalMs) {
-								await db
-									.update(schema.reminders)
-									.set({ done: true })
-									.where(and(eq(schema.reminders.id, reminder.id), eq(schema.reminders.done, false)));
-							}
+							await giveUp(reminder, `channel ${reminder.channelId} can no longer receive messages.`);
 							continue;
 						}
 
@@ -115,8 +133,14 @@ export class ReminderSchedulerListener extends Listener<typeof Events.ClientRead
 								.where(and(eq(schema.reminders.id, reminder.id), eq(schema.reminders.done, false)));
 						}
 					} catch (err) {
-						client.logger.warn(`[ReminderScheduler] Failed to deliver reminder ${reminder.id}:`, err);
-						// Leave row due so the next tick can retry
+						const code = permanentDiscordErrorCode(err);
+						if (code !== null) {
+							// Unknown channel / no access / DMs closed… — retrying every minute would never succeed.
+							await giveUp(reminder, `Discord error ${code} (${(err as Error).message}).`);
+						} else {
+							// Transient failure — leave the row due so the next tick can retry
+							client.logger.warn(`[ReminderScheduler] Failed to deliver reminder ${reminder.id}; will retry:`, err);
+						}
 					}
 				}
 			} catch (err) {

@@ -3,7 +3,10 @@ import type { Subcommand } from '@sapphire/plugin-subcommands';
 import { MessageFlags } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import { Colors, errorReply, logContainer, successReply } from '../../../lib/components.js';
+import { clip, joinLinesCapped } from '../../../lib/config/listFormat.js';
 import { db, schema } from '../../../lib/database.js';
+
+const SERVER_ONLY = 'This command can only be used in a server.';
 
 export class PresetsHandler {
 	public async autocompleteRun(interaction: Command.AutocompleteInteraction) {
@@ -27,7 +30,7 @@ export class PresetsHandler {
 	public async runAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 
 		const reason = interaction.options.getString('reason', true);
 
@@ -64,7 +67,7 @@ export class PresetsHandler {
 	public async runRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 
 		const id = interaction.options.getInteger('id', true);
 
@@ -103,7 +106,7 @@ export class PresetsHandler {
 	public async runList(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 
 		const current = await db.query.moderationPresets.findMany({
 			where: eq(schema.moderationPresets.guildId, interaction.guild.id),
@@ -113,7 +116,7 @@ export class PresetsHandler {
 			return interaction.editReply(errorReply('There are no moderation presets configured for this server.'));
 		}
 
-		const list = current.map((p) => `**ID ${p.id}:** ${p.reason}`).join('\n');
+		const list = joinLinesCapped(current.map((p) => `**ID ${p.id}:** ${clip(p.reason, 200)}`));
 		return interaction.editReply({ content: `**Moderation Presets:**\n${list}` });
 	}
 }

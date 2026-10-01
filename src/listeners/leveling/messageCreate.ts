@@ -4,10 +4,11 @@ import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { Colors, CV2_FLAG, makeContainer, separator } from '../../lib/components.js';
 import { getLevelRoles, getOrCreateLevelSettings, tryAddXp } from '../../lib/LevelingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 export class LevelingMessageCreateListener extends Listener {
 	public constructor(context: Listener.LoaderContext) {
-		super(context, { event: 'messageCreate' });
+		super(context, { name: 'levelingMessageCreate', event: 'messageCreate' });
 	}
 
 	public async run(message: Message) {
@@ -19,11 +20,11 @@ export class LevelingMessageCreateListener extends Listener {
 		if (!settings.enabled) return;
 
 		// No-XP channel check
-		const noXpChannels = JSON.parse(settings.noXpChannelIds) as string[];
+		const noXpChannels = safeJsonParse<string[]>(settings.noXpChannelIds, []);
 		if (noXpChannels.includes(message.channelId)) return;
 
 		// No-XP role check — fetch member if not in cache so role checks and rewards work
-		const noXpRoles = JSON.parse(settings.noXpRoleIds) as string[];
+		const noXpRoles = safeJsonParse<string[]>(settings.noXpRoleIds, []);
 		const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
 		if (member && noXpRoles.some((r) => member.roles.cache.has(r))) return;
 

@@ -10,7 +10,7 @@ const _cooldowns = new Map<string, number>();
 
 export class StickyMessageListener extends Listener {
 	public constructor(context: Listener.LoaderContext) {
-		super(context, { event: 'messageCreate' });
+		super(context, { name: 'stickyMessageCreate', event: 'messageCreate' });
 	}
 
 	public async run(message: Message) {

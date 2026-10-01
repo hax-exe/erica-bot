@@ -12,6 +12,7 @@ import {
 	WebhookClient,
 } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
+import { WEBHOOK_NAMES } from '../../lib/brand.js';
 import {
 	Colors,
 	CV2_FLAG,
@@ -22,6 +23,7 @@ import {
 	successReply,
 	warningReply,
 } from '../../lib/components.js';
+import { clip, joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
 import { getReviewSettings, upsertReviewSettings } from '../../lib/ReviewUtil.js';
 import { closeTicket, friendlyTicketError, postTicketPanel } from '../../lib/TicketManager.js';
@@ -224,12 +226,12 @@ export class TicketCommand extends Subcommand {
 		);
 	}
 
-	private checkAdmin(interaction: Subcommand.ChatInputCommandInteraction): boolean {
+	private async checkAdmin(interaction: Subcommand.ChatInputCommandInteraction): Promise<boolean> {
 		if (
 			!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) &&
 			!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
 		) {
-			interaction.editReply(
+			await interaction.editReply(
 				errorReply('You must have the **Manage Channels** permission to configure the ticket system.'),
 			);
 			return false;
@@ -244,7 +246,7 @@ export class TicketCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
-		if (!this.checkAdmin(interaction)) return;
+		if (!(await this.checkAdmin(interaction))) return;
 
 		try {
 			await postTicketPanel(interaction.guild);
@@ -389,7 +391,7 @@ export class TicketCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild())
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		if (!this.checkAdmin(interaction)) return;
+		if (!(await this.checkAdmin(interaction))) return;
 
 		const channel = interaction.options.getChannel('channel');
 		await upsertReviewSettings(interaction.guildId, { channelId: channel?.id ?? null });
@@ -412,7 +414,7 @@ export class TicketCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
-		if (!this.checkAdmin(interaction)) return;
+		if (!(await this.checkAdmin(interaction))) return;
 
 		const channel = interaction.options.getChannel('channel') as TextChannel | null;
 
@@ -420,21 +422,19 @@ export class TicketCommand extends Subcommand {
 		const [row] = await db.select().from(schema.guilds).where(eq(schema.guilds.id, interaction.guildId)).limit(1);
 
 		const existingUrl = row?.ticketLogWebhookUrl ?? null;
-		if (existingUrl) {
-			await tryDeleteWebhook(existingUrl);
-		}
 
 		if (!channel) {
 			await this.upsertGuild(interaction.guildId, { ticketLogWebhookUrl: null });
+			if (existingUrl) await tryDeleteWebhook(existingUrl);
 			return interaction.editReply(successReply('Ticket log channel cleared.'));
 		}
 
-		// Create a new webhook using the bot's avatar
+		// Create and save the new webhook (bot avatar) before deleting the old one, so a failure keeps the working URL.
 		let webhookUrl: string;
 		try {
 			const avatarUrl = interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 });
 			const wh = await channel.createWebhook({
-				name: 'Erica — Ticket Logs',
+				name: WEBHOOK_NAMES.ticketLogs,
 				avatar: avatarUrl,
 				reason: `Set by ${interaction.user.tag} via /ticket`,
 			});
@@ -448,6 +448,7 @@ export class TicketCommand extends Subcommand {
 		}
 
 		await this.upsertGuild(interaction.guildId, { ticketLogWebhookUrl: webhookUrl });
+		if (existingUrl && existingUrl !== webhookUrl) await tryDeleteWebhook(existingUrl);
 		return interaction.editReply(successReply(`Ticket logs will be posted in <#${channel.id}>.`));
 	}
 
@@ -534,7 +535,7 @@ export class TicketCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild())
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		if (!this.checkAdmin(interaction)) return;
+		if (!(await this.checkAdmin(interaction))) return;
 
 		const settings = await getReviewSettings(interaction.guildId);
 		if (!settings?.channelId) {
@@ -634,11 +635,11 @@ export class TicketCommand extends Subcommand {
 
 		const lines = entries.map((e, i) => {
 			const ts = time(Math.floor(e.createdAt.getTime() / 1000), TimestampStyles.ShortDate);
-			return `\`${i + 1}.\` <@${e.userId}> (\`${e.userId}\`) — ${e.reason} — added by <@${e.addedById}> ${ts}`;
+			return `\`${i + 1}.\` <@${e.userId}> (\`${e.userId}\`) — ${clip(e.reason)} — added by <@${e.addedById}> ${ts}`;
 		});
 
 		return interaction.editReply(
-			`**Support Blacklist** (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})\n\n${lines.join('\n')}`,
+			`**Support Blacklist** (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})\n\n${joinLinesCapped(lines)}`,
 		);
 	}
 
@@ -649,7 +650,7 @@ export class TicketCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
-		if (!this.checkAdmin(interaction)) return;
+		if (!(await this.checkAdmin(interaction))) return;
 
 		try {
 			reloadTicketsConfig();

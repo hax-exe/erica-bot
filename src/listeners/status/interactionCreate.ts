@@ -2,7 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { Events, type Interaction, MessageFlags } from 'discord.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
-import { CV2_FLAG, errorReply, successReply } from '../../lib/components.js';
+import { CV2_FLAG, errorReply, successReply, warningReply } from '../../lib/components.js';
 import {
 	buildStatusData,
 	buildStatusPanel,
@@ -11,6 +11,12 @@ import {
 	subscribeUser,
 	unsubscribeUser,
 } from '../../lib/StatusUtil.js';
+
+const USER_REFRESH_COOLDOWN_MS = 30_000;
+const GLOBAL_REFRESH_COOLDOWN_MS = 10_000;
+/** userId → when that user last triggered a refresh (pruned as entries expire). */
+const lastRefreshByUser = new Map<string, number>();
+let lastGlobalRefresh = 0;
 
 @ApplyOptions<Listener.Options>({
 	name: 'statusButtonHandler',
@@ -23,6 +29,24 @@ export class StatusButtonListener extends Listener<typeof Events.InteractionCrea
 
 		// ── Refresh ───────────────────────────────────────────────────────────────
 		if (interaction.customId === 'status:refresh') {
+			// Every refresh runs all service checks and edits the panel — rate-limit it per user and globally.
+			const now = Date.now();
+			const readyAt = Math.max(
+				(lastRefreshByUser.get(interaction.user.id) ?? 0) + USER_REFRESH_COOLDOWN_MS,
+				lastGlobalRefresh + GLOBAL_REFRESH_COOLDOWN_MS,
+			);
+			if (now < readyAt) {
+				const seconds = Math.ceil((readyAt - now) / 1000);
+				return interaction.reply(
+					warningReply(`The status panel was refreshed recently. Please wait **${seconds}s** and try again.`) as any,
+				);
+			}
+			lastGlobalRefresh = now;
+			lastRefreshByUser.set(interaction.user.id, now);
+			for (const [userId, at] of lastRefreshByUser) {
+				if (now - at >= USER_REFRESH_COOLDOWN_MS) lastRefreshByUser.delete(userId);
+			}
+
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 			const statusMap = await runAllChecks();

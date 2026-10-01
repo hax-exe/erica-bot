@@ -2,7 +2,14 @@
 import { Command } from '@sapphire/framework';
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, meta, separator, successReply } from '../../lib/components.js';
-import { getOrCreateModules, MODULE_LABELS, MODULES, type Module, setModule } from '../../lib/ModuleUtil.js';
+import {
+	getOrCreateModules,
+	invalidateModuleCache,
+	MODULE_LABELS,
+	MODULES,
+	type Module,
+	setModule,
+} from '../../lib/ModuleUtil.js';
 
 const MODULE_CHOICES = MODULES.map((m) => ({ name: MODULE_LABELS[m], value: m }));
 
@@ -59,6 +66,7 @@ export class ModuleCommand extends Command {
 			const mod = interaction.options.getString('module', true) as Module;
 			const enabled = sub === 'enable';
 			await setModule(interaction.guildId, mod, enabled);
+			invalidateModuleCache(interaction.guildId);
 			return interaction.editReply(successReply(`**${MODULE_LABELS[mod]}** ${enabled ? 'enabled' : 'disabled'}.`));
 		}
 

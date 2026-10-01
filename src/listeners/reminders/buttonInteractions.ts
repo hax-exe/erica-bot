@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
-import { Events, type Interaction, MessageFlags } from 'discord.js';
+import { Events, type Interaction } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { errorReply, successReply } from '../../lib/components.js';
@@ -44,12 +44,8 @@ export class ReminderSnoozeListener extends Listener<typeof Events.InteractionCr
 			.where(eq(schema.reminders.id, reminderId));
 
 		const label = minutes >= 60 ? `${minutes / 60}h` : `${minutes}m`;
-		// biome-ignore lint/suspicious/noExplicitAny: CV2 flag type gap
-		return interaction.reply({
-			...(successReply(
-				`Snoozed for **${label}** — I'll remind you <t:${Math.floor(newTime.getTime() / 1000)}:R>.`,
-			) as any),
-			flags: MessageFlags.Ephemeral,
-		});
+		return interaction.reply(
+			successReply(`Snoozed for **${label}** — I'll remind you <t:${Math.floor(newTime.getTime() / 1000)}:R>.`) as any,
+		);
 	}
 }

@@ -33,13 +33,20 @@ export class ReactionRoleButtonListener extends Listener<typeof Events.Interacti
 
 		const member = interaction.member;
 		const hasRole = member.roles.cache.has(roleId);
+		const failed = `I couldn't update your roles — my role may be below <@&${roleId}>, or I'm missing Manage Roles.`;
 
 		if (hasRole) {
-			await member.roles.remove(roleId).catch(() => null);
-			return interaction.editReply(warningReply(`Removed <@&${roleId}>.`));
+			const removed = await member.roles.remove(roleId).then(
+				() => true,
+				() => false,
+			);
+			return interaction.editReply(removed ? warningReply(`Removed <@&${roleId}>.`) : errorReply(failed));
 		}
 
-		await member.roles.add(roleId).catch(() => null);
-		return interaction.editReply(successReply(`Added <@&${roleId}>.`));
+		const added = await member.roles.add(roleId).then(
+			() => true,
+			() => false,
+		);
+		return interaction.editReply(added ? successReply(`Added <@&${roleId}>.`) : errorReply(failed));
 	}
 }

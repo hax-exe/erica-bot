@@ -34,27 +34,37 @@ export class ReactionRoleSelectMenuListener extends Listener<typeof Events.Inter
 		const member = interaction.member;
 		const added: string[] = [];
 		const removed: string[] = [];
+		const failed: string[] = [];
+		const ok = () => true;
+		const notOk = () => false;
 
 		for (const roleId of panelRoleIds) {
 			const hasRole = member.roles.cache.has(roleId);
 			const shouldHave = selectedRoleIds.has(roleId);
 
 			if (shouldHave && !hasRole) {
-				await member.roles.add(roleId).catch(() => null);
-				added.push(roleId);
+				if (await member.roles.add(roleId).then(ok, notOk)) added.push(roleId);
+				else failed.push(roleId);
 			} else if (!shouldHave && hasRole) {
-				await member.roles.remove(roleId).catch(() => null);
-				removed.push(roleId);
+				if (await member.roles.remove(roleId).then(ok, notOk)) removed.push(roleId);
+				else failed.push(roleId);
 			}
 		}
 
-		if (!added.length && !removed.length) {
+		if (!added.length && !removed.length && !failed.length) {
 			return interaction.followUp(warningReply('No changes — you already have the selected roles.') as any);
 		}
 
+		const mentions = (ids: string[]) => ids.map((id) => `<@&${id}>`).join(', ');
 		const parts: string[] = [];
-		if (added.length) parts.push(`**Added:** ${added.map((id) => `<@&${id}>`).join(', ')}`);
-		if (removed.length) parts.push(`**Removed:** ${removed.map((id) => `<@&${id}>`).join(', ')}`);
-		return interaction.followUp(successReply(parts.join('\n'), true) as any);
+		if (added.length) parts.push(`**Added:** ${mentions(added)}`);
+		if (removed.length) parts.push(`**Removed:** ${mentions(removed)}`);
+		if (failed.length) {
+			parts.push(
+				`I couldn't update ${mentions(failed)} — my role may be below ${failed.length === 1 ? 'it' : 'them'}, or I'm missing Manage Roles.`,
+			);
+		}
+		const reply = !failed.length ? successReply : added.length || removed.length ? warningReply : errorReply;
+		return interaction.followUp(reply(parts.join('\n'), true) as any);
 	}
 }

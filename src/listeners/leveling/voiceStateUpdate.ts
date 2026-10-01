@@ -3,6 +3,7 @@ import { Listener } from '@sapphire/framework';
 import { Events, type GuildMember, type VoiceState } from 'discord.js';
 import { addVoiceXp, getLevelRoles, getOrCreateLevelSettings, type LevelSettingsRow } from '../../lib/LevelingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 // ─── In-memory session tracking ───────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export class LevelingVoiceListener extends Listener<typeof Events.VoiceStateUpda
 			return;
 		}
 
-		const noXpVoice = JSON.parse(settings.noXpVoiceChannelIds) as string[];
+		const noXpVoice = safeJsonParse<string[]>(settings.noXpVoiceChannelIds, []);
 		const afkChannelId = newState.guild.afkChannelId;
 
 		/** A voice state is eligible for XP if it's in a real, non-excluded channel and not deafened. */
