@@ -1,5 +1,6 @@
 import { createCanvas, GlobalFonts, type Image, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { BOT_NAME } from './brand.js';
+import { isPublicHttpUrl } from './safe.js';
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 GlobalFonts.registerFromPath('./assets/fonts/Minecraft-Seven_v2.ttf', 'MCseven');
@@ -12,15 +13,16 @@ const IMAGE_FETCH_TIMEOUT_MS = 8_000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
- * Load a remote image (custom backgrounds are user-supplied URLs). Only http(s), 8 s timeout, 5 MB cap.
+ * Load a remote image (custom backgrounds are user-supplied URLs). Only public http(s) hosts
+ * (no IPs / internal names), no redirects, 8 s timeout, 5 MB cap.
  * Returns null on any failure so the caller falls back to the default background / avatar.
  */
 async function safeLoadImage(url: string) {
 	try {
-		const { protocol } = new URL(url);
-		if (protocol !== 'http:' && protocol !== 'https:') return null;
+		if (!isPublicHttpUrl(url)) return null;
 
-		const res = await fetch(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+		// A redirect could point at an internal address the host check above would have rejected.
+		const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
 		if (!res.ok || !res.body) return null;
 		if (Number(res.headers.get('content-length') ?? 0) > MAX_IMAGE_BYTES) {
 			await res.body.cancel().catch(() => null);

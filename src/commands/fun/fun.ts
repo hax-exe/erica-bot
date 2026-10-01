@@ -1979,7 +1979,11 @@ export class FunCommand extends Subcommand {
 			),
 		);
 
-		const headerMsg = await interaction.channel!.send({ components: [c], flags: CV2_FLAG as any });
+		const headerMsg = await interaction.channel!.send({
+			components: [c],
+			flags: CV2_FLAG as any,
+			allowedMentions: { parse: [] }, // the topic is member text
+		});
 
 		storySessions.set(interaction.channelId, {
 			words: [],
@@ -2023,7 +2027,7 @@ export class FunCommand extends Subcommand {
 			),
 		);
 
-		await interaction.channel!.send({ components: [c], flags: CV2_FLAG as any });
+		await interaction.channel!.send({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 		return interaction.editReply(successReply('Story ended and posted!'));
 	}
 

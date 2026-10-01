@@ -93,7 +93,12 @@ export class SuggestCommand extends Subcommand {
 
 		let msg: Message;
 		try {
-			msg = await channel.send({ components: [buildSuggestionContainer(suggestion)], flags: CV2_FLAG });
+			// Member-written text: never let it ping @everyone/roles/users.
+			msg = await channel.send({
+				components: [buildSuggestionContainer(suggestion)],
+				flags: CV2_FLAG,
+				allowedMentions: { parse: [] },
+			});
 		} catch (err) {
 			// Don't leave a suggestion row behind that points at no message (messageId '0').
 			await db

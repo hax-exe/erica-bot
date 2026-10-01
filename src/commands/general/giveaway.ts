@@ -409,25 +409,24 @@ export class GiveawayCommand extends Subcommand {
 		const entrants = safeJsonParse<string[]>(giveaway.entrantIds, []);
 		if (!entrants.length) return interaction.editReply(errorReply('No entries to reroll from.'));
 
-		// A reroll draws new winners: previous winners are excluded, and entrants who no longer hold the
-		// required role are skipped (checked against the member cache, like bonus-role weighting).
+		// A reroll draws new winners. Entrants who no longer hold the required role are skipped (checked
+		// against the member cache, like bonus-role weighting). The current winners are excluded when
+		// enough other entrants remain to fill every slot; otherwise everyone is drawn from again, so a
+		// reroll never shrinks the winner list.
 		const previousWinners = new Set(safeJsonParse<string[]>(giveaway.winnerIds, []));
 		const requiredRoleId = giveaway.requiredRoleId;
-		const eligible = entrants.filter((userId) => {
-			if (previousWinners.has(userId)) return false;
+		const qualified = entrants.filter((userId) => {
 			if (!requiredRoleId) return true;
 			const member = interaction.guild.members.cache.get(userId);
 			return !member || member.roles.cache.has(requiredRoleId);
 		});
-		if (!eligible.length) {
+		if (!qualified.length) {
 			return interaction.editReply(
-				errorReply(
-					requiredRoleId
-						? 'No eligible entrants left to reroll from — previous winners and members without the required role are excluded.'
-						: 'No eligible entrants left to reroll from — previous winners are excluded.',
-				),
+				errorReply('No eligible entrants left to reroll from — members without the required role are excluded.'),
 			);
 		}
+		const freshEntrants = qualified.filter((userId) => !previousWinners.has(userId));
+		const eligible = freshEntrants.length >= giveaway.winnerCount ? freshEntrants : qualified;
 
 		const bonusRoles = safeJsonParse<GiveawayBonusRole[]>(giveaway.bonusRoles, []);
 		const winners = pickWinners(eligible, giveaway.winnerCount, bonusRoles, interaction.guild);

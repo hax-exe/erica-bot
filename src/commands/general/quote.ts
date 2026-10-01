@@ -1,6 +1,13 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
-import { ApplicationCommandType, PermissionFlagsBits, TextDisplayBuilder, TimestampStyles, time } from 'discord.js';
+import {
+	ApplicationCommandType,
+	ChannelType,
+	PermissionFlagsBits,
+	TextDisplayBuilder,
+	TimestampStyles,
+	time,
+} from 'discord.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, separator, warningReply } from '../../lib/components.js';
 
 const MESSAGE_LINK_RE = /https?:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/channels\/(\d+)\/(\d+)\/(\d+)/i;
@@ -76,7 +83,12 @@ export class QuoteCommand extends Command {
 
 		// The bot may see channels the invoker can't — never repost from a channel they can't read.
 		const perms = channel.permissionsFor(interaction.member);
-		if (!perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) {
+		let canRead = perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]) ?? false;
+		// A thread reports its parent's permissions; a private thread also needs membership (or Manage Threads).
+		if (canRead && channel.type === ChannelType.PrivateThread && !perms?.has(PermissionFlagsBits.ManageThreads)) {
+			canRead = (await channel.members.fetch({ member: interaction.user.id }).catch(() => null)) != null;
+		}
+		if (!canRead) {
 			return interaction.editReply(errorReply("You don't have access to that message.", false));
 		}
 

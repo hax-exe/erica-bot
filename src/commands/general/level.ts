@@ -15,18 +15,16 @@ import {
 	setXp,
 } from '../../lib/LevelingUtil.js';
 import { renderRankCard } from '../../lib/RankCardUtil.js';
+import { isPublicHttpUrl } from '../../lib/safe.js';
 
 const MAX_BACKGROUND_URL_LENGTH = 512;
 
-/** http(s) URL of bounded length. Parsed with URL — a regex here previously backtracked catastrophically. */
+/**
+ * Public http(s) URL of bounded length — the rank card fetches it from the bot's own network.
+ * Parsed with URL (a regex here previously backtracked catastrophically).
+ */
 function isValidBackgroundUrl(input: string): boolean {
-	if (!input || input.length > MAX_BACKGROUND_URL_LENGTH) return false;
-	try {
-		const url = new URL(input);
-		return url.protocol === 'http:' || url.protocol === 'https:';
-	} catch {
-		return false;
-	}
+	return isPublicHttpUrl(input, MAX_BACKGROUND_URL_LENGTH);
 }
 
 function hasModPerms(perms: Readonly<import('discord.js').PermissionsBitField> | null): boolean {
