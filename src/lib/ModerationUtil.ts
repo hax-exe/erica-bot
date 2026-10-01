@@ -19,6 +19,7 @@ import { Colors, CV2_FLAG, logContainer, makeContainer } from './components.js';
 import { db, schema } from './database.js';
 import { logFields, sendModLog } from './LoggingUtil.js';
 import { humanDuration } from './parseDuration.js';
+import { isDuplicateKeyError } from './safe.js';
 
 // ─── Timeout Bypass ─────────────────────────────────────────────────────────────
 
@@ -189,8 +190,10 @@ export async function createInfraction(opts: CreateInfractionOptions) {
 			}
 			return infraction;
 		} catch (err: unknown) {
+			// Drizzle wraps driver errors, so check the error chain first; the message check is a fallback.
 			const msg = err instanceof Error ? err.message : String(err);
-			const isDuplicate = msg.includes('UNIQUE constraint failed') || msg.includes('Duplicate entry');
+			const isDuplicate =
+				isDuplicateKeyError(err) || msg.includes('UNIQUE constraint failed') || msg.includes('Duplicate entry');
 			if (!isDuplicate || attempt === 4) throw err;
 		}
 	}
@@ -291,6 +294,23 @@ export async function clearUserInfractions(guildId: string, userId: string, warn
 	const result = await db.select({ n: count() }).from(schema.infractions).where(where);
 	await db.delete(schema.infractions).where(where);
 	return result[0]?.n ?? 0;
+}
+
+// ─── Temp bans ─────────────────────────────────────────────────────────────────
+
+/**
+ * Drop any pending temp-ban expiry for a user. Call this on every manual unban and before
+ * applying a new ban, otherwise the old row's expiry would lift a later ban.
+ */
+export async function clearTempbans(guildId: string, userId: string) {
+	await db.delete(schema.tempbans).where(and(eq(schema.tempbans.guildId, guildId), eq(schema.tempbans.userId, userId)));
+}
+
+/** Shorten free text (e.g. a case reason) for list views — a CV2 message holds at most 4000 characters of text. */
+export function truncateText(text: string, max: number): string {
+	// Work in code points so an emoji's surrogate pair is never split.
+	const chars = Array.from(text);
+	return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : text;
 }
 
 // ─── Mod log dispatch ──────────────────────────────────────────────────────────
@@ -461,7 +481,7 @@ export async function applyWarnEscalation(
 
 	if (!rule) return null;
 
-	const member = guild.members.cache.get(target.id);
+	const member = await guild.members.fetch(target.id).catch(() => null);
 	if (!member) return null;
 
 	const reason = `Auto-escalation: ${warnCount} warning${warnCount === 1 ? '' : 's'}`;
@@ -530,6 +550,7 @@ export async function applyWarnEscalation(
 			await member.send({ components: [dm], flags: CV2_FLAG }).catch(() => null);
 
 			await guild.bans.create(target.id, { reason });
+			await clearTempbans(guild.id, target.id);
 			const esc = await createInfraction({
 				guildId: guild.id,
 				userId: target.id,

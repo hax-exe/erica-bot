@@ -2,7 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, successReply } from '../../lib/components.js';
-import { createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
+import { clearTempbans, createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
 
 @ApplyOptions<Command.Options>({
 	name: 'unban',
@@ -86,6 +86,8 @@ export class UnbanCommand extends Command {
 			await ban.user.send({ components: [dm], flags: CV2_FLAG }).catch(() => null);
 
 			await guild.bans.remove(ban.user.id, `[${interaction.user.username}] ${reason}`);
+			// Drop any pending temp-ban expiry so it can't lift a later ban.
+			await clearTempbans(guild.id, ban.user.id);
 
 			const infraction = await createInfraction({
 				guildId: guild.id,

@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
-import { Events, type GuildMember, type PartialGuildMember, userMention } from 'discord.js';
+import { Events, type GuildMember, type PartialGuildMember } from 'discord.js';
 import { Colors, logContainer } from '../../lib/components.js';
 import { formatUser, sendLog } from '../../lib/LoggingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
@@ -12,6 +12,9 @@ import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 export class GuildMemberUpdateListener extends Listener<typeof Events.GuildMemberUpdate> {
 	public override async run(oldMember: GuildMember | PartialGuildMember, newMember: GuildMember) {
 		if (newMember.user.bot) return;
+		// Every check below compares against the old state. A partial (uncached) old member has no
+		// boost/avatar/pending data, which would read as a change and log false events.
+		if (oldMember.partial) return;
 		if (!(await isModuleEnabled(newMember.guild.id, 'logging'))) return;
 
 		const userValue = `${formatUser(newMember.id, newMember.user.username)}`;
@@ -43,7 +46,7 @@ export class GuildMemberUpdateListener extends Listener<typeof Events.GuildMembe
 		}
 
 		// ── Server profile avatar ─────────────────────────────────────────────────
-		const oldAvatar = (oldMember as GuildMember).avatar ?? null;
+		const oldAvatar = oldMember.avatar ?? null;
 		const newAvatar = newMember.avatar ?? null;
 		if (oldAvatar !== newAvatar) {
 			const newAvatarUrl = newMember.avatarURL({ size: 256, extension: 'png' });

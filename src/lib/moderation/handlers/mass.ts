@@ -1,8 +1,17 @@
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder, userMention } from 'discord.js';
-import { Colors, CV2_FLAG, errorReply, logContainer, makeContainer } from '../../../lib/components.js';
+import { Colors, CV2_FLAG, cv2Reply, errorReply, logContainer, makeContainer, meta } from '../../../lib/components.js';
 import { sendModLog } from '../../../lib/LoggingUtil.js';
-import { applyWarnEscalation, checkHierarchy, createInfraction, dispatchModLog } from '../../../lib/ModerationUtil.js';
+import {
+	applyWarnEscalation,
+	checkHierarchy,
+	clearTempbans,
+	createInfraction,
+	dispatchModLog,
+} from '../../../lib/ModerationUtil.js';
 import { humanDuration, parseDuration } from '../../../lib/parseDuration.js';
+
+/** How many per-user failure reasons to list in a mass-action summary. */
+const MAX_FAILURE_LINES = 10;
 
 export class MassHandler {
 	// Helper to extract unique 17-19 digit IDs
@@ -31,25 +40,40 @@ export class MassHandler {
 
 		let bannedCount = 0;
 		let failedCount = 0;
+		const failures: string[] = [];
+		const fail = (id: string, why: string) => {
+			failedCount++;
+			failures.push(`\`${id}\` — ${why}`);
+		};
 		const auditReason = `[${interaction.user.username}] Massban — ${reason}`;
 
 		for (const id of targetIds) {
 			if (id === interaction.user.id || id === interaction.client.user.id) {
-				failedCount++;
+				fail(id, 'You cannot ban yourself or me.');
 				continue;
 			}
 
 			try {
+				// Same checks as /ban: members must be bannable by me and below the invoking moderator.
 				const member = await guild.members.fetch(id).catch(() => null);
-				if (member && !member.bannable) {
-					failedCount++;
-					continue;
+				if (member) {
+					if (!member.bannable) {
+						fail(id, 'My role is too low to ban this member.');
+						continue;
+					}
+					const h = checkHierarchy(interaction.member, member);
+					if (!h.ok) {
+						fail(id, h.reason);
+						continue;
+					}
 				}
 
 				await guild.bans.create(id, {
 					reason: auditReason,
 					deleteMessageSeconds: deleteDays * 86400,
 				});
+				// A permanent ban supersedes any pending temp-ban expiry.
+				await clearTempbans(guild.id, id);
 
 				await createInfraction({
 					guildId: guild.id,
@@ -61,7 +85,7 @@ export class MassHandler {
 
 				bannedCount++;
 			} catch {
-				failedCount++;
+				fail(id, 'The ban request failed.');
 			}
 		}
 
@@ -88,7 +112,12 @@ export class MassHandler {
 				`Successfully banned **${bannedCount}** user(s).\nFailed to ban **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		if (failures.length > 0) {
+			const shown = failures.slice(0, MAX_FAILURE_LINES).map((line) => meta(line));
+			if (failures.length > MAX_FAILURE_LINES) shown.push(meta(`… and ${failures.length - MAX_FAILURE_LINES} more`));
+			c.addTextDisplayComponents(new TextDisplayBuilder().setContent(shown.join('\n')));
+		}
+		return interaction.editReply(cv2Reply(c, true));
 	}
 
 	public async runKick(interaction: any) {
@@ -170,7 +199,7 @@ export class MassHandler {
 				`Successfully kicked **${kickedCount}** user(s).\nFailed to kick **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		return interaction.editReply(cv2Reply(c, true));
 	}
 
 	public async runTimeout(interaction: any) {
@@ -262,7 +291,7 @@ export class MassHandler {
 				`Successfully timed out **${timedOutCount}** user(s) for **${humanDuration(durationMs)}**.\nFailed to timeout **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		return interaction.editReply(cv2Reply(c, true));
 	}
 
 	public async runUnban(interaction: any) {
@@ -289,6 +318,8 @@ export class MassHandler {
 		for (const id of targetIds) {
 			try {
 				await guild.bans.remove(id, auditReason);
+				// Drop any pending temp-ban expiry so it can't lift a later ban.
+				await clearTempbans(guild.id, id);
 
 				await createInfraction({
 					guildId: guild.id,
@@ -327,7 +358,7 @@ export class MassHandler {
 				`Successfully unbanned **${unbannedCount}** user(s).\nFailed to unban **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		return interaction.editReply(cv2Reply(c, true));
 	}
 
 	public async runUntimeout(interaction: any) {
@@ -404,7 +435,7 @@ export class MassHandler {
 				`Successfully removed timeout from **${untimedOutCount}** user(s).\nFailed to remove timeout from **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		return interaction.editReply(cv2Reply(c, true));
 	}
 
 	public async runWarn(interaction: any) {
@@ -440,7 +471,7 @@ export class MassHandler {
 					continue;
 				}
 
-				const member = guild.members.cache.get(id);
+				const member = await guild.members.fetch(id).catch(() => null);
 				if (member) {
 					const h = checkHierarchy(interaction.member, member);
 					if (!h.ok) {
@@ -504,6 +535,6 @@ export class MassHandler {
 				`Successfully warned **${warnedCount}** user(s).\nFailed to warn **${failedCount}** user(s).`,
 			),
 		);
-		return interaction.editReply({ components: [c] });
+		return interaction.editReply(cv2Reply(c, true));
 	}
 }

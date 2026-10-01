@@ -14,6 +14,7 @@ import {
 import { db, schema } from '../../lib/database.js';
 import {
 	checkHierarchy,
+	clearTempbans,
 	createInfraction,
 	dispatchModLog,
 	handleReasonAutocomplete,
@@ -92,7 +93,8 @@ export class BanCommand extends Command {
 			durationMs = parsed;
 		}
 
-		const member = guild.members.cache.get(target.id);
+		// Fetch (not cache-get) so an uncached member can't skip the hierarchy check.
+		const member = await guild.members.fetch(target.id).catch(() => null);
 		if (member) {
 			if (!member.bannable) {
 				return interaction.editReply(
@@ -186,6 +188,8 @@ export class BanCommand extends Command {
 				reason: `[${interaction.user.username}] ${reason}`,
 				deleteMessageSeconds: deleteDays * 86400,
 			});
+			// This ban replaces any earlier temp ban; its expiry must not lift this one.
+			await clearTempbans(guild.id, target.id);
 
 			const infraction = await createInfraction({
 				guildId: guild.id,

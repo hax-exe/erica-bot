@@ -6,6 +6,7 @@ import { Colors, CV2_FLAG, errorReply, makeContainer, successReply } from '../..
 import {
 	applyWarnEscalation,
 	checkHierarchy,
+	clearTempbans,
 	createInfraction,
 	createNote,
 	dispatchModLog,
@@ -23,29 +24,29 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 		if (!interaction.inCachedGuild()) return;
 		if (await isBotBlacklisted(interaction.user.id)) return;
 
-		if (!interaction.memberPermissions?.has('ModerateMembers')) {
-			return interaction.reply({
-				content: 'You do not have permission to use moderation actions.',
-				flags: MessageFlags.Ephemeral,
-			});
-		}
-
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
+		// Custom ID: ctx:<action>:<targetId>[:<messageId>] — the action names the variant.
 		const parts = interaction.customId.split(':');
 		const action = parts[1];
 		const targetId = parts[2];
 		const messageId = parts[3]; // only present for delwarn, deltimeout, delban
 		const guild = interaction.guild;
-		if (
-			(action === 'ban' || action === 'delban') &&
-			!interaction.memberPermissions.has(PermissionFlagsBits.BanMembers)
-		) {
-			return interaction.editReply(errorReply('You need the Ban Members permission for this action.'));
+
+		// Ban/kick variants need that specific permission (e.g. "Delete & Ban" is registered for Ban Members),
+		// so Ban- or Kick-only moderators aren't turned away for lacking Moderate Members.
+		const requiredPermission =
+			action === 'ban' || action === 'delban'
+				? PermissionFlagsBits.BanMembers
+				: action === 'kick'
+					? PermissionFlagsBits.KickMembers
+					: PermissionFlagsBits.ModerateMembers;
+		if (!interaction.memberPermissions.has(requiredPermission)) {
+			return interaction.reply({
+				content: 'You do not have permission to use this moderation action.',
+				flags: MessageFlags.Ephemeral,
+			});
 		}
-		if (action === 'kick' && !interaction.memberPermissions.has(PermissionFlagsBits.KickMembers)) {
-			return interaction.editReply(errorReply('You need the Kick Members permission for this action.'));
-		}
+
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 		// ── Warn & Delwarn ─────────────────────────────────────────────────────────
 
@@ -61,7 +62,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 				return interaction.editReply(errorReply('You cannot warn a bot.'));
 			}
 
-			const member = guild.members.cache.get(target.id);
+			// Fetch (not cache-get) so an uncached member can't skip the hierarchy check or the DM.
+			const member = await guild.members.fetch(target.id).catch(() => null);
 			if (member) {
 				const h = checkHierarchy(interaction.member, member);
 				if (!h.ok) return interaction.editReply(errorReply(h.reason));
@@ -197,7 +199,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 			const target = await interaction.client.users.fetch(targetId).catch(() => null);
 			if (!target) return interaction.editReply(errorReply('Could not find that user.'));
 
-			const member = guild.members.cache.get(target.id);
+			// Fetch (not cache-get) so an uncached member can't skip the hierarchy check.
+			const member = await guild.members.fetch(target.id).catch(() => null);
 			if (member) {
 				if (!member.bannable) {
 					return interaction.editReply(errorReply('I cannot ban this user (missing permissions or higher role).'));
@@ -220,6 +223,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 					reason: `[${interaction.user.username}] [Delete & Ban] ${reason}`,
 					deleteMessageSeconds: deleteDays * 86400,
 				});
+				// A permanent ban supersedes any pending temp-ban expiry.
+				await clearTempbans(guild.id, target.id);
 
 				const infraction = await createInfraction({
 					guildId: guild.id,
@@ -316,7 +321,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 			const target = await interaction.client.users.fetch(targetId).catch(() => null);
 			if (!target) return interaction.editReply(errorReply('Could not find that user.'));
 
-			const member = guild.members.cache.get(target.id);
+			// Fetch (not cache-get) so an uncached member can't skip the hierarchy check.
+			const member = await guild.members.fetch(target.id).catch(() => null);
 			if (member) {
 				if (!member.bannable) {
 					return interaction.editReply(errorReply('I cannot ban this user (missing permissions or higher role).'));
@@ -333,6 +339,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 					reason: `[${interaction.user.username}] ${reason}`,
 					deleteMessageSeconds: deleteDays * 86400,
 				});
+				// A permanent ban supersedes any pending temp-ban expiry.
+				await clearTempbans(guild.id, target.id);
 
 				const infraction = await createInfraction({
 					guildId: guild.id,
@@ -373,5 +381,8 @@ export class ModerationContextMenuListener extends Listener<typeof Events.Intera
 				successReply(`Note **#${note.id}** added for **${target.username}** (\`${target.id}\`).`),
 			);
 		}
+
+		// Unknown/outdated `ctx:` action — the reply is already deferred, so it must be edited.
+		return interaction.editReply(errorReply('This moderation action is no longer available.'));
 	}
 }

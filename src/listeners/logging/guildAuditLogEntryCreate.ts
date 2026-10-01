@@ -13,10 +13,18 @@ import {
 } from 'discord.js';
 import { Colors, logContainer } from '../../lib/components.js';
 import { formatUser, sendLog, sendModLog } from '../../lib/LoggingUtil.js';
-import { createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
+import { clearTempbans, createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Audit-log actions recorded as infractions when someone other than the bot performs them. */
+const EXTERNAL_MOD_ACTIONS = new Set<AuditLogEvent>([
+	AuditLogEvent.MemberKick,
+	AuditLogEvent.MemberBanAdd,
+	AuditLogEvent.MemberBanRemove,
+	AuditLogEvent.MemberUpdate,
+]);
 
 function executor(entry: GuildAuditLogsEntry): string {
 	if (!entry.executorId) return 'Unknown';
@@ -94,12 +102,22 @@ export class AuditLogListener extends Listener<typeof Events.GuildAuditLogEntryC
 	private async handleExternalModAction(entry: GuildAuditLogsEntry, guild: Guild) {
 		// Skip actions performed by this bot (already logged by the command)
 		if (!entry.executorId || entry.executorId === guild.client.user.id) return;
+		if (!EXTERNAL_MOD_ACTIONS.has(entry.action)) return;
 
 		const reason = entry.reason ?? 'No reason provided';
-		const mod: User = entry.executor ?? ({ id: entry.executorId, username: entry.executorId } as any);
-		const targetUser =
+		// entry.executor / entry.target are only set when the user was cached at event time, so fetch
+		// real Users — log cards call displayAvatarURL() on them. The bare { id, username } objects are
+		// a last resort for when the fetch itself fails.
+		const mod: User =
+			entry.executor ??
+			(await guild.client.users.fetch(entry.executorId).catch(() => null)) ??
+			({ id: entry.executorId, username: entry.executorId } as any);
+		const targetUser: User | null =
 			(entry.target as User | null) ??
-			(entry.targetId ? ({ id: entry.targetId, username: `User \`${entry.targetId}\`` } as any) : null);
+			(entry.targetId
+				? ((await guild.client.users.fetch(entry.targetId).catch(() => null)) ??
+					({ id: entry.targetId, username: `User \`${entry.targetId}\`` } as any))
+				: null);
 
 		switch (entry.action) {
 			case AuditLogEvent.MemberKick: {
@@ -117,6 +135,8 @@ export class AuditLogListener extends Listener<typeof Events.GuildAuditLogEntryC
 
 			case AuditLogEvent.MemberBanAdd: {
 				if (!targetUser) return;
+				// A ban from outside the bot is permanent; drop any pending temp-ban expiry so it can't lift it.
+				await clearTempbans(guild.id, targetUser.id);
 				const infraction = await createInfraction({
 					guildId: guild.id,
 					userId: targetUser.id,
@@ -130,6 +150,8 @@ export class AuditLogListener extends Listener<typeof Events.GuildAuditLogEntryC
 
 			case AuditLogEvent.MemberBanRemove: {
 				if (!targetUser) return;
+				// Manual unban in Discord: drop any pending temp-ban expiry so it can't lift a later ban.
+				await clearTempbans(guild.id, targetUser.id);
 				const infraction = await createInfraction({
 					guildId: guild.id,
 					userId: targetUser.id,

@@ -201,30 +201,30 @@ export class CaseCommand extends Subcommand {
 							o.setName('moderator').setDescription('Filter by the moderator who took action.').setRequired(false),
 						),
 				)
+				// combine
+				.addSubcommand((sub) =>
+					sub
+						.setName('combine')
+						.setDescription('Combine multiple cases into a single case.')
+						.addStringOption((o) =>
+							o
+								.setName('target')
+								.setDescription('Target Case ID to merge into.')
+								.setRequired(true)
+								.setMaxLength(20)
+								.setAutocomplete(true),
+						)
+						.addStringOption((o) =>
+							o
+								.setName('cases')
+								.setDescription('Space/comma-separated list of case IDs to merge.')
+								.setRequired(true)
+								.setMaxLength(500),
+						),
+				)
 				// note group
 				.addSubcommandGroup((group) =>
 					group
-						// combine
-						.addSubcommand((sub) =>
-							sub
-								.setName('combine')
-								.setDescription('Combine multiple cases into a single case.')
-								.addStringOption((o) =>
-									o
-										.setName('target')
-										.setDescription('Target Case ID to merge into.')
-										.setRequired(true)
-										.setMaxLength(20)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) =>
-									o
-										.setName('cases')
-										.setDescription('Space/comma-separated list of case IDs to merge.')
-										.setRequired(true)
-										.setMaxLength(500),
-								),
-						)
 						.setName('note')
 						.setDescription('Manage case notes.')
 						.addSubcommand((sub) =>
@@ -551,7 +551,7 @@ export class CaseCommand extends Subcommand {
 					`The reason for your infraction (Case \`${caseId}\`) has been updated by a moderator.\n**New Reason:** ${reason}`,
 				),
 			);
-			const member = guild.members.cache.get(targetUser.id);
+			const member = await guild.members.fetch(targetUser.id).catch(() => null);
 			if (member) {
 				await member.send({ components: [dm], flags: CV2_FLAG }).catch(() => null);
 			}

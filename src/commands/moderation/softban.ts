@@ -14,6 +14,7 @@ import {
 import { db, schema } from '../../lib/database.js';
 import {
 	checkHierarchy,
+	clearTempbans,
 	createInfraction,
 	dispatchModLog,
 	handleReasonAutocomplete,
@@ -73,7 +74,8 @@ export class SoftbanCommand extends Command {
 		const proofAttachment = interaction.options.getAttachment('proof');
 		const guild = interaction.guild;
 
-		const member = guild.members.cache.get(target.id);
+		// Fetch (not cache-get) so an uncached member can't skip the hierarchy check.
+		const member = await guild.members.fetch(target.id).catch(() => null);
 		if (member) {
 			if (!member.bannable) {
 				return interaction.editReply(errorReply('I cannot ban this user (missing permissions or higher role).'));
@@ -167,6 +169,8 @@ export class SoftbanCommand extends Command {
 				deleteMessageSeconds: deleteDays * 86400,
 			});
 			await guild.bans.remove(target.id, auditReason);
+			// The softban ends in an unban, so any pending temp-ban expiry is now stale.
+			await clearTempbans(guild.id, target.id);
 
 			const infraction = await createInfraction({
 				guildId: guild.id,

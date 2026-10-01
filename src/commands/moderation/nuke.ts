@@ -55,26 +55,49 @@ export class NukeCommand extends Command {
 			type: ow.type,
 		}));
 
-		const created = await interaction.guild.channels.create({
-			name: target.name,
-			type: target.type,
-			topic: target.topic ?? undefined,
-			nsfw: target.nsfw,
-			rateLimitPerUser: target.rateLimitPerUser,
-			parent: target.parentId ?? undefined,
-			permissionOverwrites: overwrites,
-			reason: `Nuked by ${interaction.user.tag}`,
-		});
+		const created = await interaction.guild.channels
+			.create({
+				name: target.name,
+				type: target.type,
+				topic: target.topic ?? undefined,
+				nsfw: target.nsfw,
+				rateLimitPerUser: target.rateLimitPerUser,
+				parent: target.parentId ?? undefined,
+				permissionOverwrites: overwrites,
+				reason: `Nuked by ${interaction.user.tag}`,
+			})
+			.catch((err) => {
+				this.container.logger.error(err);
+				return null;
+			});
+		if (!created) {
+			return interaction.editReply(errorReply('Failed to clone the channel. Do I have **Manage Channels**?'));
+		}
 
 		await created.setPosition(target.position).catch(() => null);
-		const oldId = target.id;
-		await target.delete(`Nuked by ${interaction.user.tag}`).catch(() => null);
+
+		// The ephemeral reply lives in the channel being nuked, so when that is the current channel
+		// answer before deleting it — an edit afterwards would fail with the channel gone.
+		const nukingCurrent = interaction.channelId === target.id;
+		if (nukingCurrent) {
+			await interaction.editReply(successReply(`Nuked — new channel: <#${created.id}>.`)).catch(() => null);
+		}
+
+		const deleted = await target
+			.delete(`Nuked by ${interaction.user.tag}`)
+			.then(() => true)
+			.catch(() => false);
+		if (!deleted) {
+			return interaction.editReply(
+				warningReply(`Created <#${created.id}>, but I could not delete the original channel <#${target.id}>.`),
+			);
+		}
 
 		await (created as GuildTextBasedChannel)
 			.send({ content: `Channel nuked by ${interaction.user}.` })
 			.catch(() => null);
 
-		if (interaction.channelId === oldId) return;
+		if (nukingCurrent) return;
 		return interaction.editReply(successReply(`Nuked — new channel: <#${created.id}>.`));
 	}
 }

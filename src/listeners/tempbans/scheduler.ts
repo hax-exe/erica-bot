@@ -30,6 +30,11 @@ export class TempbanSchedulerListener extends Listener<typeof Events.ClientReady
 							continue;
 						}
 
+						// The row may have been cleared since this tick started (a manual unban, or a newer
+						// ban replaced it). Re-check so a stale snapshot can't lift that newer ban.
+						const stillPending = await db.query.tempbans.findFirst({ where: eq(schema.tempbans.id, entry.id) });
+						if (!stillPending) continue;
+
 						// Unban first; only delete the DB row after a successful remove
 						// (or if the ban is already gone — Discord 10026 Unknown Ban).
 						try {
