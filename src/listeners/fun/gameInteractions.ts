@@ -8,6 +8,7 @@ import {
 	type Interaction,
 	MediaGalleryBuilder,
 	MediaGalleryItemBuilder,
+	type Message,
 	MessageFlags,
 	ModalBuilder,
 	TextDisplayBuilder,
@@ -42,9 +43,11 @@ import {
 	slideRight,
 	slideUp,
 	spawnTile,
+	truncateButtonLabel,
 } from '../../commands/fun/fun.js';
 import { handTotal } from '../../lib/BlackjackUtil.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
+import { BOT_NAME } from '../../lib/brand.js';
 import { Colors, CV2_FLAG, makeContainer, separator as makeSeparator } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import {
@@ -81,11 +84,33 @@ function extractItalicPrompt(message: import('discord.js').Message): string | nu
 	}
 }
 
-function armTimeout(store: Map<string, { timeout: ReturnType<typeof setTimeout> }>, key: string, ms: number) {
+/** (Re)start a game's inactivity timer; on expiry the game is dropped and `onExpire` runs. */
+function armTimeout<T extends { timeout: ReturnType<typeof setTimeout> }>(
+	store: Map<string, T>,
+	key: string,
+	ms: number,
+	onExpire?: (game: T) => void,
+) {
 	const game = store.get(key);
 	if (!game) return;
 	clearTimeout(game.timeout);
-	game.timeout = setTimeout(() => store.delete(key), ms);
+	game.timeout = setTimeout(() => {
+		store.delete(key);
+		onExpire?.(game);
+	}, ms);
+}
+
+const BOARD_GAME_TIMEOUT_MS = 600_000;
+
+/** Replace a Connect 4 / Tic Tac Toe board with its "timed out" card. */
+function showBoardGameTimedOut(message: Message, title: string, players: [string, string]) {
+	const container = makeContainer({ color: Colors.Neutral });
+	container.addTextDisplayComponents(
+		new TextDisplayBuilder().setContent(
+			`### ${title}\nGame between <@${players[0]}> and <@${players[1]}> has **timed out**.`,
+		),
+	);
+	message.edit({ components: [container], flags: CV2_FLAG as any }).catch(() => null);
 }
 
 const COLS = 7;
@@ -208,20 +233,8 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				const game = c4Games.get(msgId);
 				if (!game) return;
 				c4Games.delete(msgId);
-				const container = makeContainer({ color: Colors.Neutral });
-				container.addTextDisplayComponents(
-					new TextDisplayBuilder().setContent(
-						`### 🎮 Connect 4\nGame between <@${game.players[0]}> and <@${game.players[1]}> has **timed out**.`,
-					),
-				);
-				interaction.message
-					.edit({
-						components: [container],
-						// biome-ignore lint/suspicious/noExplicitAny: Discord.js CV2 flag type gap
-						flags: CV2_FLAG as any,
-					})
-					.catch(() => null);
-			}, 600_000);
+				showBoardGameTimedOut(interaction.message, '🎮 Connect 4', game.players);
+			}, BOARD_GAME_TIMEOUT_MS);
 
 			const game: C4Game = {
 				board,
@@ -312,8 +325,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				});
 			}
 
-			// Continue game — flip turn
+			// Continue game — flip turn and restart the inactivity timer
 			game.currentTurn = (game.currentTurn === 0 ? 1 : 0) as 0 | 1;
+			armTimeout(c4Games, msgId, BOARD_GAME_TIMEOUT_MS, (g) =>
+				showBoardGameTimedOut(interaction.message, '🎮 Connect 4', g.players),
+			);
 			const { container, files } = buildC4Components(msgId, game.board, false, game.players, game.currentTurn);
 			return interaction.update({
 				components: [container],
@@ -405,20 +421,8 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				const game = tttGames.get(msgId);
 				if (!game) return;
 				tttGames.delete(msgId);
-				const container = makeContainer({ color: Colors.Neutral });
-				container.addTextDisplayComponents(
-					new TextDisplayBuilder().setContent(
-						`### ❌ Tic Tac Toe\nGame between <@${game.players[0]}> and <@${game.players[1]}> has **timed out**.`,
-					),
-				);
-				interaction.message
-					.edit({
-						components: [container],
-						// biome-ignore lint/suspicious/noExplicitAny: Discord.js CV2 flag type gap
-						flags: CV2_FLAG as any,
-					})
-					.catch(() => null);
-			}, 600_000);
+				showBoardGameTimedOut(interaction.message, '❌ Tic Tac Toe', game.players);
+			}, BOARD_GAME_TIMEOUT_MS);
 
 			const game: TTTGame = {
 				board,
@@ -507,8 +511,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				});
 			}
 
-			// Continue — flip turn
+			// Continue — flip turn and restart the inactivity timer
 			game.currentTurn = (game.currentTurn === 0 ? 1 : 0) as 0 | 1;
+			armTimeout(tttGames, msgId, BOARD_GAME_TIMEOUT_MS, (g) =>
+				showBoardGameTimedOut(interaction.message, '❌ Tic Tac Toe', g.players),
+			);
 			const card = buildTTTComponents(msgId, game.board, false, game.players, game.currentTurn);
 			return interaction.update({
 				components: [card],
@@ -606,11 +613,12 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			disabledRow.addComponents(
 				new ButtonBuilder()
 					.setCustomId(`game:trivia:answer:${msgId}:${i}`)
-					.setLabel(`${LABELS[i]}: ${game.answers[i].slice(0, 80)}`)
+					.setLabel(truncateButtonLabel(`${LABELS[i]}: ${game.answers[i]}`))
 					.setStyle(i === game.answers.indexOf(game.correct) ? ButtonStyle.Success : ButtonStyle.Secondary)
 					.setDisabled(true),
 			);
 		}
+		container.addActionRowComponents(disabledRow);
 
 		return interaction.update({
 			components: [container],
@@ -649,7 +657,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			const c = makeContainer({ color });
 			c.addTextDisplayComponents(
 				new TextDisplayBuilder().setContent(
-					`### ✊ Rock Paper Scissors\n- <@${interaction.user.id}> chose: **${playerChoice}**\n- Erica chose: **${botChoice}**\n\n${resultText}`,
+					`### ✊ Rock Paper Scissors\n- <@${interaction.user.id}> chose: **${playerChoice}**\n- ${BOT_NAME} chose: **${botChoice}**\n\n${resultText}`,
 				),
 			);
 
@@ -1359,17 +1367,19 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 					});
 				}
 
+				// Validate before touching the inactivity timer, so a rejected guess leaves it running.
+				if (guess.length === 1 && game.guesses.includes(guess)) {
+					return interaction.reply({
+						content: '❌ You already guessed that letter!',
+						flags: MessageFlags.Ephemeral,
+					});
+				}
+
+				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 				clearTimeout(game.timeout);
 				let displayMsg = '';
 
 				if (guess.length === 1) {
-					if (game.guesses.includes(guess)) {
-						return interaction.reply({
-							content: '❌ You already guessed that letter!',
-							flags: MessageFlags.Ephemeral,
-						});
-					}
-
 					game.guesses.push(guess);
 
 					if (!game.word.toLowerCase().includes(guess)) {
@@ -1391,7 +1401,6 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 					}
 				}
 
-				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 				const isWin = game.word.split('').every((char) => game.guesses.includes(char.toLowerCase()));
 				const isLoss = game.wrongCount >= 6;
 

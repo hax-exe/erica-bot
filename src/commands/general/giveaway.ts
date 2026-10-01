@@ -18,6 +18,7 @@ import { Colors, CV2_FLAG, errorReply, successReply } from '../../lib/components
 import { db, schema } from '../../lib/database.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 import { autocompleteDuration, DURATION_HINT, humanDuration, parseDuration } from '../../lib/parseDuration.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 export function buildGiveawayCard(opts: {
 	prize: string;
@@ -353,7 +354,20 @@ export class GiveawayCommand extends Subcommand {
 			requiredRoleId: requiredRole?.id,
 		});
 
-		const msg = await (targetChannel as import('discord.js').TextChannel).send(card as any);
+		let msg: import('discord.js').Message;
+		try {
+			msg = await (targetChannel as import('discord.js').TextChannel).send(card as any);
+		} catch (err) {
+			// Don't leave a live giveaway row behind that points at no message (messageId '0').
+			await db
+				.delete(schema.giveaways)
+				.where(eq(schema.giveaways.id, row.id))
+				.catch(() => null);
+			this.container.logger.warn(`[giveaway] Could not post giveaway #${row.id} in ${targetChannel.id}:`, err);
+			return interaction.editReply(
+				errorReply(`I couldn't post the giveaway in <#${targetChannel.id}>. Check my permissions there.`),
+			);
+		}
 		await db.update(schema.giveaways).set({ messageId: msg.id }).where(eq(schema.giveaways.id, row.id));
 
 		return interaction.editReply(
@@ -390,11 +404,33 @@ export class GiveawayCommand extends Subcommand {
 		if (!giveaway) return interaction.editReply(errorReply(`No giveaway with ID \`${id}\` found.`));
 		if (!giveaway.ended)
 			return interaction.editReply(errorReply('That giveaway has not ended yet. Use `/giveaway end` first.'));
+		if (giveaway.cancelled) return interaction.editReply(errorReply('That giveaway was cancelled.'));
 
-		const entrants = JSON.parse(giveaway.entrantIds) as string[];
+		const entrants = safeJsonParse<string[]>(giveaway.entrantIds, []);
 		if (!entrants.length) return interaction.editReply(errorReply('No entries to reroll from.'));
 
-		const winners = pickWinners(entrants, giveaway.winnerCount);
+		// A reroll draws new winners: previous winners are excluded, and entrants who no longer hold the
+		// required role are skipped (checked against the member cache, like bonus-role weighting).
+		const previousWinners = new Set(safeJsonParse<string[]>(giveaway.winnerIds, []));
+		const requiredRoleId = giveaway.requiredRoleId;
+		const eligible = entrants.filter((userId) => {
+			if (previousWinners.has(userId)) return false;
+			if (!requiredRoleId) return true;
+			const member = interaction.guild.members.cache.get(userId);
+			return !member || member.roles.cache.has(requiredRoleId);
+		});
+		if (!eligible.length) {
+			return interaction.editReply(
+				errorReply(
+					requiredRoleId
+						? 'No eligible entrants left to reroll from — previous winners and members without the required role are excluded.'
+						: 'No eligible entrants left to reroll from — previous winners are excluded.',
+				),
+			);
+		}
+
+		const bonusRoles = safeJsonParse<GiveawayBonusRole[]>(giveaway.bonusRoles, []);
+		const winners = pickWinners(eligible, giveaway.winnerCount, bonusRoles, interaction.guild);
 		await db
 			.update(schema.giveaways)
 			.set({ winnerIds: JSON.stringify(winners) })
@@ -489,7 +525,7 @@ export class GiveawayCommand extends Subcommand {
 							hostId: giveaway.hostId,
 							endsAt: giveaway.endsAt,
 							winnerCount: giveaway.winnerCount,
-							entrantCount: (JSON.parse(giveaway.entrantIds) as string[]).length,
+							entrantCount: safeJsonParse<string[]>(giveaway.entrantIds, []).length,
 							ended: true,
 							cancelled: true,
 							giveawayId: giveaway.id,
@@ -515,7 +551,7 @@ export class GiveawayCommand extends Subcommand {
 		});
 		if (!giveaway) return interaction.editReply(errorReply(`No giveaway with ID \`${id}\` found.`));
 
-		const entrants = JSON.parse(giveaway.entrantIds) as string[];
+		const entrants = safeJsonParse<string[]>(giveaway.entrantIds, []);
 		const SHOW_LIMIT = 50;
 		const shown = entrants.slice(0, SHOW_LIMIT);
 		const overflow = entrants.length - shown.length;
@@ -592,10 +628,10 @@ export class GiveawayCommand extends Subcommand {
 							hostId: updated.hostId,
 							endsAt: updated.endsAt,
 							winnerCount: updated.winnerCount,
-							entrantCount: (JSON.parse(giveaway.entrantIds) as string[]).length,
+							entrantCount: safeJsonParse<string[]>(giveaway.entrantIds, []).length,
 							ended: false,
 							giveawayId: giveaway.id,
-							bonusRoles: JSON.parse(giveaway.bonusRoles),
+							bonusRoles: safeJsonParse<GiveawayBonusRole[]>(giveaway.bonusRoles, []),
 							requiredRoleId: giveaway.requiredRoleId,
 						}) as any,
 					);
@@ -657,8 +693,8 @@ export async function endGiveaway(
 	giveaway: typeof schema.giveaways.$inferSelect,
 	client: import('discord.js').Client,
 ): Promise<void> {
-	const entrants = JSON.parse(giveaway.entrantIds) as string[];
-	const bonusRoles: GiveawayBonusRole[] = JSON.parse(giveaway.bonusRoles);
+	const entrants = safeJsonParse<string[]>(giveaway.entrantIds, []);
+	const bonusRoles = safeJsonParse<GiveawayBonusRole[]>(giveaway.bonusRoles, []);
 	const guild = client.guilds.cache.get(giveaway.guildId);
 	const winners = pickWinners(entrants, giveaway.winnerCount, bonusRoles, guild);
 

@@ -23,7 +23,7 @@ export class PauseHandler {
 
 		if (player.paused) return interaction.editReply(warningReply('Already paused. Use `/resume` to continue.'));
 
-		player.pause();
+		await player.pause();
 		await saveMusicQueue(player);
 		await updatePlaybackState(player);
 		return interaction.editReply(successReply('Paused.'));

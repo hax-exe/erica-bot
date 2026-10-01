@@ -14,6 +14,7 @@ import {
 } from 'discord.js';
 import { desc, eq } from 'drizzle-orm';
 import { type BjCard, buildDeck, drawBlackjackBoard, handTotal, shuffleDeck } from '../../lib/BlackjackUtil.js';
+import { BOT_NAME } from '../../lib/brand.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, separator, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import {
@@ -30,6 +31,9 @@ import {
 } from '../../lib/GameStore.js';
 import { fetchJoke } from '../../lib/JokeUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
+
+/** Abort slow third-party APIs instead of leaving the deferred reply hanging. */
+const FETCH_TIMEOUT_MS = 10_000;
 
 // ── Connect 4 Helpers ────────────────────────────────────────────────────────
 
@@ -662,6 +666,7 @@ export function buildFindTheEmojiComponents(
 
 // ── Wordle Game Helpers ────────────────────────────────────────────────────────
 
+/** Target words. The guess modal only accepts exactly 5 letters, so anything else would be unwinnable. */
 export const WORDLE_WORDS = [
 	'react',
 	'guild',
@@ -679,7 +684,7 @@ export const WORDLE_WORDS = [
 	'dwarf',
 	'magic',
 	'sword',
-	'shield',
+	'blade',
 	'armor',
 	'quest',
 	'fight',
@@ -691,7 +696,7 @@ export const WORDLE_WORDS = [
 	'witch',
 	'crypt',
 	'grave',
-	'tomb',
+	'crown',
 	'ruins',
 	'house',
 	'train',
@@ -713,7 +718,7 @@ export const WORDLE_WORDS = [
 	'relic',
 	'toxic',
 	'venom',
-];
+].filter((w) => w.length === 5);
 
 export function getWordleEmojis(guess: string, target: string): string {
 	const result = ['⬛', '⬛', '⬛', '⬛', '⬛'];
@@ -1297,6 +1302,11 @@ export function cardFace(n: number): string {
 	return faces[Math.max(1, Math.min(13, n)) - 1] ?? String(n);
 }
 
+/** Discord rejects button labels over 80 characters — truncate with an ellipsis. */
+export function truncateButtonLabel(label: string, max = 80): string {
+	return label.length > max ? `${label.slice(0, max - 1)}…` : label;
+}
+
 @ApplyOptions<Subcommand.Options>({
 	name: 'fun',
 	description: 'Fun, games, stories, and roleplay actions.',
@@ -1823,7 +1833,7 @@ export class FunCommand extends Subcommand {
 
 		let data: TriviaResponse;
 		try {
-			const res = await fetch(url);
+			const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 			if (!res.ok) return interaction.editReply(errorReply('Failed to fetch trivia question. Try again later.'));
 			data = (await res.json()) as TriviaResponse;
 		} catch {
@@ -1874,7 +1884,7 @@ export class FunCommand extends Subcommand {
 			answerRow.addComponents(
 				new ButtonBuilder()
 					.setCustomId(`game:trivia:answer:${msgId}:${i}`)
-					.setLabel(`${LABELS[i]}: ${answers[i].slice(0, 80)}`)
+					.setLabel(truncateButtonLabel(`${LABELS[i]}: ${answers[i]}`))
 					.setStyle(ButtonStyle.Primary),
 			);
 		}
@@ -2072,7 +2082,9 @@ export class FunCommand extends Subcommand {
 		// Fetch GIF from nekos.best
 		let gifUrl: string;
 		try {
-			const res = await fetch(`https://nekos.best/api/v2/${action.api}`);
+			const res = await fetch(`https://nekos.best/api/v2/${action.api}`, {
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			});
 			if (!res.ok) return interaction.editReply(errorReply('Failed to fetch GIF. Try again later.'));
 			const data = (await res.json()) as NekosResult;
 			if (!data.results?.length) return interaction.editReply(errorReply('No GIF found for this action.'));
@@ -2117,7 +2129,7 @@ export class FunCommand extends Subcommand {
 			return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
 		}
 
-		if (opponent.bot) return interaction.editReply(errorReply('You cannot challenge a bot other than Erica!'));
+		if (opponent.bot) return interaction.editReply(errorReply(`You cannot challenge a bot other than ${BOT_NAME}!`));
 		if (opponent.id === interaction.user.id) return interaction.editReply(errorReply('You cannot challenge yourself!'));
 
 		const challenger = interaction.user;
@@ -2214,7 +2226,7 @@ export class FunCommand extends Subcommand {
 		const c = makeContainer({ color: Colors.Info, header: 'Magic 8-Ball' });
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Question:** ${question}\n**Answer:** ${answer}`));
 
-		return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
+		return interaction.editReply({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 	}
 
 	public async chatInputRoll(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -2347,7 +2359,7 @@ export class FunCommand extends Subcommand {
 			),
 		);
 
-		return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
+		return interaction.editReply({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 	}
 
 	public async chatInputShip(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -2843,7 +2855,7 @@ export class FunCommand extends Subcommand {
 		const bar = '█'.repeat(score) + '░'.repeat(10 - score);
 		const c = makeContainer({ color: Colors.Info, header: 'Rate' });
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${thing}**\n\`${bar}\` **${score}/10**`));
-		return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
+		return interaction.editReply({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 	}
 
 	public async chatInputMock(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -2853,7 +2865,7 @@ export class FunCommand extends Subcommand {
 		const mocked = [...text].map((ch, i) => (i % 2 ? ch.toUpperCase() : ch.toLowerCase())).join('');
 		const c = makeContainer({ color: Colors.Info, header: 'Mock' });
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(mocked.slice(0, 1900)));
-		return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
+		return interaction.editReply({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 	}
 
 	public async chatInputReverse(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -2862,7 +2874,7 @@ export class FunCommand extends Subcommand {
 		const text = interaction.options.getString('text', true);
 		const c = makeContainer({ color: Colors.Info, header: 'Reverse' });
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent([...text].reverse().join('').slice(0, 1900)));
-		return interaction.editReply({ components: [c], flags: CV2_FLAG as any });
+		return interaction.editReply({ components: [c], flags: CV2_FLAG as any, allowedMentions: { parse: [] } });
 	}
 
 	public async chatInputEmojify(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -2885,7 +2897,9 @@ export class FunCommand extends Subcommand {
 		await interaction.deferReply();
 		if (!(await this.ensureFun(interaction))) return;
 		try {
-			const res = await fetch('https://uselessfacts.jsph.pl/api/v2/facts/random?language=en');
+			const res = await fetch('https://uselessfacts.jsph.pl/api/v2/facts/random?language=en', {
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			});
 			const data = (await res.json()) as { text?: string };
 			const c = makeContainer({ color: Colors.Info, header: 'Random fact' });
 			c.addTextDisplayComponents(new TextDisplayBuilder().setContent(data.text ?? 'No fact found.'));
@@ -2899,7 +2913,7 @@ export class FunCommand extends Subcommand {
 		await interaction.deferReply();
 		if (!(await this.ensureFun(interaction))) return;
 		try {
-			const res = await fetch('https://api.adviceslip.com/advice');
+			const res = await fetch('https://api.adviceslip.com/advice', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 			const data = (await res.json()) as { slip?: { advice?: string } };
 			const c = makeContainer({ color: Colors.Info, header: 'Advice' });
 			c.addTextDisplayComponents(new TextDisplayBuilder().setContent(data.slip?.advice ?? 'Stay hydrated.'));
@@ -3061,12 +3075,16 @@ export function getRandomWYR(): WYRQuestion {
 // ── Cute Animal Helper ──
 export async function fetchAnimalImage(type: string): Promise<string> {
 	if (type === 'cat') {
-		const res = await fetch('https://api.thecatapi.com/v1/images/search');
+		const res = await fetch('https://api.thecatapi.com/v1/images/search', {
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		});
 		const data: any = await res.json();
 		return data[0]?.url || '';
 	}
 	if (type === 'dog') {
-		const res = await fetch('https://dog.ceo/api/breeds/image/random');
+		const res = await fetch('https://dog.ceo/api/breeds/image/random', {
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		});
 		const data: any = await res.json();
 		return data.message || '';
 	}
@@ -3082,7 +3100,9 @@ export async function fetchAnimalImage(type: string): Promise<string> {
 			return pikachuGifs[Math.floor(Math.random() * pikachuGifs.length)];
 		}
 		try {
-			const res = await fetch('https://pokeapi.co/api/v2/pokemon/pikachu');
+			const res = await fetch('https://pokeapi.co/api/v2/pokemon/pikachu', {
+				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+			});
 			const data: any = await res.json();
 			if (r < 0.2) {
 				return (
@@ -3107,7 +3127,7 @@ export async function fetchAnimalImage(type: string): Promise<string> {
 		kangaroo: 'kangaroo',
 	};
 	const key = apiKeys[type] || type;
-	const res = await fetch(`https://some-random-api.com/img/${key}`);
+	const res = await fetch(`https://some-random-api.com/img/${key}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 	const data: any = await res.json();
 	return data.link || '';
 }

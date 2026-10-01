@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { errorReply, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 
@@ -58,10 +58,10 @@ export class MusicCommand extends Subcommand {
 						.setDescription('Apply an audio filter to the playback.')
 						.addStringOption((o) =>
 							o
-								.setName('name')
-								.setDescription('The audio filter to apply (omit to clear).')
+								.setName('filter')
+								.setDescription('The audio filter to apply.')
 								.addChoices(
-									{ name: 'Clear Filter', value: 'clear' },
+									{ name: 'Clear Filters', value: 'reset' },
 									{ name: '8D (Spatial)', value: '8d' },
 									{ name: 'Bass Boost', value: 'bassboost' },
 									{ name: 'Nightcore (Sped up)', value: 'nightcore' },
@@ -69,7 +69,7 @@ export class MusicCommand extends Subcommand {
 									{ name: 'Karaoke', value: 'karaoke' },
 									{ name: 'Lowpass (Muffled)', value: 'lowpass' },
 								)
-								.setRequired(false),
+								.setRequired(true),
 						),
 				)
 				// ── history ────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ export class MusicCommand extends Subcommand {
 								.setName('mode')
 								.setDescription('Loop mode (omit to toggle).')
 								.addChoices(
-									{ name: '❌ Off', value: 'none' },
+									{ name: '❌ Off', value: 'off' },
 									{ name: '🔂 Track', value: 'track' },
 									{ name: '🔁 Queue', value: 'queue' },
 								)
@@ -332,6 +332,9 @@ export class MusicCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+			return interaction.editReply(errorReply('You need the **Manage Server** permission to change the volume limit.'));
 		}
 
 		const level = interaction.options.getInteger('level', true);

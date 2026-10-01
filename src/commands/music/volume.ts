@@ -14,7 +14,7 @@ export class VolumeCommand extends Command {
 				.addIntegerOption((o) =>
 					o
 						.setName('level')
-						.setDescription('Volume level (0–200, default: 100).')
+						.setDescription('Volume level (0–200). Omit to show the current volume.')
 						.setMinValue(0)
 						.setMaxValue(200)
 						.setRequired(false),

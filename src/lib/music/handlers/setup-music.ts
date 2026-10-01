@@ -1,5 +1,5 @@
 import { type Command, container } from '@sapphire/framework';
-import { ChannelType, MessageFlags, type TextChannel } from 'discord.js';
+import { ChannelType, MessageFlags, PermissionFlagsBits, type TextChannel } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { CV2_FLAG, errorReply, idleJukeboxCard, successReply } from '../../components.js';
 import { db, schema } from '../../database.js';
@@ -8,7 +8,12 @@ export class SetupMusicHandler {
 	public async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-		if (!interaction.guild) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+			return interaction.editReply(
+				errorReply('You need the **Manage Server** permission to set up or remove the music channel.'),
+			);
+		}
 
 		try {
 			const action = interaction.options.getString('action', true);
@@ -63,10 +68,10 @@ export class SetupMusicHandler {
 					},
 				});
 
-			await interaction.editReply(successReply(`Jukebox created successfully: <#${channel.id}>`));
+			return interaction.editReply(successReply(`Jukebox created successfully: <#${channel.id}>`));
 		} catch (err) {
 			container.logger.error('[SetupMusic]', err);
-			await interaction.editReply(errorReply(`Failed to set up the music channel: \`${(err as Error).message}\``));
+			return interaction.editReply(errorReply(`Failed to set up the music channel: \`${(err as Error).message}\``));
 		}
 	}
 }

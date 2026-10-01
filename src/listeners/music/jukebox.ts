@@ -1,9 +1,11 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
-import { Events, type GuildMember, type Message } from 'discord.js';
+import { Events, type Message } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { db, schema } from '../../lib/database.js';
+import { isStaleInteractionError } from '../../lib/GameStore.js';
+import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
 @ApplyOptions<Listener.Options>({
 	name: 'jukeboxMessageCreate',
@@ -21,6 +23,7 @@ export class JukeboxMessageListener extends Listener<typeof Events.MessageCreate
 			});
 
 			if (guildRow?.musicChannelId !== message.channel.id) return;
+			if (!(await isModuleEnabled(message.guild.id, 'music'))) return;
 
 			// Immediately delete the user's message to keep the channel clean
 			await message.delete().catch(() => null);
@@ -30,8 +33,8 @@ export class JukeboxMessageListener extends Listener<typeof Events.MessageCreate
 			if (!query) return;
 
 			// We need to trigger the play logic
-			const member = message.member as GuildMember;
-			if (!member.voice.channelId) {
+			const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
+			if (!member?.voice.channelId) {
 				// We can't reply directly to the deleted message, so we send a temporary warning
 				const warning = await message.channel.send(
 					`⚠️ <@${message.author.id}>, you must be in a voice channel to use the Jukebox.`,
@@ -53,7 +56,7 @@ export class JukeboxMessageListener extends Listener<typeof Events.MessageCreate
 			const spoofedInteraction = {
 				id: message.id,
 				user: message.author,
-				member: message.member,
+				member,
 				guild: message.guild,
 				guildId: message.guild.id,
 				channel: message.channel,
@@ -85,6 +88,7 @@ export class JukeboxMessageListener extends Listener<typeof Events.MessageCreate
 
 			await command.chatInputRun(spoofedInteraction as any);
 		} catch (err) {
+			if (isStaleInteractionError(err)) return;
 			this.container.logger.error('[Jukebox]', err);
 		}
 	}

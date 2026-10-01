@@ -202,30 +202,28 @@ export class ToolsCommand extends Subcommand {
 		const style = TS_STYLES[styleKey] ?? TimestampStyles.RelativeTime;
 
 		let seconds: number | null = null;
-		if (/^\d{9,13}$/.test(when)) {
+		// Relative durations first, then unix timestamps, then dates. Bare numbers other than a 4-digit
+		// year never reach Date.parse, which would read `5` as May 2001.
+		const rel = when.match(/^(?:in\s+)?(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)$/i);
+		if (rel) {
+			const n = Number(rel[1]);
+			const unit = rel[2]!.toLowerCase();
+			const mult = unit.startsWith('s')
+				? 1
+				: unit.startsWith('m')
+					? 60
+					: unit.startsWith('h')
+						? 3600
+						: unit.startsWith('d')
+							? 86400
+							: 604800;
+			seconds = Math.floor(Date.now() / 1000) + n * mult;
+		} else if (/^\d{9,13}$/.test(when)) {
 			const n = Number(when);
 			seconds = n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
-		} else {
+		} else if (!/^\d+$/.test(when) || /^\d{4}$/.test(when)) {
 			const iso = Date.parse(when);
-			if (!Number.isNaN(iso)) {
-				seconds = Math.floor(iso / 1000);
-			} else {
-				const rel = when.match(/^(?:in\s+)?(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)$/i);
-				if (rel) {
-					const n = Number(rel[1]);
-					const unit = rel[2]!.toLowerCase();
-					const mult = unit.startsWith('s')
-						? 1
-						: unit.startsWith('m')
-							? 60
-							: unit.startsWith('h')
-								? 3600
-								: unit.startsWith('d')
-									? 86400
-									: 604800;
-					seconds = Math.floor(Date.now() / 1000) + n * mult;
-				}
-			}
+			if (!Number.isNaN(iso)) seconds = Math.floor(iso / 1000);
 		}
 
 		if (seconds == null || !Number.isFinite(seconds)) {
@@ -399,7 +397,7 @@ export class ToolsCommand extends Subcommand {
 			const url = new URL('https://api.mymemory.translated.net/get');
 			url.searchParams.set('q', text);
 			url.searchParams.set('langpair', langpair);
-			const res = await fetch(url);
+			const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = (await res.json()) as {
 				responseData?: { translatedText?: string };
@@ -428,7 +426,7 @@ export class ToolsCommand extends Subcommand {
 			const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
 			geoUrl.searchParams.set('name', city);
 			geoUrl.searchParams.set('count', '1');
-			const geoRes = await fetch(geoUrl);
+			const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(10_000) });
 			const geo = (await geoRes.json()) as {
 				results?: Array<{ name: string; country?: string; latitude: number; longitude: number; timezone?: string }>;
 			};
@@ -441,7 +439,7 @@ export class ToolsCommand extends Subcommand {
 			wxUrl.searchParams.set('current', 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m');
 			wxUrl.searchParams.set('temperature_unit', 'celsius');
 			wxUrl.searchParams.set('wind_speed_unit', 'kmh');
-			const wxRes = await fetch(wxUrl);
+			const wxRes = await fetch(wxUrl, { signal: AbortSignal.timeout(10_000) });
 			const wx = (await wxRes.json()) as {
 				current?: {
 					temperature_2m?: number;

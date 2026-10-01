@@ -34,6 +34,24 @@ function isValidDate(month: number, day: number): boolean {
 	return true;
 }
 
+function isLeapYear(year: number): boolean {
+	return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * Next occurrence of a birthday, compared on UTC calendar dates (today counts as 0 days away).
+ * Feb 29 is observed on Feb 28 in non-leap years, matching the birthday scheduler.
+ */
+function nextBirthday(month: number, day: number, now = new Date()): { year: number; daysUntil: number } {
+	const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+	const occurrence = (year: number) =>
+		Date.UTC(year, month - 1, month === 2 && day === 29 && !isLeapYear(year) ? 28 : day);
+
+	let year = now.getUTCFullYear();
+	if (occurrence(year) < today) year++;
+	return { year, daysUntil: Math.round((occurrence(year) - today) / 86_400_000) };
+}
+
 // ─── Command ───────────────────────────────────────────────────────────────────
 
 @ApplyOptions<Subcommand.Options>({
@@ -158,7 +176,9 @@ export class BirthdayCommand extends Subcommand {
 				set: { month, day, year: year ?? null, lastWished: null },
 			});
 
-		const ageStr = year ? ` (turning ${new Date().getUTCFullYear() - year + 1})` : '';
+		// Age they turn on their next birthday (today counts)
+		const turning = year ? nextBirthday(month, day).year - year : null;
+		const ageStr = turning !== null && turning > 0 ? ` (turning ${turning})` : '';
 		return interaction.editReply(successReply(`Birthday set to **${formatBirthday(month, day)}**${ageStr}! 🎂`));
 	}
 
@@ -210,20 +230,18 @@ export class BirthdayCommand extends Subcommand {
 			);
 		}
 
-		const now = new Date();
-		const thisYear = now.getUTCFullYear();
-		const bdayThisYear = new Date(Date.UTC(thisYear, row.month - 1, row.day));
-		if (bdayThisYear < now) bdayThisYear.setUTCFullYear(thisYear + 1);
-		const daysUntil = Math.ceil((bdayThisYear.getTime() - now.getTime()) / 86_400_000);
+		const next = nextBirthday(row.month, row.day);
+		const daysUntil = next.daysUntil;
 
-		const currentAge = row.year ? new Date().getUTCFullYear() - row.year : null;
-		// If today is their birthday they're turning currentAge, otherwise they're currentAge - 1
-		const age = currentAge !== null ? (daysUntil === 0 ? currentAge : currentAge - 1) : null;
+		// Age turned on the next birthday; on any other day their current age is one less.
+		const turning = row.year ? next.year - row.year : null;
+		const age = turning !== null ? (daysUntil === 0 ? turning : turning - 1) : null;
+		const ageStr = age !== null && age >= 0 ? ` (${daysUntil === 0 ? `turning ${age}` : `age ${age}`})` : '';
 
 		const container = makeContainer({ color: 0xf47fff });
 		container.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
-				`🎂 **${target.displayName}**'s birthday is **${formatBirthday(row.month, row.day)}**${age !== null ? ` (${daysUntil === 0 ? `turning ${age}` : `age ${age}`})` : ''}\n-# ${daysUntil === 0 ? '🎉 Today!' : `${daysUntil} day(s) away`}`,
+				`🎂 **${target.displayName}**'s birthday is **${formatBirthday(row.month, row.day)}**${ageStr}\n-# ${daysUntil === 0 ? '🎉 Today!' : `${daysUntil} day(s) away`}`,
 			),
 		);
 
@@ -245,13 +263,11 @@ export class BirthdayCommand extends Subcommand {
 		if (!rows.length) return interaction.editReply(warningReply('No birthdays set in this server yet.'));
 
 		const now = new Date();
-		const thisYear = now.getUTCFullYear();
 
 		const sorted = rows
 			.map((r) => {
-				const bday = new Date(Date.UTC(thisYear, r.month - 1, r.day));
-				if (bday < now) bday.setUTCFullYear(thisYear + 1);
-				return { ...r, daysUntil: Math.ceil((bday.getTime() - now.getTime()) / 86_400_000) };
+				const next = nextBirthday(r.month, r.day, now);
+				return { ...r, daysUntil: next.daysUntil, nextYear: next.year };
 			})
 			.sort((a, b) => a.daysUntil - b.daysUntil)
 			.slice(0, 15);
@@ -260,10 +276,11 @@ export class BirthdayCommand extends Subcommand {
 		container.addSeparatorComponents(separator());
 
 		for (const r of sorted) {
-			const nextAge = r.year ? new Date().getUTCFullYear() - r.year + (r.daysUntil === 0 ? 0 : 1) : null;
+			// Age turned on the upcoming (or today's) birthday
+			const nextAge = r.year ? r.nextYear - r.year : null;
 			container.addTextDisplayComponents(
 				new TextDisplayBuilder().setContent(
-					`${userMention(r.userId)} — **${formatBirthday(r.month, r.day)}**${nextAge !== null ? ` (turning ${nextAge})` : ''} ${r.daysUntil === 0 ? '🎉 Today!' : `(${r.daysUntil}d)`}`,
+					`${userMention(r.userId)} — **${formatBirthday(r.month, r.day)}**${nextAge !== null && nextAge > 0 ? ` (turning ${nextAge})` : ''} ${r.daysUntil === 0 ? '🎉 Today!' : `(${r.daysUntil}d)`}`,
 				),
 			);
 		}

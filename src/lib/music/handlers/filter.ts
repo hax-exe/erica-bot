@@ -3,7 +3,16 @@ import { GuildMember } from 'discord.js';
 import { errorReply, successReply, warningReply } from '../../components.js';
 import { inSameVC } from '../../MusicManager.js';
 
-type FilterName = 'bassboost' | 'nightcore' | 'vaporwave' | '8d' | 'tremolo' | 'vibrato' | 'karaoke' | 'reset';
+type FilterName =
+	| 'bassboost'
+	| 'nightcore'
+	| 'vaporwave'
+	| '8d'
+	| 'tremolo'
+	| 'vibrato'
+	| 'karaoke'
+	| 'lowpass'
+	| 'reset';
 
 export class FilterHandler {
 	public async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
@@ -61,9 +70,14 @@ export class FilterHandler {
 			case 'karaoke':
 				f.setKaraoke({ level: 1.0, monoLevel: 1.0, filterBand: 220.0, filterWidth: 100.0 });
 				break;
+			case 'lowpass':
+				f.setLowPass({ smoothing: 20.0 });
+				break;
 			case 'reset':
 				f.reset();
 				break;
+			default:
+				return interaction.editReply(errorReply('Unknown filter.'));
 		}
 
 		await f.apply();

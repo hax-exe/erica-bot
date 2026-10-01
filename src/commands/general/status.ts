@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { ChannelType, MessageFlags, PermissionFlagsBits, type TextChannel, TextDisplayBuilder } from 'discord.js';
+import { ChannelType, MessageFlags, type TextChannel, TextDisplayBuilder } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { Colors, CV2_FLAG, cv2Reply, errorReply, makeContainer, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
@@ -24,11 +24,19 @@ import {
 	setServiceOverride,
 } from '../../lib/StatusUtil.js';
 
-function hasManagePerms(perms: Readonly<import('discord.js').PermissionsBitField> | null): boolean {
-	if (!perms) return false;
-	if (perms.has(PermissionFlagsBits.Administrator)) return true;
-	return perms.has(PermissionFlagsBits.ManageGuild);
+/**
+ * Status data (panel, overrides, incidents, DM subscribers) is global across every server,
+ * so changing it is limited to bot owners — same BOT_OWNER_IDS parsing as the BotAdmin precondition.
+ */
+function isBotOwner(userId: string): boolean {
+	return (process.env.BOT_OWNER_IDS ?? '')
+		.split(',')
+		.map((id) => id.trim())
+		.filter(Boolean)
+		.includes(userId);
 }
+
+const OWNER_ONLY_MESSAGE = 'Only bot admins can manage the status page — it is shared across every server.';
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'status',
@@ -221,8 +229,8 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
+		if (!isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
 		}
 
 		const channel = interaction.options.getChannel('channel', true) as TextChannel;
@@ -248,8 +256,8 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
+		if (!isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
 		}
 
 		const ok = await this.refreshPanel(interaction.client);
@@ -263,8 +271,8 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
+		if (!isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
 		}
 
 		try {
@@ -286,8 +294,8 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
+		if (!isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
 		}
 
 		const action = interaction.options.getString('action', true);
@@ -325,8 +333,8 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
+		if (!isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
 		}
 
 		const action = interaction.options.getString('action', true);
@@ -367,11 +375,12 @@ export class StatusCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
 
-		if (!hasManagePerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the system status.'));
-		}
-
 		const action = interaction.options.getString('action', true);
+
+		// Listing active incidents is read-only; every other action changes the global status page.
+		if (action !== 'list' && !isBotOwner(interaction.user.id)) {
+			return interaction.editReply(errorReply(OWNER_ONLY_MESSAGE));
+		}
 
 		if (action === 'create') {
 			const title = interaction.options.getString('title');

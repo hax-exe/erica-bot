@@ -13,6 +13,12 @@ export class VolumeHandler {
 		const player = container.music.players.get(interaction.guildId);
 		if (!player) return interaction.editReply(errorReply('Nothing is playing right now.'));
 
+		// `level` is optional — omitting it shows the current volume.
+		const level = interaction.options.getInteger('level');
+		if (level === null) {
+			return interaction.editReply(successReply(`Current volume is **${player.volume}%**.`));
+		}
+
 		const member =
 			interaction.member instanceof GuildMember
 				? interaction.member
@@ -21,8 +27,6 @@ export class VolumeHandler {
 		if (!inSameVC(player.voiceChannelId, member?.voice.channel?.id)) {
 			return interaction.editReply(warningReply('You must be in the same voice channel.'));
 		}
-
-		const level = interaction.options.getInteger('level', true);
 
 		const guildRow = await db.query.guilds.findFirst({ where: eq(schema.guilds.id, interaction.guildId) });
 		const maxVol = guildRow?.maxVolumeLimit ?? 100;

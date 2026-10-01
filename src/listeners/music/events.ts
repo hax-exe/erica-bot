@@ -137,25 +137,29 @@ export class MusicListeners extends Listener {
 		// the player from music.players first, so the guard below is a no-op then.
 
 		client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
-			if (newState.id !== client.user!.id) return;
-			if (!oldState.channelId || newState.channelId) return; // not a removal
+			try {
+				if (newState.id !== client.user!.id) return;
+				if (!oldState.channelId || newState.channelId) return; // not a removal
 
-			const player = music.players.get(oldState.guild.id);
-			if (!player) return;
+				const player = music.players.get(oldState.guild.id);
+				if (!player) return;
 
-			const textChannelId = player.textChannelId;
-			clearNpMessage(oldState.guild.id);
-			await clearMusicQueue(player.guildId);
-			await setVoiceChannelStatus(client, oldState.channelId, null).catch(() => null);
-			await player.destroy().catch(() => null);
-			await resetJukeboxUI(oldState.guild.id);
+				const textChannelId = player.textChannelId;
+				clearNpMessage(oldState.guild.id);
+				await clearMusicQueue(player.guildId);
+				await setVoiceChannelStatus(client, oldState.channelId, null).catch(() => null);
+				await player.destroy().catch(() => null);
+				await resetJukeboxUI(oldState.guild.id);
 
-			const ch = await getChannel(textChannelId);
-			if (!ch) return;
+				const ch = await getChannel(textChannelId);
+				if (!ch) return;
 
-			const c = makeContainer({ color: Colors.Neutral });
-			c.addTextDisplayComponents(new TextDisplayBuilder().setContent('Disconnected from voice — queue cleared.'));
-			await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
+				const c = makeContainer({ color: Colors.Neutral });
+				c.addTextDisplayComponents(new TextDisplayBuilder().setContent('Disconnected from voice — queue cleared.'));
+				await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
+			} catch (err) {
+				logger.error('[music] Voice disconnect handling failed:', err);
+			}
 		});
 
 		// ── Node events ──────────────────────────────────────────────────────────
@@ -175,25 +179,29 @@ export class MusicListeners extends Listener {
 		// Periodically save position/state of active players and update Jukebox UI progress bar
 		setInterval(async () => {
 			for (const player of music.players.all) {
-				if (player.playing && !player.paused) {
-					await saveMusicQueue(player).catch(() => null);
+				try {
+					if (player.playing && !player.paused) {
+						await saveMusicQueue(player).catch(() => null);
 
-					// Update Jukebox message if it exists
-					const guildRow = await db.query.guilds
-						.findFirst({ where: eq(schema.guilds.id, player.guildId) })
-						.catch(() => null);
-					if (guildRow?.musicChannelId && guildRow?.musicMessageId) {
-						const musicChannel = await getChannel(guildRow.musicChannelId).catch(() => null);
-						if (musicChannel && musicChannel.isTextBased()) {
-							const uiMessage = await musicChannel.messages.fetch(guildRow.musicMessageId).catch(() => null);
-							if (uiMessage) {
-								const card = buildNpCard(player);
-								if (card) {
-									await uiMessage.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
+						// Update Jukebox message if it exists
+						const guildRow = await db.query.guilds
+							.findFirst({ where: eq(schema.guilds.id, player.guildId) })
+							.catch(() => null);
+						if (guildRow?.musicChannelId && guildRow?.musicMessageId) {
+							const musicChannel = await getChannel(guildRow.musicChannelId).catch(() => null);
+							if (musicChannel && musicChannel.isTextBased()) {
+								const uiMessage = await musicChannel.messages.fetch(guildRow.musicMessageId).catch(() => null);
+								if (uiMessage) {
+									const card = buildNpCard(player);
+									if (card) {
+										await uiMessage.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
+									}
 								}
 							}
 						}
 					}
+				} catch (err) {
+					logger.error(`[music] Periodic state sync failed for guild ${player.guildId}:`, err);
 				}
 			}
 		}, 10_000);
@@ -201,74 +209,78 @@ export class MusicListeners extends Listener {
 		// ── Track events ─────────────────────────────────────────────────────────
 
 		music.on('trackStart', async (player: Player, track: Track) => {
-			if (track.userData?.isTTS) {
-				// Silently play TTS without posting a now playing card or updating voice channel status
-				return;
-			}
+			try {
+				if (track.userData?.isTTS) {
+					// Silently play TTS without posting a now playing card or updating voice channel status
+					return;
+				}
 
-			rememberAutoplaySeed(track, player.guildId);
+				rememberAutoplaySeed(track, player.guildId);
 
-			// Keep autoplay buffer topped up so skip never drains to idle
-			if (isAutoplayOn(player.guildId) && player.queue.size < 3) {
-				void ensureAutoplayBuffer(player, track).catch((err) =>
-					logger.warn(`[autoplay] buffer refill failed for ${player.guildId}:`, err),
-				);
-			}
+				// Keep autoplay buffer topped up so skip never drains to idle
+				if (isAutoplayOn(player.guildId) && player.queue.size < 3) {
+					void ensureAutoplayBuffer(player, track).catch((err) =>
+						logger.warn(`[autoplay] buffer refill failed for ${player.guildId}:`, err),
+					);
+				}
 
-			// Resume from position if it was interrupted
-			if (track.userData?.resumePosition) {
-				const resumePos = track.userData.resumePosition;
-				delete track.userData.resumePosition;
-				player.seek(resumePos).catch(() => null);
-			}
+				// Resume from position if it was interrupted
+				if (track.userData?.resumePosition) {
+					const resumePos = track.userData.resumePosition;
+					delete track.userData.resumePosition;
+					player.seek(resumePos).catch(() => null);
+				}
 
-			if (player.voiceChannelId) {
-				const status = track.author ? `${track.title} — ${track.author}` : (track.title ?? '');
-				await setVoiceChannelStatus(client, player.voiceChannelId, status);
-			}
+				if (player.voiceChannelId) {
+					const status = track.author ? `${track.title} — ${track.author}` : (track.title ?? '');
+					await setVoiceChannelStatus(client, player.voiceChannelId, status);
+				}
 
-			const ch = await getChannel(player.textChannelId);
-			if (!ch) return;
+				const ch = await getChannel(player.textChannelId);
+				if (!ch) return;
 
-			const card = buildNpCard(player);
-			if (!card) return;
+				const card = buildNpCard(player);
+				if (!card) return;
 
-			const guildRow = await db.query.guilds.findFirst({ where: eq(schema.guilds.id, player.guildId) });
-			if (guildRow?.musicChannelId && guildRow?.musicMessageId) {
-				const musicChannel = await getChannel(guildRow.musicChannelId);
-				if (musicChannel && musicChannel.isTextBased()) {
-					const uiMessage = await musicChannel.messages.fetch(guildRow.musicMessageId).catch(() => null);
-					if (uiMessage) {
-						await uiMessage.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
+				const guildRow = await db.query.guilds.findFirst({ where: eq(schema.guilds.id, player.guildId) });
+				if (guildRow?.musicChannelId && guildRow?.musicMessageId) {
+					const musicChannel = await getChannel(guildRow.musicChannelId);
+					if (musicChannel && musicChannel.isTextBased()) {
+						const uiMessage = await musicChannel.messages.fetch(guildRow.musicMessageId).catch(() => null);
+						if (uiMessage) {
+							await uiMessage.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
+						}
 					}
 				}
-			}
 
-			// One Now Playing message — edit in place on track change; never stack duplicates
-			if (player.textChannelId !== guildRow?.musicChannelId) {
-				const existing = npMessages.get(player.guildId);
-				if (existing) {
-					const edited = await existing.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
-					if (edited) {
-						npMessages.set(player.guildId, edited);
+				// One Now Playing message — edit in place on track change; never stack duplicates
+				if (player.textChannelId !== guildRow?.musicChannelId) {
+					const existing = npMessages.get(player.guildId);
+					if (existing) {
+						const edited = await existing.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
+						if (edited) {
+							npMessages.set(player.guildId, edited);
+						} else {
+							npMessages.delete(player.guildId);
+							const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
+								components: [card],
+								flags: CV2_FLAG,
+							}).catch(() => null);
+							if (sent) npMessages.set(player.guildId, sent);
+						}
 					} else {
-						npMessages.delete(player.guildId);
 						const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
 							components: [card],
 							flags: CV2_FLAG,
 						}).catch(() => null);
 						if (sent) npMessages.set(player.guildId, sent);
 					}
-				} else {
-					const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
-						components: [card],
-						flags: CV2_FLAG,
-					}).catch(() => null);
-					if (sent) npMessages.set(player.guildId, sent);
 				}
-			}
 
-			await saveMusicQueue(player);
+				await saveMusicQueue(player);
+			} catch (err) {
+				logger.error(`[music] trackStart handling failed for guild ${player.guildId}:`, err);
+			}
 		});
 
 		music.on('queueEnd', async (player: Player, lastTrack?: Track) => {

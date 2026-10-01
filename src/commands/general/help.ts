@@ -6,13 +6,14 @@ import { Colors, CV2_FLAG, makeContainer, meta, separator } from '../../lib/comp
 function isStaff(perms: Readonly<import('discord.js').PermissionsBitField> | null | undefined): boolean {
 	if (!perms) return false;
 	if (perms.has(PermissionFlagsBits.Administrator)) return true;
-	return perms.has(
-		PermissionFlagsBits.ManageGuild |
-			PermissionFlagsBits.KickMembers |
-			PermissionFlagsBits.BanMembers |
-			PermissionFlagsBits.ModerateMembers |
-			PermissionFlagsBits.ManageMessages,
-	);
+	// any() = at least one of these; has(a | b) would require all of them
+	return perms.any([
+		PermissionFlagsBits.ManageGuild,
+		PermissionFlagsBits.KickMembers,
+		PermissionFlagsBits.BanMembers,
+		PermissionFlagsBits.ModerateMembers,
+		PermissionFlagsBits.ManageMessages,
+	]);
 }
 
 function isOwner(userId: string): boolean {
@@ -116,7 +117,7 @@ function helpBody(section: string): string {
 		return [
 			'**Server admins**',
 			'• `/module` `/config` — toggles, logs, suggestions, TTS',
-			'• `/welcomer` `/automod` `/antiraid` `/status`',
+			'• `/welcomer` `/automod` `/antiraid`',
 			'• `/leveling` `/starboard` `/counting` `/feeds`',
 			'• `/tempvoice` `/sticky` `/autoresponder` `/reactionrole` `/stats`',
 			'• `/ticket panel` `/ticket reload` — tickets.yml',
@@ -131,6 +132,7 @@ function helpBody(section: string): string {
 		'• `/admin info` `/admin guilds` `/admin leave`',
 		'• `/admin say` `/admin dm` `/admin reload` `/admin presence`',
 		'• `/admin invite` `/admin lookup` `/admin maintenance`',
+		'• `/status` — global status panel, incidents, maintenance',
 		'',
 		'Also see `/help section:staff` and `admin` for server tooling.',
 	].join('\n');

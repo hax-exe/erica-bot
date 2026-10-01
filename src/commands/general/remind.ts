@@ -8,6 +8,7 @@ import { autocompleteDuration, DURATION_HINT, humanDuration, parseDuration } fro
 
 const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes minimum interval
+const MAX_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000; // 365 days maximum interval
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'remind',
@@ -41,7 +42,7 @@ export class RemindCommand extends Subcommand {
 						.addStringOption((o) =>
 							o
 								.setName('every')
-								.setDescription('Repeat interval — makes this a recurring reminder (e.g. 1d, 1w). Min 5m.')
+								.setDescription('Repeat interval — makes this a recurring reminder (e.g. 1d, 1w). Min 5m, max 365d.')
 								.setRequired(false)
 								.setAutocomplete(true),
 						),
@@ -98,6 +99,7 @@ export class RemindCommand extends Subcommand {
 			const parsed = parseDuration(everyStr);
 			if (!parsed) return interaction.editReply(errorReply(`Invalid repeat interval. ${DURATION_HINT}`));
 			if (parsed < MIN_INTERVAL_MS) return interaction.editReply(errorReply('Minimum repeat interval is 5 minutes.'));
+			if (parsed > MAX_INTERVAL_MS) return interaction.editReply(errorReply('Maximum repeat interval is 365 days.'));
 			intervalMs = parsed;
 		}
 

@@ -33,7 +33,8 @@ export class LoopHandler {
 		let next: LoopMode;
 
 		if (raw) {
-			next = raw as LoopMode;
+			// Moonlink's setLoop only accepts off | track | queue
+			next = (LOOP_MODES as readonly string[]).includes(raw) ? (raw as LoopMode) : 'off';
 		} else {
 			// Cycle: off → track → queue → off
 			const current = (player.loop as LoopMode) ?? 'off';

@@ -16,15 +16,29 @@ import {
 } from '../../lib/LevelingUtil.js';
 import { renderRankCard } from '../../lib/RankCardUtil.js';
 
+const MAX_BACKGROUND_URL_LENGTH = 512;
+
+/** http(s) URL of bounded length. Parsed with URL — a regex here previously backtracked catastrophically. */
+function isValidBackgroundUrl(input: string): boolean {
+	if (!input || input.length > MAX_BACKGROUND_URL_LENGTH) return false;
+	try {
+		const url = new URL(input);
+		return url.protocol === 'http:' || url.protocol === 'https:';
+	} catch {
+		return false;
+	}
+}
+
 function hasModPerms(perms: Readonly<import('discord.js').PermissionsBitField> | null): boolean {
 	if (!perms) return false;
 	if (perms.has(PermissionFlagsBits.Administrator)) return true;
-	const modPerms =
-		PermissionFlagsBits.ManageGuild |
-		PermissionFlagsBits.KickMembers |
-		PermissionFlagsBits.BanMembers |
-		PermissionFlagsBits.ModerateMembers;
-	return perms.has(modPerms);
+	// any() = at least one of these; has(a | b) would require all of them
+	return perms.any([
+		PermissionFlagsBits.ManageGuild,
+		PermissionFlagsBits.KickMembers,
+		PermissionFlagsBits.BanMembers,
+		PermissionFlagsBits.ModerateMembers,
+	]);
 }
 
 @ApplyOptions<Subcommand.Options>({
@@ -275,13 +289,17 @@ export class LevelCommand extends Subcommand {
 					}
 
 					// Validate URL format
-					const urlPattern = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/i;
-					if (!urlPattern.test(bgValue.trim())) {
-						return interaction.editReply(errorReply('Invalid image URL format.'));
+					const imageUrl = bgValue.trim();
+					if (!isValidBackgroundUrl(imageUrl)) {
+						return interaction.editReply(
+							errorReply(
+								`Invalid image URL. Use a full \`http://\` or \`https://\` link (max ${MAX_BACKGROUND_URL_LENGTH} characters).`,
+							),
+						);
 					}
 
 					updates.backgroundType = 'image';
-					updates.backgroundValue = bgValue.trim();
+					updates.backgroundValue = imageUrl;
 				}
 			}
 		}
@@ -344,7 +362,9 @@ export class LevelCommand extends Subcommand {
 
 	public async chatInputSet(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
 
 		if (!hasModPerms(interaction.memberPermissions)) {
 			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
@@ -361,7 +381,9 @@ export class LevelCommand extends Subcommand {
 
 	public async chatInputAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
 
 		if (!hasModPerms(interaction.memberPermissions)) {
 			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
@@ -379,7 +401,9 @@ export class LevelCommand extends Subcommand {
 
 	public async chatInputRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
 
 		if (!hasModPerms(interaction.memberPermissions)) {
 			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
@@ -397,7 +421,9 @@ export class LevelCommand extends Subcommand {
 
 	public async chatInputReset(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) {
+			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		}
 
 		if (!hasModPerms(interaction.memberPermissions)) {
 			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));

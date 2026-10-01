@@ -56,7 +56,8 @@ async function settle(
 	const userId = interaction.user.id;
 	const net = payout - bet;
 
-	if (payout > 0) {
+	if (net >= 0) {
+		// Win (or push — stake returned)
 		let credit = payout;
 		if (net > 0) {
 			const dice = await getInventoryItem(userId, guildId, 'gamblers_dice');
@@ -68,6 +69,10 @@ async function settle(
 		}
 		await walletAdd(userId, guildId, credit);
 		await logTx(guildId, userId, winType, Math.max(credit - bet, 0), { note: header });
+	} else if (payout > 0) {
+		// Partial return (e.g. a 0.5× plinko slot): the payout is still credited, but it's a net loss.
+		await walletAdd(userId, guildId, payout);
+		await logTx(guildId, userId, lossType, bet - payout, { note: header });
 	} else {
 		const insurance = await getInventoryItem(userId, guildId, 'insurance');
 		if (insurance) {
@@ -80,7 +85,7 @@ async function settle(
 	}
 
 	const row = await getOrCreateEconomy(userId, guildId);
-	const won = payout > 0;
+	const won = net >= 0;
 	const c = makeContainer({ color: won ? Colors.Success : Colors.Error, header });
 	c.addSeparatorComponents(separator());
 	c.addTextDisplayComponents(

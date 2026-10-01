@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags, type TextChannel } from 'discord.js';
+import { type Message, MessageFlags, type TextChannel } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import { CV2_FLAG, errorReply, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
@@ -67,7 +67,7 @@ export class SuggestCommand extends Subcommand {
 		const settings = await getSuggestionSettings(interaction.guild.id);
 		if (!settings?.channelId) {
 			return interaction.editReply(
-				errorReply('Suggestions are not configured yet. Ask a moderator to run `/suggestion setup channel`.'),
+				errorReply('Suggestions are not configured yet. Ask a moderator to run `/config suggestions setup-channel`.'),
 			);
 		}
 
@@ -91,7 +91,20 @@ export class SuggestCommand extends Subcommand {
 		const [suggestion] = await db.select().from(schema.suggestions).where(eq(schema.suggestions.id, idRow.id)).limit(1);
 		if (!suggestion) return interaction.editReply(errorReply('Failed to create suggestion.'));
 
-		const msg = await channel.send({ components: [buildSuggestionContainer(suggestion)], flags: CV2_FLAG });
+		let msg: Message;
+		try {
+			msg = await channel.send({ components: [buildSuggestionContainer(suggestion)], flags: CV2_FLAG });
+		} catch (err) {
+			// Don't leave a suggestion row behind that points at no message (messageId '0').
+			await db
+				.delete(schema.suggestions)
+				.where(eq(schema.suggestions.id, suggestion.id))
+				.catch(() => null);
+			this.container.logger.warn(`[suggest] Could not post suggestion in ${channel.id}:`, err);
+			return interaction.editReply(
+				errorReply(`I couldn't post your suggestion in <#${channel.id}>. Please let a moderator know.`),
+			);
+		}
 		await db.update(schema.suggestions).set({ messageId: msg.id }).where(eq(schema.suggestions.id, suggestion.id));
 
 		await msg

@@ -14,6 +14,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { minecraftLinks } from '../../db/schema.js';
 import { resolveRank, syncPortalProfile } from '../../lib/ApiServer.js';
+import { getMinecraftServerAddress } from '../../lib/brand.js';
 import { Colors, cv2Reply, errorReply, makeContainer, successReply } from '../../lib/components.js';
 import { db } from '../../lib/database.js';
 
@@ -77,11 +78,7 @@ export class MinecraftCommand extends Subcommand {
 						.setName('status')
 						.setDescription("Query a Minecraft server's status.")
 						.addStringOption((o) =>
-							o
-								.setName('ip')
-								.setDescription('Server IP (defaults to play.aloramc.com).')
-								.setRequired(false)
-								.setMaxLength(100),
+							o.setName('ip').setDescription('Server IP or hostname.').setRequired(false).setMaxLength(100),
 						),
 				)
 				.addSubcommand((sub) =>
@@ -196,11 +193,16 @@ export class MinecraftCommand extends Subcommand {
 	public async chatInputStatus(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-		const ip = interaction.options.getString('ip') ?? 'play.aloramc.com';
+		const ip = interaction.options.getString('ip')?.trim() || getMinecraftServerAddress();
+		if (!ip) {
+			return interaction.editReply(errorReply('Please provide a server address (no default server is configured).'));
+		}
 
 		let data: any;
 		try {
-			const res = await fetch(`https://api.mcsrvstat.us/2/${ip}`);
+			const res = await fetch(`https://api.mcsrvstat.us/2/${encodeURIComponent(ip)}`, {
+				signal: AbortSignal.timeout(10_000),
+			});
 			if (!res.ok) throw new Error('API returned an error');
 			data = await res.json();
 		} catch (_err) {
@@ -221,7 +223,7 @@ export class MinecraftCommand extends Subcommand {
 		const cleanMotd = data.motd?.clean ? data.motd.clean.join('\n') : 'No MOTD';
 
 		const c = makeContainer({ color: Colors.Success, header: 'Minecraft Server Status' });
-		const iconUrl = `https://api.mcsrvstat.us/icon/${ip}`;
+		const iconUrl = `https://api.mcsrvstat.us/icon/${encodeURIComponent(ip)}`;
 
 		const section = new SectionBuilder()
 			.addTextDisplayComponents(
@@ -272,7 +274,9 @@ export class MinecraftCommand extends Subcommand {
 		let resolvedUuid: string | null = null;
 
 		try {
-			const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`);
+			const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`, {
+				signal: AbortSignal.timeout(10_000),
+			});
 			if (res.status === 200) {
 				const data = (await res.json()) as { id: string; name: string };
 				resolvedUuid = data.id;
