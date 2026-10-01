@@ -48,18 +48,21 @@ export async function getLevelSettings(guildId: string): Promise<LevelSettingsRo
 export async function getOrCreateLevelSettings(guildId: string): Promise<LevelSettingsRow> {
 	const existing = await getLevelSettings(guildId);
 	if (existing) return existing;
-	await db.insert(schema.levelSettings).values({ guildId });
+	// No-op upsert: a concurrent first call may insert the row between the select and this insert.
+	await db
+		.insert(schema.levelSettings)
+		.values({ guildId })
+		.onDuplicateKeyUpdate({ set: { guildId: sql`${schema.levelSettings.guildId}` } });
 	const [row] = await db.select().from(schema.levelSettings).where(eq(schema.levelSettings.guildId, guildId)).limit(1);
 	return row!;
 }
 
 export async function upsertLevelSettings(guildId: string, data: Partial<Omit<LevelSettingsRow, 'guildId'>>) {
-	const existing = await getLevelSettings(guildId);
-	if (existing) {
-		await db.update(schema.levelSettings).set(data).where(eq(schema.levelSettings.guildId, guildId));
-	} else {
-		await db.insert(schema.levelSettings).values({ guildId, ...data });
-	}
+	// Single upsert (no select-then-insert race); the no-op guildId keeps the SET clause non-empty.
+	await db
+		.insert(schema.levelSettings)
+		.values({ guildId, ...data })
+		.onDuplicateKeyUpdate({ set: { guildId: sql`${schema.levelSettings.guildId}`, ...data } });
 }
 
 // ─── XP row helpers ───────────────────────────────────────────────────────────
@@ -76,7 +79,11 @@ export async function getXpRow(guildId: string, userId: string): Promise<XpRow |
 async function getOrCreateXpRow(guildId: string, userId: string): Promise<XpRow> {
 	const existing = await getXpRow(guildId, userId);
 	if (existing) return existing;
-	await db.insert(schema.xp).values({ guildId, userId, totalXp: 0, level: 0 });
+	// No-op upsert: a concurrent first call may insert the row between the select and this insert.
+	await db
+		.insert(schema.xp)
+		.values({ guildId, userId, totalXp: 0, level: 0 })
+		.onDuplicateKeyUpdate({ set: { id: sql`${schema.xp.id}` } });
 	const [row] = await db
 		.select()
 		.from(schema.xp)
@@ -104,10 +111,23 @@ export async function tryAddXp(
 
 	const base = settings.xpMin + Math.floor(Math.random() * (settings.xpMax - settings.xpMin + 1));
 	const amount = Math.round(base * multiplier);
+	return incrementXp(guildId, userId, amount, { lastMessageAt: now });
+}
+
+/**
+ * Atomically add `amount` XP (creating the row on first use), then derive the level change from the
+ * stored total. Message and voice XP both go through here, so concurrent awards never overwrite each other.
+ */
+async function incrementXp(
+	guildId: string,
+	userId: string,
+	amount: number,
+	extraSet: Partial<Pick<typeof schema.xp.$inferInsert, 'lastMessageAt'>> = {},
+): Promise<TryAddXpResult | null> {
 	await getOrCreateXpRow(guildId, userId);
 	const result = await db
 		.update(schema.xp)
-		.set({ totalXp: sql`${schema.xp.totalXp} + ${amount}`, lastMessageAt: now })
+		.set({ totalXp: sql`${schema.xp.totalXp} + ${amount}`, ...extraSet })
 		.where(and(eq(schema.xp.guildId, guildId), eq(schema.xp.userId, userId)));
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	if (affected === 0) return null;
@@ -219,13 +239,6 @@ export async function addVoiceXp(
 	const amount = Math.round(minutesSpent * settings.voiceXpPerMinute * multiplier);
 	if (amount <= 0) return null;
 
-	const row = await getXpRow(guildId, userId);
-	const oldTotal = row?.totalXp ?? 0;
-	const newTotal = oldTotal + amount;
-	const { level: oldLevel } = levelFromTotalXp(oldTotal);
-	const { level: newLevel } = levelFromTotalXp(newTotal);
-
-	await setXp(guildId, userId, newTotal);
-
-	return { leveledUp: newLevel > oldLevel, newLevel, oldLevel };
+	// Atomic increment — a read-then-overwrite here would drop message XP earned in the meantime.
+	return incrementXp(guildId, userId, amount);
 }

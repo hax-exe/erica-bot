@@ -1,4 +1,8 @@
 import type { SocialPlatform } from '../db/schema.js';
+import { USER_AGENT } from './brand.js';
+
+/** Every feed request is bounded so one slow host can't stall a poll cycle. */
+const FETCH_TIMEOUT_MS = 15_000;
 
 export interface FeedPost {
 	id: string;
@@ -31,7 +35,11 @@ export async function resolveYouTubeChannelId(
 	const handle = input.startsWith('@') ? input : `@${input}`;
 	const url = `https://www.youtube.com/${handle}`;
 
-	const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => null);
+	// Browser UA on purpose: this page is scraped, and bot user agents get blocked.
+	const res = await fetch(url, {
+		headers: { 'User-Agent': 'Mozilla/5.0' },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	}).catch(() => null);
 	if (!res?.ok) return null;
 	const html = await res.text();
 
@@ -47,14 +55,25 @@ export async function resolveYouTubeChannelId(
 }
 
 async function fetchYouTubeRss(channelId: string): Promise<string | null> {
-	const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`).catch(() => null);
+	const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	}).catch(() => null);
 	if (!res?.ok) return null;
 	return res.text();
 }
 
 function extractXml(xml: string, tag: string): string | null {
-	const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`));
-	return m ? m[1].trim() : null;
+	// Text may be plain or wrapped in <![CDATA[...]]> (common for RSS titles / descriptions).
+	const m = xml.match(new RegExp(`<${tag}[^>]*>((?:<!\\[CDATA\\[[\\s\\S]*?\\]\\]>|[^<])+)</${tag}>`));
+	return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : null;
+}
+
+/** CDATA descriptions usually carry HTML markup; keep only the text for Discord. */
+function stripHtml(text: string): string {
+	return text
+		.replace(/<[^>]*>/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
 }
 
 function parseYouTubeRss(xml: string): FeedPost[] {
@@ -116,7 +135,10 @@ async function pollReddit(handle: string, sinceId: string | null): Promise<PollR
 		? `https://www.reddit.com/user/${name}/submitted.json?limit=10&raw_json=1`
 		: `https://www.reddit.com/r/${name}/new.json?limit=10&raw_json=1`;
 
-	const res = await fetch(apiUrl, { headers: { 'User-Agent': 'Erica-Bot/1.0' } }).catch(() => null);
+	const res = await fetch(apiUrl, {
+		headers: { 'User-Agent': USER_AGENT },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	}).catch(() => null);
 	if (!res?.ok) return { posts: [], newLastId: sinceId };
 
 	const json = (await res.json().catch(() => null)) as {
@@ -166,6 +188,7 @@ export async function resolveBlueskyHandle(input: string): Promise<{ handle: str
 	const handle = input.startsWith('@') ? input.slice(1) : input;
 	const res = await fetch(
 		`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
+		{ signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
 	).catch(() => null);
 	if (!res?.ok) return null;
 	const json = (await res.json().catch(() => null)) as { did?: string } | null;
@@ -174,6 +197,7 @@ export async function resolveBlueskyHandle(input: string): Promise<{ handle: str
 	// Get display name
 	const profileRes = await fetch(
 		`https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`,
+		{ signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
 	).catch(() => null);
 	const profile = profileRes?.ok
 		? ((await profileRes.json().catch(() => null)) as { displayName?: string } | null)
@@ -185,6 +209,7 @@ export async function resolveBlueskyHandle(input: string): Promise<{ handle: str
 async function pollBluesky(handle: string, sinceId: string | null): Promise<PollResult> {
 	const res = await fetch(
 		`https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=10&filter=posts_no_replies`,
+		{ signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
 	).catch(() => null);
 	if (!res?.ok) return { posts: [], newLastId: sinceId };
 
@@ -251,7 +276,7 @@ async function getTwitchToken(): Promise<string | null> {
 
 	const res = await fetch(
 		`https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
-		{ method: 'POST' },
+		{ method: 'POST', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
 	).catch(() => null);
 	if (!res?.ok) return null;
 
@@ -270,6 +295,7 @@ export async function resolveTwitchUser(username: string): Promise<{ login: stri
 
 	const res = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`, {
 		headers: { Authorization: `Bearer ${token}`, 'Client-Id': clientId },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	}).catch(() => null);
 	if (!res?.ok) return null;
 
@@ -286,6 +312,7 @@ async function pollTwitch(login: string, sinceId: string | null): Promise<PollRe
 
 	const res = await fetch(`https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(login)}`, {
 		headers: { Authorization: `Bearer ${token}`, 'Client-Id': clientId },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 	}).catch(() => null);
 	if (!res?.ok) return { posts: [], newLastId: sinceId };
 
@@ -324,7 +351,9 @@ async function pollTwitch(login: string, sinceId: string | null): Promise<PollRe
 // ─── TikTok ───────────────────────────────────────────────────────────────────
 
 async function pollTikTok(username: string, sinceId: string | null): Promise<PollResult> {
+	// Browser UA on purpose: this page is scraped, and bot user agents get blocked.
 	const res = await fetch(`https://www.tiktok.com/@${username}`, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 		headers: {
 			'User-Agent':
 				'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -364,7 +393,10 @@ async function pollTikTok(username: string, sinceId: string | null): Promise<Pol
 
 /** Fetch an RSS or Atom feed and return its title. Returns null if unreachable or not a valid feed. */
 export async function resolveRssFeed(url: string): Promise<{ url: string; displayName: string } | null> {
-	const res = await fetch(url, { headers: { 'User-Agent': 'Erica-Bot/1.0' } }).catch(() => null);
+	const res = await fetch(url, {
+		headers: { 'User-Agent': USER_AGENT },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	}).catch(() => null);
 	if (!res?.ok) return null;
 	const xml = await res.text().catch(() => null);
 	if (!xml) return null;
@@ -375,7 +407,10 @@ export async function resolveRssFeed(url: string): Promise<{ url: string; displa
 }
 
 async function pollRss(feedUrl: string, sinceId: string | null): Promise<PollResult> {
-	const res = await fetch(feedUrl, { headers: { 'User-Agent': 'Erica-Bot/1.0' } }).catch(() => null);
+	const res = await fetch(feedUrl, {
+		headers: { 'User-Agent': USER_AGENT },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	}).catch(() => null);
 	if (!res?.ok) return { posts: [], newLastId: sinceId };
 	const xml = await res.text().catch(() => '');
 
@@ -397,7 +432,13 @@ async function pollRss(feedUrl: string, sinceId: string | null): Promise<PollRes
 			extractXml(block, 'author') ?? block.match(/<name>([^<]+)<\/name>/)?.[1] ?? new URL(feedUrl).hostname;
 
 		if (!id && !link) continue;
-		posts.push({ id: id ?? link, title, url: link, author, description: description?.slice(0, 200) });
+		posts.push({
+			id: id ?? link,
+			title,
+			url: link,
+			author,
+			description: description ? stripHtml(description).slice(0, 200) : undefined,
+		});
 	}
 
 	if (posts.length === 0) return { posts: [], newLastId: sinceId };

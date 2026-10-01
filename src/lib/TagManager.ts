@@ -1,6 +1,7 @@
 import type { ApplicationCommandOptionChoiceData } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db, schema } from './database.js';
+import { safeJsonParse } from './safe.js';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,14 +26,24 @@ export type TagData = {
 
 // ─── Row parser ────────────────────────────────────────────────────────────────
 
+/** Malformed alias JSON (or non-string entries) must not break tag lookups for the whole guild. */
+function parseAliases(raw: string): string[] {
+	return safeJsonParse<unknown[]>(raw, []).filter((a): a is string => typeof a === 'string');
+}
+
+function parseEmbed(raw: string | null): TagEmbed | null {
+	const parsed = safeJsonParse<unknown>(raw, null);
+	return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as TagEmbed) : null;
+}
+
 function parseRow(row: typeof schema.tags.$inferSelect): TagData {
 	return {
 		id: row.id,
 		guildId: row.guildId,
 		name: row.name,
-		aliases: JSON.parse(row.aliases) as string[],
+		aliases: parseAliases(row.aliases),
 		content: row.content ?? null,
-		embed: row.embed ? (JSON.parse(row.embed) as TagEmbed) : null,
+		embed: parseEmbed(row.embed),
 	};
 }
 
@@ -46,7 +57,11 @@ export async function resolveTag(guildId: string, nameOrAlias: string): Promise<
 	const byName = rows.find((r) => r.name.toLowerCase() === lower);
 	if (byName) return parseRow(byName);
 
-	const byAlias = rows.find((r) => (JSON.parse(r.aliases) as string[]).map((a) => a.toLowerCase()).includes(lower));
+	const byAlias = rows.find((r) =>
+		parseAliases(r.aliases)
+			.map((a) => a.toLowerCase())
+			.includes(lower),
+	);
 	return byAlias ? parseRow(byAlias) : null;
 }
 

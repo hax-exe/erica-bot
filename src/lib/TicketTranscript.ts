@@ -1,4 +1,5 @@
 import type { Guild, Message } from 'discord.js';
+import { BOT_NAME } from './brand.js';
 
 export type TicketTranscriptMeta = {
 	ticketId: number;
@@ -409,7 +410,7 @@ export function buildHtmlTranscript(_guild: Guild, meta: TicketTranscriptMeta, m
   <main class="messages">
 ${messageHtml}
   </main>
-  <p class="footer">Erica custom transcript · Components V2 supported</p>
+  <p class="footer">${escapeHtml(BOT_NAME)} transcript</p>
 </div>
 </body>
 </html>`;

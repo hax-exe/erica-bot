@@ -286,6 +286,10 @@ export async function enqueueAutoplayTrack(player: Player, seedTrack?: Track | n
 		}
 
 		return false;
+	} catch (err) {
+		// Discovery / resolve failures (network, NodeLink) must not reach the player listeners.
+		container.logger.warn(`[autoplay] enqueue failed for guild ${guildId}:`, err);
+		return false;
 	} finally {
 		inFlight.delete(guildId);
 	}

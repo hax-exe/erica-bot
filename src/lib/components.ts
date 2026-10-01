@@ -269,7 +269,8 @@ export function logContainer(options: {
 		}
 	}
 
-	if (targetUser) {
+	// Callers sometimes pass a plain `{ id, username }` instead of a User — only call real avatar getters.
+	if (targetUser && typeof targetUser.displayAvatarURL === 'function') {
 		embed.setThumbnail(targetUser.displayAvatarURL({ forceStatic: false }));
 	} else if (options.thumbnailUrl) {
 		embed.setThumbnail(options.thumbnailUrl);

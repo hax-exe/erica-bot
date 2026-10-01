@@ -1,6 +1,7 @@
 import type { Guild } from 'discord.js';
 import { channelMention, type Role, User, userMention, WebhookClient } from 'discord.js';
 import { eq } from 'drizzle-orm';
+import { WEBHOOK_NAMES } from './brand.js';
 import { type LogEmbed, logMessage } from './components.js';
 import { db, schema } from './database.js';
 
@@ -37,10 +38,10 @@ export async function syncWebhookBranding(): Promise<{ updated: number; failed: 
 	const targets: Array<{ url: string | null; name: string }> = [];
 	for (const row of rows) {
 		targets.push(
-			{ url: row.logWebhookUrl, name: 'Erica — Logs' },
-			{ url: row.modLogWebhookUrl, name: 'Erica — Moderation Logs' },
-			{ url: row.ticketLogWebhookUrl, name: 'Erica — Ticket Logs' },
-			{ url: row.reportWebhookUrl, name: 'Erica — Report Logs' },
+			{ url: row.logWebhookUrl, name: WEBHOOK_NAMES.logs },
+			{ url: row.modLogWebhookUrl, name: WEBHOOK_NAMES.modLogs },
+			{ url: row.ticketLogWebhookUrl, name: WEBHOOK_NAMES.ticketLogs },
+			{ url: row.reportWebhookUrl, name: WEBHOOK_NAMES.reportLogs },
 		);
 	}
 
@@ -48,18 +49,34 @@ export async function syncWebhookBranding(): Promise<{ updated: number; failed: 
 	let failed = 0;
 	for (const target of targets) {
 		if (!target.url) continue;
-		const wh = new WebhookClient({ url: target.url });
+		let wh: WebhookClient | null = null;
 		try {
+			// Constructed inside try: a malformed stored URL throws here and must not abort the sync.
+			wh = new WebhookClient({ url: target.url });
 			await wh.edit({ name: target.name });
 			updated++;
 		} catch {
 			failed++;
 		} finally {
-			wh.destroy();
+			wh?.destroy();
 		}
 	}
 
 	return { updated, failed };
+}
+
+/** Best-effort delete of a logging webhook by its stored URL (channel moved or cleared). Never throws. */
+export async function deleteWebhookByUrl(url: string | null | undefined, reason?: string): Promise<void> {
+	if (!url) return;
+	let wh: WebhookClient | null = null;
+	try {
+		wh = new WebhookClient({ url });
+		await wh.delete(reason);
+	} catch {
+		// Already deleted, malformed URL or no access — nothing left to clean up
+	} finally {
+		wh?.destroy();
+	}
 }
 
 // ─── Shared log copy ───────────────────────────────────────────────────────────
@@ -132,13 +149,21 @@ export const logFields = {
 
 // ─── Webhook dispatch helpers ──────────────────────────────────────────────────
 
-async function sendToWebhook(url: string | null | undefined, payload: Record<string, unknown>): Promise<void> {
-	if (!url) return;
-	const wh = new WebhookClient({ url });
+/**
+ * Deliver a payload to a log webhook. Never throws — logging must not interrupt the bot.
+ * @returns true when sent; false when no webhook is configured or delivery failed (incl. a malformed URL).
+ */
+async function sendToWebhook(url: string | null | undefined, payload: Record<string, unknown>): Promise<boolean> {
+	if (!url) return false;
+	let wh: WebhookClient | null = null;
 	try {
+		wh = new WebhookClient({ url });
 		await wh.send(payload);
+		return true;
+	} catch {
+		return false;
 	} finally {
-		wh.destroy();
+		wh?.destroy();
 	}
 }
 
@@ -157,7 +182,7 @@ export async function sendLog(guild: Guild, embed: LogEmbed, channelId?: string)
 			console.warn(`[LoggingUtil] Malformed logIgnoredChannelIds JSON for guild ${guild.id} — ignoring filter`);
 		}
 	}
-	await sendToWebhook(settings?.logWebhookUrl, logMessage(embed)).catch(() => null);
+	await sendToWebhook(settings?.logWebhookUrl, logMessage(embed));
 }
 
 /**
@@ -171,16 +196,7 @@ export async function sendLogFiles(guild: Guild, files: any[], content?: string,
 			if (ignored.includes(channelId)) return;
 		} catch {}
 	}
-	if (!settings?.logWebhookUrl) return;
-
-	const wh = new WebhookClient({ url: settings.logWebhookUrl });
-	try {
-		await wh.send({ content: content ?? '', files });
-	} catch {
-		// Silently swallow errors to avoid interrupting the bot
-	} finally {
-		wh.destroy();
-	}
+	await sendToWebhook(settings?.logWebhookUrl, { content: content ?? '', files, allowedMentions: { parse: [] } });
 }
 
 /**
@@ -192,7 +208,7 @@ export async function sendModLog(guild: Guild, embed: LogEmbed, files?: any[]): 
 	if (files && files.length > 0) {
 		payload.files = files;
 	}
-	await sendToWebhook(settings?.modLogWebhookUrl, payload).catch(() => null);
+	await sendToWebhook(settings?.modLogWebhookUrl, payload);
 }
 
 /**
@@ -200,18 +216,16 @@ export async function sendModLog(guild: Guild, embed: LogEmbed, files?: any[]): 
  */
 export async function sendTicketLog(guild: Guild, embed: LogEmbed): Promise<void> {
 	const settings = await getGuildSettings(guild.id);
-	await sendToWebhook(settings?.ticketLogWebhookUrl, logMessage(embed)).catch(() => null);
+	await sendToWebhook(settings?.ticketLogWebhookUrl, logMessage(embed));
 }
 
 /**
  * Send a log embed to the guild's report webhook.
- * Returns true if the webhook was configured and the message was sent, false if not configured.
+ * Returns true when the report was delivered; false when no report webhook is configured or the send failed.
  */
 export async function sendReportLog(guild: Guild, embed: LogEmbed): Promise<boolean> {
 	const settings = await getGuildSettings(guild.id);
-	if (!settings?.reportWebhookUrl) return false;
-	const result = await sendToWebhook(settings.reportWebhookUrl, logMessage(embed)).catch(() => null);
-	return result != null;
+	return sendToWebhook(settings?.reportWebhookUrl, logMessage(embed));
 }
 
 /**
@@ -223,13 +237,5 @@ export async function sendTicketFile(
 	files: { attachment: Buffer; name: string }[],
 ): Promise<void> {
 	const settings = await getGuildSettings(guild.id);
-	if (!settings?.ticketLogWebhookUrl) return;
-	const wh = new WebhookClient({ url: settings.ticketLogWebhookUrl });
-	try {
-		await wh.send({ content, files });
-	} catch {
-		// Silently swallow — logging must never interrupt the bot
-	} finally {
-		wh.destroy();
-	}
+	await sendToWebhook(settings?.ticketLogWebhookUrl, { content, files, allowedMentions: { parse: [] } });
 }

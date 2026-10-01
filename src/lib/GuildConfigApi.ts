@@ -1,8 +1,122 @@
 import { container } from '@sapphire/framework';
 import { ChannelType } from 'discord.js';
 import { and, asc, count, desc, eq } from 'drizzle-orm';
+import { WEBHOOK_NAMES } from './brand.js';
 import { db, schema } from './database.js';
 import { resolveBlueskyHandle, resolveRssFeed } from './FeedPoller.js';
+import { deleteWebhookByUrl } from './LoggingUtil.js';
+import { invalidateModuleCache, setModule } from './ModuleUtil.js';
+import { isDuplicateKeyError } from './safe.js';
+
+type SettingsPatch = {
+	logChannelId?: string;
+	modLogChannelId?: string;
+	ticketLogChannelId?: string;
+	reportChannelId?: string;
+	clearLog?: boolean;
+	clearModLog?: boolean;
+	clearTicketLog?: boolean;
+	clearReport?: boolean;
+	logIgnoredChannelIds?: string[];
+};
+
+/** Log webhooks the settings PATCH can point at a channel (creating a webhook there) or clear. */
+const LOG_WEBHOOK_TARGETS = [
+	{
+		channelKey: 'logChannelId',
+		clearKey: 'clearLog',
+		urlKey: 'logWebhookUrl',
+		name: WEBHOOK_NAMES.logs,
+		label: 'Log channel',
+	},
+	{
+		channelKey: 'modLogChannelId',
+		clearKey: 'clearModLog',
+		urlKey: 'modLogWebhookUrl',
+		name: WEBHOOK_NAMES.modLogs,
+		label: 'Moderation log channel',
+	},
+	{
+		channelKey: 'ticketLogChannelId',
+		clearKey: 'clearTicketLog',
+		urlKey: 'ticketLogWebhookUrl',
+		name: WEBHOOK_NAMES.ticketLogs,
+		label: 'Ticket log channel',
+	},
+	{
+		channelKey: 'reportChannelId',
+		clearKey: 'clearReport',
+		urlKey: 'reportWebhookUrl',
+		name: WEBHOOK_NAMES.reportLogs,
+		label: 'Report channel',
+	},
+] as const;
+
+/** JSON-text columns holding string arrays (IDs / domains); other code reads them back with JSON.parse. */
+const AUTOMOD_ARRAY_FIELDS = ['linkWhitelist', 'exemptRoles', 'exemptChannels'] as const;
+const LEVELING_ARRAY_FIELDS = ['noXpRoleIds', 'noXpChannelIds', 'noXpVoiceChannelIds'] as const;
+
+/** Accept a string array (or a JSON string encoding one) and return its JSON text; null when invalid. */
+function toStringArrayJson(value: unknown): string | null {
+	let parsed = value;
+	if (typeof value === 'string') {
+		try {
+			parsed = JSON.parse(value);
+		} catch {
+			return null;
+		}
+	}
+	return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string') ? JSON.stringify(parsed) : null;
+}
+
+/**
+ * Normalise the given JSON string-array fields of `patch` in place.
+ * @returns the first invalid field name, or null when every present field is valid.
+ */
+function normalizeArrayFields(patch: Record<string, unknown>, fields: readonly string[]): string | null {
+	for (const field of fields) {
+		if (patch[field] === undefined) continue;
+		const json = toStringArrayJson(patch[field]);
+		if (json === null) return field;
+		patch[field] = json;
+	}
+	return null;
+}
+
+/** True when `value` is JSON text for a plain object (tag embeds). */
+function isJsonObjectText(value: unknown): boolean {
+	if (typeof value !== 'string') return false;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+	} catch {
+		return false;
+	}
+}
+
+/** Decode a URL path segment; null when it is not valid percent-encoding. */
+function decodePathSegment(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+}
+
+/** Fetch a guild the bot is in; null when Discord reports it unknown or inaccessible (not a member). */
+async function fetchGuildOrNull(guildId: string, force = false) {
+	if (!/^\d{17,20}$/.test(guildId)) return null;
+	try {
+		return force
+			? await container.client.guilds.fetch({ guild: guildId, force: true })
+			: await container.client.guilds.fetch(guildId);
+	} catch (e) {
+		const { code, status } = (e ?? {}) as { code?: unknown; status?: unknown };
+		// 10004 Unknown Guild / 50001 Missing Access
+		if (code === 10004 || code === 50001 || status === 403 || status === 404) return null;
+		throw e;
+	}
+}
 
 /** Strip PK / cross-guild fields so callers can't overwrite another guild's row. */
 function sanitizeGuildPatch<T extends Record<string, unknown>>(
@@ -53,7 +167,8 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 	try {
 		// ── Guild overview ────────────────────────────────────────────────────────
 		if ((sub === '' || sub === '/') && method === 'GET') {
-			const guild = await container.client.guilds.fetch(guildId);
+			const guild = await fetchGuildOrNull(guildId);
+			if (!guild) return err('Guild not found', 404);
 
 			const [modulesRow, infractionCount, openTicketCount, activeFeedCount] = await Promise.all([
 				db
@@ -100,7 +215,8 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 
 		// ── Channels ──────────────────────────────────────────────────────────────
 		if (sub === 'channels' && method === 'GET') {
-			const guild = await container.client.guilds.fetch({ guild: guildId, force: true });
+			const guild = await fetchGuildOrNull(guildId, true);
+			if (!guild) return err('Guild not found', 404);
 			const channels = guild.channels.cache
 				.filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement)
 				.map((c) => ({ id: c.id, name: (c as { name: string }).name, type: c.type }))
@@ -110,7 +226,8 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 
 		// ── Roles ─────────────────────────────────────────────────────────────────
 		if (sub === 'roles' && method === 'GET') {
-			const guild = await container.client.guilds.fetch({ guild: guildId, force: true });
+			const guild = await fetchGuildOrNull(guildId, true);
+			if (!guild) return err('Guild not found', 404);
 			const roles = guild.roles.cache
 				.filter((r) => r.id !== guildId)
 				.map((r) => ({ id: r.id, name: r.name, color: r.color, position: r.position }))
@@ -147,6 +264,10 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 					automod: false,
 					suggestions: true,
 					fun: true,
+					giveaways: true,
+					economy: true,
+					tts: true,
+					autoresponder: true,
 				},
 			);
 		}
@@ -161,6 +282,7 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 				.onDuplicateKeyUpdate({
 					set: patch as Partial<typeof schema.guildModules.$inferInsert>,
 				});
+			invalidateModuleCache(guildId);
 			const updated = await db
 				.select()
 				.from(schema.guildModules)
@@ -198,82 +320,72 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		}
 
 		if (sub === 'settings' && method === 'PATCH') {
-			type SettingsPatch = {
-				logChannelId?: string;
-				modLogChannelId?: string;
-				ticketLogChannelId?: string;
-				reportChannelId?: string;
-				clearLog?: boolean;
-				clearModLog?: boolean;
-				clearTicketLog?: boolean;
-				clearReport?: boolean;
-				logIgnoredChannelIds?: string[];
-			};
 			const body = await parseBody<SettingsPatch>();
 			if (!body) return err('Invalid JSON body');
 
 			const set: Partial<typeof schema.guilds.$inferInsert> = {};
 
-			if (body.logChannelId) {
-				const channel = await container.client.channels.fetch(body.logChannelId);
-				if (!channel || !('guildId' in channel) || channel.guildId !== guildId) {
-					return err('Log channel must belong to the configured guild');
-				}
-				if (channel && 'createWebhook' in channel && typeof channel.createWebhook === 'function') {
-					const webhook = await (
-						channel as { createWebhook: (opts: { name: string }) => Promise<{ url: string }> }
-					).createWebhook({ name: 'Erica — Logs' });
-					set.logWebhookUrl = webhook.url;
-				}
-			}
-			if (body.modLogChannelId) {
-				const channel = await container.client.channels.fetch(body.modLogChannelId);
-				if (!channel || !('guildId' in channel) || channel.guildId !== guildId) {
-					return err('Moderation log channel must belong to the configured guild');
-				}
-				if (channel && 'createWebhook' in channel && typeof channel.createWebhook === 'function') {
-					const webhook = await (
-						channel as { createWebhook: (opts: { name: string }) => Promise<{ url: string }> }
-					).createWebhook({ name: 'Erica — Moderation Logs' });
-					set.modLogWebhookUrl = webhook.url;
-				}
-			}
-			if (body.ticketLogChannelId) {
-				const channel = await container.client.channels.fetch(body.ticketLogChannelId);
-				if (!channel || !('guildId' in channel) || channel.guildId !== guildId) {
-					return err('Ticket log channel must belong to the configured guild');
-				}
-				if (channel && 'createWebhook' in channel && typeof channel.createWebhook === 'function') {
-					const webhook = await (
-						channel as { createWebhook: (opts: { name: string }) => Promise<{ url: string }> }
-					).createWebhook({ name: 'Erica — Ticket Logs' });
-					set.ticketLogWebhookUrl = webhook.url;
-				}
-			}
-			if (body.reportChannelId) {
-				const channel = await container.client.channels.fetch(body.reportChannelId);
-				if (!channel || !('guildId' in channel) || channel.guildId !== guildId) {
-					return err('Report channel must belong to the configured guild');
-				}
-				if (channel && 'createWebhook' in channel && typeof channel.createWebhook === 'function') {
-					const webhook = await (
-						channel as { createWebhook: (opts: { name: string }) => Promise<{ url: string }> }
-					).createWebhook({ name: 'Erica — Report Logs' });
-					set.reportWebhookUrl = webhook.url;
-				}
-			}
-			if (body.clearLog) set.logWebhookUrl = null;
-			if (body.clearModLog) set.modLogWebhookUrl = null;
-			if (body.clearTicketLog) set.ticketLogWebhookUrl = null;
-			if (body.clearReport) set.reportWebhookUrl = null;
 			if (body.logIgnoredChannelIds !== undefined) {
-				set.logIgnoredChannelIds = JSON.stringify(body.logIgnoredChannelIds);
+				const json = toStringArrayJson(body.logIgnoredChannelIds);
+				if (json === null) return err('logIgnoredChannelIds must be an array of channel ID strings');
+				set.logIgnoredChannelIds = json;
 			}
 
-			await db
-				.insert(schema.guilds)
-				.values({ id: guildId, ...set })
-				.onDuplicateKeyUpdate({ set });
+			const previous = await db
+				.select()
+				.from(schema.guilds)
+				.where(eq(schema.guilds.id, guildId))
+				.limit(1)
+				.then((rows) => rows[0]);
+
+			// Webhooks created by this request — deleted again if the request fails part-way.
+			const created: string[] = [];
+			const discardCreated = () =>
+				Promise.all(created.map((url) => deleteWebhookByUrl(url, 'Log settings update failed')));
+
+			for (const target of LOG_WEBHOOK_TARGETS) {
+				if (body[target.clearKey]) {
+					set[target.urlKey] = null;
+					continue;
+				}
+				const channelId = body[target.channelKey];
+				if (!channelId) continue;
+
+				const channel = await container.client.channels.fetch(channelId).catch(() => null);
+				if (!channel || !('guildId' in channel) || channel.guildId !== guildId) {
+					await discardCreated();
+					return err(`${target.label} must belong to the configured guild`);
+				}
+				if ('createWebhook' in channel && typeof channel.createWebhook === 'function') {
+					try {
+						const webhook = await (
+							channel as {
+								createWebhook: (opts: { name: string; avatar?: string }) => Promise<{ url: string }>;
+							}
+						).createWebhook({
+							name: target.name,
+							avatar: container.client.user?.displayAvatarURL({ extension: 'png', size: 256 }),
+						});
+						created.push(webhook.url);
+						set[target.urlKey] = webhook.url;
+					} catch (e) {
+						await discardCreated();
+						throw e;
+					}
+				}
+			}
+
+			if (Object.keys(set).length === 0) return err('No valid fields');
+
+			try {
+				await db
+					.insert(schema.guilds)
+					.values({ id: guildId, ...set })
+					.onDuplicateKeyUpdate({ set });
+			} catch (e) {
+				await discardCreated();
+				throw e;
+			}
 
 			const updated = await db
 				.select()
@@ -281,6 +393,17 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 				.where(eq(schema.guilds.id, guildId))
 				.limit(1)
 				.then((rows) => rows[0]);
+
+			// Replaced / cleared webhooks are now unreferenced: delete them so channels don't hit
+			// Discord's 15-webhook cap. A URL still stored in another column is kept.
+			if (previous && updated) {
+				const inUse = new Set(LOG_WEBHOOK_TARGETS.map((t) => updated[t.urlKey]));
+				const stale = new Set(
+					LOG_WEBHOOK_TARGETS.map((t) => previous[t.urlKey]).filter((url): url is string => !!url && !inUse.has(url)),
+				);
+				await Promise.all([...stale].map((url) => deleteWebhookByUrl(url, 'Log channel changed via the API')));
+			}
+
 			return ok(
 				updated
 					? {
@@ -343,12 +466,19 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		if (sub === 'automod' && method === 'PATCH') {
 			const body = await parseBody<Partial<typeof schema.automodSettings.$inferInsert>>();
 			if (!body) return err('Invalid JSON body');
+			const patch: Record<string, unknown> = sanitizeGuildPatch(body as Record<string, unknown>, guildId);
+			const badField = normalizeArrayFields(patch, AUTOMOD_ARRAY_FIELDS);
+			if (badField) return err(`${badField} must be an array of strings`);
 			await db
 				.insert(schema.automodSettings)
-				.values(sanitizeGuildPatch(body as Record<string, unknown>, guildId) as any)
+				.values(patch as any)
 				.onDuplicateKeyUpdate({
-					set: sanitizeGuildPatch(body as Record<string, unknown>, guildId) as any,
+					set: patch as any,
 				});
+			// Rules only run while the AutoMod module is on — enabling one turns it on, as /automod toggle does.
+			if (Object.entries(patch).some(([key, value]) => key.endsWith('Enabled') && value === true)) {
+				await setModule(guildId, 'automod', true);
+			}
 			const updated = await db
 				.select()
 				.from(schema.automodSettings)
@@ -507,11 +637,14 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		if (sub === 'leveling' && method === 'PATCH') {
 			const body = await parseBody<Partial<typeof schema.levelSettings.$inferInsert>>();
 			if (!body) return err('Invalid JSON body');
+			const patch: Record<string, unknown> = sanitizeGuildPatch(body as Record<string, unknown>, guildId);
+			const badField = normalizeArrayFields(patch, LEVELING_ARRAY_FIELDS);
+			if (badField) return err(`${badField} must be an array of strings`);
 			await db
 				.insert(schema.levelSettings)
-				.values(sanitizeGuildPatch(body as Record<string, unknown>, guildId) as any)
+				.values(patch as any)
 				.onDuplicateKeyUpdate({
-					set: sanitizeGuildPatch(body as Record<string, unknown>, guildId) as any,
+					set: patch as any,
 				});
 			const updated = await db
 				.select()
@@ -734,12 +867,17 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		if (sub === 'tags' && method === 'POST') {
 			const body = await parseBody<{ name: string; aliases?: string[]; content: string; embedJson?: string }>();
 			if (!body?.name || !body.content) return err('Missing name or content');
+			const aliases = body.aliases ? toStringArrayJson(body.aliases) : '[]';
+			if (aliases === null) return err('aliases must be an array of strings');
+			if (body.embedJson != null && !isJsonObjectText(body.embedJson)) {
+				return err('embedJson must be a JSON object string');
+			}
 			const [idRow] = await db
 				.insert(schema.tags)
 				.values({
 					guildId,
 					name: body.name,
-					aliases: body.aliases ? JSON.stringify(body.aliases) : '[]',
+					aliases,
 					content: body.content,
 					embed: body.embedJson ?? null,
 				})
@@ -754,13 +892,19 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		}
 
 		if (sub.startsWith('tags/') && method === 'PATCH') {
-			const name = sub.slice('tags/'.length);
+			const name = decodePathSegment(sub.slice('tags/'.length));
+			if (name === null) return err('Invalid tag name');
 			if (!name) return err('Missing tag name');
 			const body = await parseBody<{ content?: string; aliases?: string[] }>();
 			if (!body) return err('Invalid JSON body');
 			const set: Partial<typeof schema.tags.$inferInsert> = {};
 			if (body.content !== undefined) set.content = body.content;
-			if (body.aliases !== undefined) set.aliases = JSON.stringify(body.aliases);
+			if (body.aliases !== undefined) {
+				const aliases = toStringArrayJson(body.aliases);
+				if (aliases === null) return err('aliases must be an array of strings');
+				set.aliases = aliases;
+			}
+			if (Object.keys(set).length === 0) return err('No valid fields');
 			await db
 				.update(schema.tags)
 				.set(set)
@@ -775,7 +919,8 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 		}
 
 		if (sub.startsWith('tags/') && method === 'DELETE') {
-			const name = sub.slice('tags/'.length);
+			const name = decodePathSegment(sub.slice('tags/'.length));
+			if (name === null) return err('Invalid tag name');
 			if (!name) return err('Missing tag name');
 			await db.delete(schema.tags).where(and(eq(schema.tags.guildId, guildId), eq(schema.tags.name, name)));
 			return ok();
@@ -783,6 +928,8 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 
 		return err('Not found', 404);
 	} catch (e) {
+		// Unique-index violations (duplicate filter word, level role, feed, …) are client conflicts, not server errors.
+		if (isDuplicateKeyError(e)) return err('An entry with those values already exists', 409);
 		container.logger.error('[GuildConfigApi] error:', e);
 		return err('Internal error', 500);
 	}

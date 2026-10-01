@@ -5,6 +5,7 @@ import path from 'node:path';
 import { container } from '@sapphire/framework';
 import { z } from 'zod';
 import { minecraftLinks } from '../db/schema.js';
+import { BOT_NAME, getAllowedOrigins } from './brand.js';
 import { db } from './database.js';
 import { handleGuildRoute } from './GuildConfigApi.js';
 import {
@@ -17,6 +18,7 @@ import {
 	getStatusConfig,
 	getUptime,
 } from './StatusUtil.js';
+import { safeJsonParse } from './safe.js';
 import { consumeVerification, lookupVerificationCode } from './VerificationUtil.js';
 
 const RANK_PRIORITY = [
@@ -88,10 +90,23 @@ class TokenBucketLimiter {
 		}
 		return true; // Limited
 	}
+
+	/** Drop buckets that have refilled completely — a missing bucket behaves exactly like a full one. */
+	public prune(now = Date.now()): void {
+		for (const [key, bucket] of this.buckets) {
+			if (bucket.tokens + (now - bucket.lastRefill) * this.refillRatePerMs >= this.maxTokens) {
+				this.buckets.delete(key);
+			}
+		}
+	}
 }
 
 const publicRateLimiter = new TokenBucketLimiter(60, 1 / 1000);
 const authBruteForceLimiter = new TokenBucketLimiter(10, 1 / 6000);
+const RATE_LIMIT_SWEEP_MS = 5 * 60 * 1000;
+
+/** `/api/team` needs a full member fetch, so the computed response is reused for a minute. */
+const TEAM_CACHE_TTL_MS = 60_000;
 
 function getClientIp(req: Request, server: any): string {
 	const cfIp = req.headers.get('CF-Connecting-IP');
@@ -113,7 +128,8 @@ const assignVerifiedSchema = z.object({
 const verifySchema = z.object({
 	code: z.string().min(1),
 	username: z.string().min(1).max(16),
-	uuid: z.string().uuid().nullable().optional(),
+	// z.guid(), not z.uuid(): Bedrock/Floodgate UUIDs (0000…-0009-…) lack RFC 4122 version/variant bits.
+	uuid: z.guid().nullable().optional(),
 });
 
 const setRolesSchema = z.object({
@@ -210,18 +226,29 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 		container.logger.warn('[API] BOT_API_SECRET is not set — private API disabled; health endpoint remains online.');
 	}
 
-	const ALLOWED_ORIGINS = ['https://aloramc.com', 'https://www.aloramc.com'];
+	// Read once at start (API_ALLOWED_ORIGINS). Empty → no browser origin gets CORS access;
+	// server-to-server callers send no Origin header and are unaffected.
+	const allowedOrigins = new Set(getAllowedOrigins().map((o) => o.toLowerCase()));
 
 	function corsHeaders(req: Request): Record<string, string> {
-		const origin = req.headers.get('Origin') ?? '';
-		const allowed =
-			ALLOWED_ORIGINS.includes(origin) || /^https?:\/\/localhost(:\d+)?$/.test(origin) ? origin : ALLOWED_ORIGINS[0];
-		return {
-			'Access-Control-Allow-Origin': allowed,
+		const headers: Record<string, string> = {
 			'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
 			'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Secret',
+			Vary: 'Origin',
 		};
+		const origin = req.headers.get('Origin');
+		if (origin && allowedOrigins.has(origin.toLowerCase())) headers['Access-Control-Allow-Origin'] = origin;
+		return headers;
 	}
+
+	// Buckets are keyed by client IP; sweep refilled ones so the maps can't grow without bound.
+	setInterval(() => {
+		publicRateLimiter.prune();
+		authBruteForceLimiter.prune();
+	}, RATE_LIMIT_SWEEP_MS).unref();
+
+	let teamCache: { body: unknown; expires: number } | null = null;
+	let teamLoad: Promise<{ status: number; body: unknown }> | null = null;
 
 	const server = Bun.serve({
 		port,
@@ -238,14 +265,14 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 			const isPublicRoute =
 				url.pathname === '/api/health' || url.pathname === '/api/status' || url.pathname === '/api/team';
 
-			if (isPublicRoute) {
-				if (publicRateLimiter.limit(clientIp)) {
-					container.logger.warn(`[API] 429 — Public rate limit exceeded for IP ${clientIp}`);
-					return Response.json({ error: 'Too many requests' }, { status: 429 });
-				}
+			let res: Response;
+			if (isPublicRoute && publicRateLimiter.limit(clientIp)) {
+				container.logger.warn(`[API] 429 — Public rate limit exceeded for IP ${clientIp}`);
+				res = Response.json({ error: 'Too many requests' }, { status: 429 });
+			} else {
+				res = await routeRequest(req, url, clientIp);
 			}
 
-			const res = await routeRequest(req, url, clientIp);
 			const cors = corsHeaders(req);
 			for (const [k, v] of Object.entries(cors)) res.headers.set(k, v as string);
 
@@ -273,7 +300,7 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 		if (url.pathname === '/api/health') {
 			return Response.json({
 				ok: true,
-				service: 'erica',
+				service: BOT_NAME.toLowerCase(),
 				api: fullApiEnabled ? 'full' : 'health-only',
 				timestamp: new Date().toISOString(),
 				uptime: Math.floor(process.uptime()),
@@ -321,9 +348,7 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 				}),
 			}));
 
-			const maintenanceUpdates = maintenance?.updates
-				? (JSON.parse(maintenance.updates) as { message: string; at: string }[])
-				: [];
+			const maintenanceUpdates = safeJsonParse<{ message: string; at: string }[]>(maintenance?.updates, []);
 
 			const incidentsOut = activeIncidents.map((i) => ({
 				id: i.id,
@@ -331,7 +356,7 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 				status: i.status,
 				severity: i.severity,
 				startedAt: i.startedAt,
-				updates: i.updates ? JSON.parse(i.updates) : [],
+				updates: safeJsonParse<unknown[]>(i.updates, []),
 			}));
 
 			return Response.json({
@@ -350,9 +375,6 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 
 		// ── Team (public) ─────────────────────────────────────────────────────
 		if (url.pathname === '/api/team') {
-			container.logger.info(
-				`[API /team] SUPPORT_GUILD_ID=${supportGuildId ?? '(not set)'} TEAM_ROLE_ID=${teamRoleId ?? '(not set)'}`,
-			);
 			if (!supportGuildId || !teamRoleId) {
 				container.logger.warn('[API /team] missing SUPPORT_GUILD_ID or TEAM_ROLE_ID');
 				return Response.json(
@@ -361,43 +383,14 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 				);
 			}
 
-			const guild = await container.client.guilds.fetch(supportGuildId).catch((err) => {
-				container.logger.warn('[API /team] failed to fetch guild:', err);
-				return null;
+			if (teamCache && teamCache.expires > Date.now()) return Response.json(teamCache.body);
+
+			// Concurrent cold requests share one load instead of each fetching every guild member.
+			teamLoad ??= loadTeam(supportGuildId, teamRoleId).finally(() => {
+				teamLoad = null;
 			});
-			if (!guild) {
-				container.logger.warn('[API /team] guild not found');
-				return Response.json({ error: 'Support guild not found or bot is not in it.' }, { status: 503 });
-			}
-
-			const members = await guild.members.fetch().catch((err) => {
-				container.logger.warn('[API /team] failed to fetch members:', err);
-				return null;
-			});
-			if (!members) {
-				return Response.json({ error: 'Could not fetch guild members.' }, { status: 503 });
-			}
-
-			const teamMembers = members.filter((m) => m.roles.cache.has(teamRoleId));
-			container.logger.info(`[API /team] total members=${members.size} team members=${teamMembers.size}`);
-
-			const links = await db.select().from(minecraftLinks);
-			const linkMap = new Map(links.map((l) => [l.userId, l.minecraftName]));
-			container.logger.info(`[API /team] minecraft links loaded: ${links.length}`);
-
-			const result = teamMembers.map((m) => ({
-				id: m.id,
-				username: m.user.username,
-				displayName: m.displayName,
-				roles: m.roles.cache
-					.filter((r) => r.id !== guild.id)
-					.sort((a, b) => b.position - a.position)
-					.map((r) => ({ id: r.id, name: r.name })),
-				minecraftName: linkMap.get(m.id) ?? null,
-			}));
-
-			container.logger.info(`[API /team] returning ${result.length} members`);
-			return Response.json(result);
+			const { status, body } = await teamLoad;
+			return Response.json(body, { status });
 		}
 
 		// Public health/status/team routes stay available while private integrations are disabled.
@@ -707,5 +700,49 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 
 		container.logger.warn(`[API] 404 — no handler for ${req.method} ${url.pathname}`);
 		return Response.json({ error: 'Not found' }, { status: 404 });
+	}
+
+	/** Build the public team list; only a successful result is cached (TEAM_CACHE_TTL_MS). */
+	async function loadTeam(guildId: string, roleId: string): Promise<{ status: number; body: unknown }> {
+		container.logger.info(`[API /team] SUPPORT_GUILD_ID=${guildId} TEAM_ROLE_ID=${roleId}`);
+
+		const guild = await container.client.guilds.fetch(guildId).catch((err) => {
+			container.logger.warn('[API /team] failed to fetch guild:', err);
+			return null;
+		});
+		if (!guild) {
+			container.logger.warn('[API /team] guild not found');
+			return { status: 503, body: { error: 'Support guild not found or bot is not in it.' } };
+		}
+
+		const members = await guild.members.fetch().catch((err) => {
+			container.logger.warn('[API /team] failed to fetch members:', err);
+			return null;
+		});
+		if (!members) {
+			return { status: 503, body: { error: 'Could not fetch guild members.' } };
+		}
+
+		const teamMembers = members.filter((m) => m.roles.cache.has(roleId));
+		container.logger.info(`[API /team] total members=${members.size} team members=${teamMembers.size}`);
+
+		const links = await db.select().from(minecraftLinks);
+		const linkMap = new Map(links.map((l) => [l.userId, l.minecraftName]));
+		container.logger.info(`[API /team] minecraft links loaded: ${links.length}`);
+
+		const result = teamMembers.map((m) => ({
+			id: m.id,
+			username: m.user.username,
+			displayName: m.displayName,
+			roles: m.roles.cache
+				.filter((r) => r.id !== guild.id)
+				.sort((a, b) => b.position - a.position)
+				.map((r) => ({ id: r.id, name: r.name })),
+			minecraftName: linkMap.get(m.id) ?? null,
+		}));
+
+		container.logger.info(`[API /team] returning ${result.length} members`);
+		teamCache = { body: result, expires: Date.now() + TEAM_CACHE_TTL_MS };
+		return { status: 200, body: result };
 	}
 }

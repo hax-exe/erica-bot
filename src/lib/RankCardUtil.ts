@@ -1,4 +1,5 @@
 import { createCanvas, GlobalFonts, type Image, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
+import { BOT_NAME } from './brand.js';
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 GlobalFonts.registerFromPath('./assets/fonts/Minecraft-Seven_v2.ttf', 'MCseven');
@@ -7,12 +8,40 @@ GlobalFonts.registerFromPath('./assets/fonts/MinecraftFive-Regular.ttf', 'MCfive
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const IMAGE_FETCH_TIMEOUT_MS = 8_000;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Load a remote image (custom backgrounds are user-supplied URLs). Only http(s), 8 s timeout, 5 MB cap.
+ * Returns null on any failure so the caller falls back to the default background / avatar.
+ */
 async function safeLoadImage(url: string) {
 	try {
-		const res = await fetch(url);
-		if (!res.ok) return null;
-		const buf = Buffer.from(await res.arrayBuffer());
-		return await loadImage(buf);
+		const { protocol } = new URL(url);
+		if (protocol !== 'http:' && protocol !== 'https:') return null;
+
+		const res = await fetch(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+		if (!res.ok || !res.body) return null;
+		if (Number(res.headers.get('content-length') ?? 0) > MAX_IMAGE_BYTES) {
+			await res.body.cancel().catch(() => null);
+			return null;
+		}
+
+		// Stream with a running cap: content-length can be missing or wrong.
+		const reader = res.body.getReader();
+		const chunks: Uint8Array[] = [];
+		let size = 0;
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			size += value.byteLength;
+			if (size > MAX_IMAGE_BYTES) {
+				await reader.cancel().catch(() => null);
+				return null;
+			}
+			chunks.push(value);
+		}
+		return await loadImage(Buffer.concat(chunks));
 	} catch {
 		return null;
 	}
@@ -237,7 +266,7 @@ export async function renderRankCard(opts: RankCardOptions): Promise<Buffer> {
 	// Eyebrow adds structure and avoids a floating name.
 	ctx.font = `700 ${10 * S}px ${SANS}`;
 	ctx.fillStyle = hexToRgba(accentHex, 0.95);
-	ctx.fillText('ALORAMC  /  MEMBER PROFILE', CONTENT_X, 70 * S);
+	ctx.fillText(`${BOT_NAME.toUpperCase()}  /  MEMBER PROFILE`, CONTENT_X, 70 * S);
 
 	// ── Display name ──
 	const statW = 100 * S;

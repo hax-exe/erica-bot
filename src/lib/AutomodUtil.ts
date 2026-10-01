@@ -4,11 +4,13 @@ const DiscordInviteLinkRegex =
 	/(?:https?:\/\/)?(?:www\.)?discord(?:\.gg|(?:app)?\.com\/invite)\/(?<code>[\w-]{2,255})/gi;
 
 import { type GuildMember, type Message, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Colors, CV2_FLAG, logContainer, makeContainer } from './components.js';
 import { db, schema } from './database.js';
 import { logFields, sendModLog } from './LoggingUtil.js';
 import { createInfraction, getModActionRow } from './ModerationUtil.js';
+import { isModuleEnabled } from './ModuleUtil.js';
+import { safeJsonParse } from './safe.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,7 +60,11 @@ export async function getOrCreateAutomodSettings(guildId: string): Promise<Autom
 		where: eq(schema.automodSettings.guildId, guildId),
 	});
 	if (existing) return existing;
-	await db.insert(schema.automodSettings).values({ guildId });
+	// No-op upsert: a concurrent first call may insert the row between the select and this insert.
+	await db
+		.insert(schema.automodSettings)
+		.values({ guildId })
+		.onDuplicateKeyUpdate({ set: { guildId: sql`${schema.automodSettings.guildId}` } });
 	const [row] = await db
 		.select()
 		.from(schema.automodSettings)
@@ -171,10 +177,13 @@ export async function runAutomod(message: Message<true>): Promise<void> {
 		// Ignore bot messages to prevent loops
 		if (message.author.bot) return;
 
+		// Gate here too, so no caller can bypass the module toggle.
+		if (!(await isModuleEnabled(message.guildId, 'automod'))) return;
+
 		const settings = await getOrCreateAutomodSettings(message.guildId);
 
 		// Exempt channels
-		const exemptChannels = JSON.parse(settings.exemptChannels || '[]') as string[];
+		const exemptChannels = safeJsonParse<string[]>(settings.exemptChannels, []);
 		if (exemptChannels.includes(message.channelId)) return;
 
 		const member =
@@ -188,7 +197,7 @@ export async function runAutomod(message: Message<true>): Promise<void> {
 		// Administrator bypass
 		if (member.permissions.has(PermissionFlagsBits.Administrator)) return;
 
-		const exemptRoles = JSON.parse(settings.exemptRoles || '[]') as string[];
+		const exemptRoles = safeJsonParse<string[]>(settings.exemptRoles, []);
 		if (exemptRoles.some((r) => member.roles.cache.has(r))) return;
 
 		const content = message.content;
@@ -275,13 +284,12 @@ export async function runAutomod(message: Message<true>): Promise<void> {
 		}
 
 		// ── Invite filter ─────────────────────────────────────────────────────────
+		// Invites to this server itself (its vanity URL) are allowed. matchAll() works on a copy of
+		// the shared /g regex, so no lastIndex state carries over between messages.
 		if (settings.inviteEnabled) {
-			const matches = content.matchAll(DiscordInviteLinkRegex);
-
-			for (const match of matches) {
-				const code = match.groups?.code;
-
-				if (code?.toLowerCase() === 'aloramc') continue;
+			const ownVanityCode = message.guild?.vanityURLCode?.toLowerCase();
+			for (const match of content.matchAll(DiscordInviteLinkRegex)) {
+				if (ownVanityCode && match.groups?.code?.toLowerCase() === ownVanityCode) continue;
 
 				return applyAction(
 					message,
@@ -296,7 +304,7 @@ export async function runAutomod(message: Message<true>): Promise<void> {
 		// ── Link filter ───────────────────────────────────────────────────────────
 		if (settings.linkEnabled) {
 			const urlRegex = /https?:\/\/([^/\s]+)/gi;
-			const whitelist = JSON.parse(settings.linkWhitelist) as string[];
+			const whitelist = safeJsonParse<string[]>(settings.linkWhitelist, []);
 			let match = urlRegex.exec(content);
 			while (match !== null) {
 				const domain = match[1].toLowerCase();

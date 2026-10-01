@@ -19,6 +19,7 @@ import {
 } from '../db/schema.js';
 import { Colors, CV2_FLAG, makeContainer, separator } from './components.js';
 import { db } from './database.js';
+import { safeJsonParse } from './safe.js';
 
 // ─── Config schema ─────────────────────────────────────────────────────────────
 
@@ -241,9 +242,12 @@ async function executeAllChecks(): Promise<Map<string, StatusCheckResult>> {
 	const results = await Promise.all(services.map(async (s) => ({ id: s.id, ...(await checkService(s)) })));
 
 	const now = new Date();
-	await db
-		.insert(statusChecks)
-		.values(results.map((r) => ({ serviceId: r.id, online: r.online, pingMs: r.pingMs, checkedAt: now })));
+	// insert().values([]) throws — status.yml may define no services.
+	if (results.length > 0) {
+		await db
+			.insert(statusChecks)
+			.values(results.map((r) => ({ serviceId: r.id, online: r.online, pingMs: r.pingMs, checkedAt: now })));
+	}
 
 	// Prune checks older than 35 days to keep the table lean
 	const cutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
@@ -369,7 +373,7 @@ export async function setMaintenance(patch: Partial<Omit<typeof maintenanceState
 
 export async function addMaintenanceUpdate(message: string): Promise<void> {
 	const current = await getMaintenance();
-	const updates: MaintenanceUpdate[] = current?.updates ? (JSON.parse(current.updates) as MaintenanceUpdate[]) : [];
+	const updates: MaintenanceUpdate[] = safeJsonParse<MaintenanceUpdate[]>(current?.updates, []);
 	updates.unshift({ message, at: new Date().toISOString() }); // newest first
 	if (updates.length > 10) updates.pop(); // keep last 10
 	await setMaintenance({ updates: JSON.stringify(updates) });
@@ -400,7 +404,7 @@ export async function getServiceOverrides(): Promise<
 			{
 				status: r.status as OverrideStatus,
 				reason: r.reason,
-				updates: r.updates ? (JSON.parse(r.updates) as MaintenanceUpdate[]) : [],
+				updates: safeJsonParse<MaintenanceUpdate[]>(r.updates, []),
 			},
 		]),
 	);
@@ -445,7 +449,7 @@ export async function clearServiceOverride(serviceId: string): Promise<void> {
 export async function addServiceMaintenanceUpdate(serviceId: string, message: string): Promise<void> {
 	const [row] = await db.select().from(serviceOverrides).where(eq(serviceOverrides.serviceId, serviceId));
 	if (!row || row.status !== 'maintenance') return;
-	const updates: MaintenanceUpdate[] = row.updates ? (JSON.parse(row.updates) as MaintenanceUpdate[]) : [];
+	const updates: MaintenanceUpdate[] = safeJsonParse<MaintenanceUpdate[]>(row.updates, []);
 	updates.unshift({ message, at: new Date().toISOString() });
 	if (updates.length > 10) updates.pop();
 	await db
@@ -525,7 +529,7 @@ export async function addIncidentUpdate(
 ): Promise<void> {
 	const [row] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
 	if (!row) return;
-	const existing: IncidentUpdate[] = row.updates ? (JSON.parse(row.updates) as IncidentUpdate[]) : [];
+	const existing: IncidentUpdate[] = safeJsonParse<IncidentUpdate[]>(row.updates, []);
 	const update: IncidentUpdate = { status, message, at: new Date().toISOString(), by: byId };
 	existing.unshift(update);
 	await db
@@ -544,7 +548,7 @@ export async function addIncidentUpdate(
 export async function resolveIncident(incidentId: number, message: string, byId: string): Promise<void> {
 	const [row] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
 	if (!row) return;
-	const existing: IncidentUpdate[] = row.updates ? (JSON.parse(row.updates) as IncidentUpdate[]) : [];
+	const existing: IncidentUpdate[] = safeJsonParse<IncidentUpdate[]>(row.updates, []);
 	const update: IncidentUpdate = { status: 'resolved', message, at: new Date().toISOString(), by: byId };
 	existing.unshift(update);
 	await db
@@ -752,7 +756,7 @@ export async function buildStatusPanel(categories: CategoryStatus[], updatedAt: 
 		};
 
 		for (const incident of activeIncidents) {
-			const updates: IncidentUpdate[] = incident.updates ? (JSON.parse(incident.updates) as IncidentUpdate[]) : [];
+			const updates: IncidentUpdate[] = safeJsonParse<IncidentUpdate[]>(incident.updates, []);
 			const latest = updates[0];
 			const ts = Math.floor(new Date(incident.startedAt).getTime() / 1000);
 

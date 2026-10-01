@@ -225,7 +225,8 @@ export async function ensureShopSeeded(guildId: string): Promise<void> {
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 export const CURRENCY = '🪙';
-export const DEFAULT_BANK_CAP = 10_000;
+/** Mirrors the `bank_cap` column default (schema + SQL); only a fallback, the stored value always wins. */
+export const DEFAULT_BANK_CAP = 5000;
 
 export const DAILY_MIN = 250;
 export const DAILY_MAX = 650;
@@ -418,7 +419,11 @@ export async function getOrCreateEconomy(userId: string, guildId: string) {
 		where: and(eq(schema.economy.userId, userId), eq(schema.economy.guildId, guildId)),
 	});
 	if (existing) return normaliseEconRow(existing);
-	await db.insert(schema.economy).values({ userId, guildId });
+	// No-op upsert: a concurrent first call may insert the row between the select and this insert.
+	await db
+		.insert(schema.economy)
+		.values({ userId, guildId })
+		.onDuplicateKeyUpdate({ set: { id: sql`${schema.economy.id}` } });
 	const [row] = await db
 		.select()
 		.from(schema.economy)

@@ -2,7 +2,11 @@ import { container } from '@sapphire/framework';
 import type { Client } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { Manager, type Player } from 'moonlink.js';
+import { USER_AGENT } from './brand.js';
 import { db, schema } from './database.js';
+
+/** Spotify calls sit on interactive paths (autocomplete, autoplay) — never let one hang. */
+const SPOTIFY_TIMEOUT_MS = 10_000;
 
 // ---------------------------------------------------------------------------
 // Spotify client-credentials token cache
@@ -10,6 +14,7 @@ import { db, schema } from './database.js';
 let _spotifyToken: string | null = null;
 let _spotifyTokenExpiry = 0;
 
+/** Returns null when credentials are missing or the token request fails (never throws). */
 async function getSpotifyToken(): Promise<string | null> {
 	const clientId = process.env.SPOTIFY_CLIENT_ID;
 	const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
@@ -17,16 +22,36 @@ async function getSpotifyToken(): Promise<string | null> {
 	if (_spotifyToken && Date.now() < _spotifyTokenExpiry) return _spotifyToken;
 
 	const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-	const res = await fetch('https://accounts.spotify.com/api/token', {
-		method: 'POST',
-		headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-		body: 'grant_type=client_credentials',
-	});
-	if (!res.ok) return null;
-	const json = (await res.json()) as { access_token: string; expires_in: number };
-	_spotifyToken = json.access_token;
-	_spotifyTokenExpiry = Date.now() + (json.expires_in - 60) * 1000;
-	return _spotifyToken;
+	try {
+		const res = await fetch('https://accounts.spotify.com/api/token', {
+			method: 'POST',
+			headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'grant_type=client_credentials',
+			signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
+		});
+		if (!res.ok) return null;
+		const json = (await res.json()) as { access_token?: string; expires_in?: number };
+		if (!json.access_token) return null;
+		_spotifyToken = json.access_token;
+		_spotifyTokenExpiry = Date.now() + ((json.expires_in ?? 3600) - 60) * 1000;
+		return _spotifyToken;
+	} catch {
+		return null;
+	}
+}
+
+/** GET a Spotify Web API endpoint; null on network error, timeout, non-2xx or bad JSON (never throws). */
+async function spotifyGet<T>(url: string, token: string): Promise<T | null> {
+	try {
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${token}` },
+			signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
+		});
+		if (!res.ok) return null;
+		return (await res.json()) as T;
+	} catch {
+		return null;
+	}
 }
 
 export interface SpotifyTrackResult {
@@ -69,11 +94,8 @@ export async function spotifySearch(query: string, limit = 10): Promise<SpotifyT
 	if (!token) return [];
 
 	const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`;
-	const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-	if (!res.ok) return [];
-
-	const json = (await res.json()) as { tracks?: { items?: SpotifyApiTrack[] } };
-	return (json.tracks?.items ?? []).map(mapSpotifyTrack).filter((t): t is SpotifyTrackResult => t !== null);
+	const json = await spotifyGet<{ tracks?: { items?: SpotifyApiTrack[] } }>(url, token);
+	return (json?.tracks?.items ?? []).map(mapSpotifyTrack).filter((t): t is SpotifyTrackResult => t !== null);
 }
 
 /** Best-effort Spotify metadata lookup for a known title (+ optional artist). */
@@ -106,7 +128,7 @@ export function createMusicManager(): Manager {
 			},
 		],
 		options: {
-			clientName: 'Erica/1.0.0',
+			clientName: USER_AGENT,
 			trackHandling: {
 				autoSkipOnError: true,
 				skipStuckTracks: true,
@@ -236,7 +258,6 @@ export async function spotifyRadio(title: string, author: string, limit = 10): P
 	const token = await getSpotifyToken();
 	if (!token) return [];
 
-	const headers = { Authorization: `Bearer ${token}` };
 	const seen = new Set<string>();
 	const out: SpotifyTrackResult[] = [];
 
@@ -249,10 +270,12 @@ export async function spotifyRadio(title: string, author: string, limit = 10): P
 
 	// Resolve seed track
 	const q = encodeURIComponent(author && author !== 'Unknown' ? `track:${title} artist:${author}` : `track:${title}`);
-	const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=track&limit=5`, { headers });
+	const searchJson = await spotifyGet<{ tracks?: { items?: SpotifyApiTrack[] } }>(
+		`https://api.spotify.com/v1/search?q=${q}&type=track&limit=5`,
+		token,
+	);
 	let seed: SpotifyApiTrack | null = null;
-	if (searchRes.ok) {
-		const searchJson = (await searchRes.json()) as { tracks?: { items?: SpotifyApiTrack[] } };
+	if (searchJson) {
 		const items = searchJson.tracks?.items ?? [];
 		const scored = items.map((t) => ({
 			raw: t,
@@ -268,14 +291,11 @@ export async function spotifyRadio(title: string, author: string, limit = 10): P
 		if (!loose.length) return [];
 		// Re-fetch first hit as full track via search URL already have metadata but not artist id —
 		// do another search for recommendations path
-		const again = await fetch(
+		const again = await spotifyGet<{ tracks?: { items?: SpotifyApiTrack[] } }>(
 			`https://api.spotify.com/v1/search?q=${encodeURIComponent(`${loose[0].title} ${loose[0].artist}`)}&type=track&limit=1`,
-			{ headers },
+			token,
 		);
-		if (again.ok) {
-			const j = (await again.json()) as { tracks?: { items?: SpotifyApiTrack[] } };
-			seed = j.tracks?.items?.[0] ?? null;
-		}
+		seed = again?.tracks?.items?.[0] ?? null;
 		if (!seed) return loose.slice(0, limit);
 	}
 
@@ -286,26 +306,24 @@ export async function spotifyRadio(title: string, author: string, limit = 10): P
 
 	// Related artists' top tracks (best available "radio" without recommendations API)
 	if (seedArtistId) {
-		const relatedRes = await fetch(`https://api.spotify.com/v1/artists/${seedArtistId}/related-artists`, {
-			headers,
-		});
+		const relatedJson = await spotifyGet<{ artists?: Array<{ id?: string }> }>(
+			`https://api.spotify.com/v1/artists/${seedArtistId}/related-artists`,
+			token,
+		);
 		const relatedIds: string[] = [];
-		if (relatedRes.ok) {
-			const relatedJson = (await relatedRes.json()) as { artists?: Array<{ id?: string }> };
-			for (const a of relatedJson.artists ?? []) {
-				if (a.id) relatedIds.push(a.id);
-				if (relatedIds.length >= 5) break;
-			}
+		for (const a of relatedJson?.artists ?? []) {
+			if (a.id) relatedIds.push(a.id);
+			if (relatedIds.length >= 5) break;
 		}
 		relatedIds.unshift(seedArtistId);
 
 		for (const artistId of relatedIds) {
 			if (out.length >= limit) break;
-			const topRes = await fetch(`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`, {
-				headers,
-			});
-			if (!topRes.ok) continue;
-			const topJson = (await topRes.json()) as { tracks?: SpotifyApiTrack[] };
+			const topJson = await spotifyGet<{ tracks?: SpotifyApiTrack[] }>(
+				`https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`,
+				token,
+			);
+			if (!topJson) continue;
 			for (const t of topJson.tracks ?? []) {
 				push(t);
 				if (out.length >= limit) break;
@@ -318,13 +336,13 @@ export async function spotifyRadio(title: string, author: string, limit = 10): P
 		const params = new URLSearchParams({ limit: String(limit) });
 		if (seedTrackId) params.set('seed_tracks', seedTrackId);
 		if (seedArtistId) params.set('seed_artists', seedArtistId);
-		const recRes = await fetch(`https://api.spotify.com/v1/recommendations?${params}`, { headers });
-		if (recRes.ok) {
-			const recJson = (await recRes.json()) as { tracks?: SpotifyApiTrack[] };
-			for (const t of recJson.tracks ?? []) {
-				push(t);
-				if (out.length >= limit) break;
-			}
+		const recJson = await spotifyGet<{ tracks?: SpotifyApiTrack[] }>(
+			`https://api.spotify.com/v1/recommendations?${params}`,
+			token,
+		);
+		for (const t of recJson?.tracks ?? []) {
+			push(t);
+			if (out.length >= limit) break;
 		}
 	}
 

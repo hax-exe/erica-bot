@@ -376,7 +376,7 @@ export const globalModules = mysqlTable('global_modules', {
 	reports: boolean('reports').notNull().default(true),
 	reviews: boolean('reviews').notNull().default(true),
 	verification: boolean('verification').notNull().default(true),
-	automod: boolean('automod').notNull().default(false),
+	automod: boolean('automod').notNull().default(true), // kill-switch row: everything allowed by default
 	suggestions: boolean('suggestions').notNull().default(true),
 	fun: boolean('fun').notNull().default(true),
 	giveaways: boolean('giveaways').notNull().default(true),

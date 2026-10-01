@@ -3,6 +3,8 @@
  * Primary: icanhazdadjoke.com — Fallback: official-joke-api (general).
  */
 
+import { USER_AGENT } from './brand.js';
+
 export async function fetchJoke(): Promise<string> {
 	const dad = await fetchDadJoke();
 	if (dad) return dad;
@@ -18,7 +20,7 @@ async function fetchDadJoke(): Promise<string | null> {
 		const res = await fetch('https://icanhazdadjoke.com/', {
 			headers: {
 				Accept: 'application/json',
-				'User-Agent': 'Erica Discord Bot (AloraMC)',
+				'User-Agent': USER_AGENT,
 			},
 			signal: AbortSignal.timeout(4_000),
 		});
@@ -35,7 +37,7 @@ async function fetchOfficialJoke(): Promise<string | null> {
 	try {
 		// Avoid Programming type — general / knock-knock / pun only
 		const res = await fetch('https://official-joke-api.appspot.com/random_joke', {
-			headers: { 'User-Agent': 'Erica Discord Bot (AloraMC)' },
+			headers: { 'User-Agent': USER_AGENT },
 			signal: AbortSignal.timeout(4_000),
 		});
 		if (!res.ok) return null;
