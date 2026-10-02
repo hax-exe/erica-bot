@@ -13,11 +13,6 @@ categories:
   - id: game
     label: Game Servers
     services:
-      - id: proxy
-        label: Proxy
-        type: tcp
-        host: bedrock.originearth.live
-        port: 25565
       - id: lobby-1
         label: Lobby 1
         type: tcp
@@ -28,15 +23,6 @@ categories:
         type: tcp
         host: 172.19.0.1
         port: 30055
-
-  - id: databases
-    label: Databases
-    services:
-      - id: database1
-        label: Server Database
-        type: tcp
-        host: bedrock.originearth.live
-        port: 3306
 
   - id: bots
     label: Bots

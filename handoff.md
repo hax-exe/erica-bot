@@ -27,7 +27,7 @@ The goal was to fix everything that could throw at runtime and make all naming u
 | Domain (`aloramc.com` / `.net`) | **Remove every reference.** The domain is being cancelled, so don't add a replacement. Server address and CORS origins now come from env vars. |
 | Way of working | Use multiple agents. Five implementers worked in parallel on disjoint file sets, then three independent reviewers checked their work. |
 
-**Assumption that needs the user's confirmation:** `bedrock.originearth.live` in `config/status.yml` (lines 19 and 38) was **kept**. These hosts are live status-check targets, not bot branding. If `originearth.live` is the domain being cancelled, replace those hosts with the real server address, or remove those services.
+**Decision on `bedrock.originearth.live`:** the user chose to remove it. The `proxy` service (game category) and the `database1` service plus the now-empty `databases` category were removed from `config/status.yml` in the commit that updated this file. No `originearth` references remain.
 
 ## 3. What was done
 
@@ -76,11 +76,9 @@ These are the commits on `main..HEAD`, oldest first.
 
 ## 4. Open items: finish these first
 
-1. **CI.** Confirm `build-and-push` is green on `376a86f`, or on whatever HEAD is by then. If it's red, open the job log (it's a Docker build) and fix it.
-2. **Ask the user** (or check their answers in the chat):
-   - Does `bedrock.originearth.live` in `config/status.yml` stay or go? See section 2.
-   - Do they want the PR watched for CI and review comments? I offered and got no answer yet.
-3. **This file (`handoff.md`)** was committed to the PR branch so it survives the container. **Delete it before the PR is merged**, unless the user wants to keep it.
+1. **CI.** CI was green on `a68c402`. Confirm `build-and-push` is green on whatever HEAD is by then. If it's red, open the job log (it's a Docker build) and fix it.
+2. **User decisions on process:** the user wants the PR watched for CI and review comments, and wants this file (`handoff.md`) KEPT as a reference for future changes.
+3. **This file (`handoff.md`)** stays in the repo on purpose. Do not delete it before merge.
 4. **Mark the PR ready for review** once CI is green and the user has reviewed it. It is a draft now.
 5. **Deployment notes**, already in the PR description. Repeat them to the user if they ask:
    - **Local `drizzle/meta/`:** delete any local copy before pulling. It was untracked, so git will refuse to overwrite it.
