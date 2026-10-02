@@ -149,7 +149,19 @@ export class TicketInteractionListener extends Listener<typeof Events.Interactio
 
 	private async dispatch(interaction: Interaction) {
 		if (!interaction.inCachedGuild()) return;
-		if (!(await isModuleEnabled(interaction.guildId, 'tickets'))) return;
+		if (!(await isModuleEnabled(interaction.guildId, 'tickets'))) {
+			// Every ticket component / modal ID starts with `ticket:` — acknowledge those so the user isn't left hanging.
+			if (!(interaction.isMessageComponent() || interaction.isModalSubmit())) return;
+			if (!interaction.customId.startsWith('ticket:')) return;
+			const disabled = r(errorReply('The ticket system is disabled on this server.'));
+			if (interaction.isStringSelectMenu()) {
+				await interaction.deferUpdate();
+				await interaction.followUp(disabled);
+			} else {
+				await interaction.reply(disabled);
+			}
+			return;
+		}
 
 		// ── Select menu: category chosen ────────────────────────────────────────────
 		if (interaction.isStringSelectMenu() && interaction.customId === TICKET_SELECT_ID) {
@@ -311,10 +323,13 @@ export class TicketInteractionListener extends Listener<typeof Events.Interactio
 		// Fetch settings and categories for this guild so we can rebuild the panel payload
 		const settings = await getTicketSettings(interaction.guild.id);
 		const categories = await getGuildCategories(interaction.guild.id);
-		const panelPayload =
-			settings && categories.length > 0
-				? (buildPanelPayload(settings, categories) as any)
-				: { content: 'The ticket system is not fully configured.', flags: 64 };
+		if (!settings || categories.length === 0) {
+			// The panel is a CV2 message, so it can't be swapped for plain content (50035) — leave it as is.
+			await interaction.deferUpdate();
+			await interaction.followUp(r(errorReply('The ticket system is not fully configured.')));
+			return;
+		}
+		const panelPayload = buildPanelPayload(settings, categories) as any;
 
 		const cat = categories.find((c) => c.categoryId === categoryId) ?? null;
 		if (!cat) {

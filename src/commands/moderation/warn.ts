@@ -7,6 +7,7 @@ import {
 	CV2_FLAG,
 	confirmCancelRow,
 	errorReply,
+	field,
 	makeContainer,
 	separator,
 	successReply,
@@ -81,9 +82,10 @@ export class WarnCommand extends Command {
 			return interaction.editReply(errorReply('You cannot warn a bot.'));
 		}
 
-		const memberForHierarchy = guild.members.cache.get(target.id);
-		if (memberForHierarchy) {
-			const h = checkHierarchy(interaction.member, memberForHierarchy);
+		// Fetch (not cache-get) so uncached members still get the hierarchy check, the DM and escalation.
+		const member = await guild.members.fetch(target.id).catch(() => null);
+		if (member) {
+			const h = checkHierarchy(interaction.member, member);
 			if (!h.ok) return interaction.editReply(errorReply(h.reason));
 		}
 
@@ -179,7 +181,6 @@ export class WarnCommand extends Command {
 				proofAttachment,
 			});
 
-			const member = guild.members.cache.get(target.id);
 			if (member) {
 				const dm = makeContainer({ color: Colors.Warning, header: `You received a warning in ${guild.name}` });
 				dm.addTextDisplayComponents(
@@ -189,17 +190,13 @@ export class WarnCommand extends Command {
 			}
 
 			const escalated = await applyWarnEscalation(guild, target, interaction.client, infraction.caseId);
-			if (escalated) {
-				await interaction.followUp({
-					content: `⚖️ Auto-escalation fired: **${target.username}** has been ${escalated}.`,
-					flags: MessageFlags.Ephemeral,
-				});
-			}
 
-			const deleteText = deletedCount > 0 ? `\n🗑️ Deleted **${deletedCount}** message(s) in this channel.` : '';
-			return interaction.editReply(
-				successReply(`**${target.username}** has been warned. Case \`${infraction.caseId}\`.${deleteText}`),
-			);
+			// Everything goes in the one CV2 reply — a plain-content followUp here would replace the
+			// deferred reply and make the CV2 edit below fail (50035).
+			const lines = [`**${target.username}** has been warned. Case \`${infraction.caseId}\`.`];
+			if (deletedCount > 0) lines.push(`🗑️ Deleted **${deletedCount}** message(s) in this channel.`);
+			if (escalated) lines.push(field('Auto-escalation', `**${target.username}** has been ${escalated}.`));
+			return interaction.editReply(successReply(lines.join('\n')));
 		} catch (err) {
 			this.container.logger.error(err);
 			return interaction.editReply(errorReply('Failed to warn the user.'));

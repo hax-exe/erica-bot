@@ -31,10 +31,12 @@ import { db, schema } from '../../lib/database.js';
 import {
 	applyWarnEscalation,
 	checkHierarchy,
+	clearTempbans,
 	createInfraction,
 	dispatchModLog,
 	getInfractionByCase,
 	getInfractions,
+	truncateText,
 } from '../../lib/ModerationUtil.js';
 import { humanDuration, parseDuration } from '../../lib/parseDuration.js';
 import { buildActiveTimeoutsPage } from '../paginationInteractions.js';
@@ -76,6 +78,12 @@ const INFRACTION_EMOJI: Record<string, string> = {
 	softban: '💥',
 	warn: '⚠️',
 };
+
+/** Discord caps the text of one CV2 message at 4000 characters; keep headroom for headers and the footer line. */
+const HISTORY_TEXT_BUDGET = 3800;
+/** Max length of an edited case reason (the Edit Reason modal input). */
+const CASE_REASON_MAX_LENGTH = 500;
+const HISTORY_REASON_LENGTH = 200;
 
 @ApplyOptions<Listener.Options>({
 	name: 'modButtonInteractions',
@@ -131,12 +139,13 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 					modal.setTitle('Timeout User');
 					modal.addComponents(
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
+							// Discord caps labels at 45 chars (setLabel throws past that) — the full list goes in the placeholder.
 							new TextInputBuilder()
 								.setCustomId('duration')
-								.setLabel('Duration (60s / 5m / 10m / 30m / 1h / 6h / 12h / 1d / 3d / 7d / 28d)')
+								.setLabel('Duration (e.g. 10m, 1h, 1d, 28d)')
 								.setStyle(TextInputStyle.Short)
 								.setRequired(true)
-								.setPlaceholder('e.g. 1h'),
+								.setPlaceholder(Object.keys(DURATION_PRESETS).join(' / ')),
 						),
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
 							new TextInputBuilder()
@@ -163,10 +172,10 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
 							new TextInputBuilder()
 								.setCustomId('duration')
-								.setLabel('Temp ban duration (e.g. 7d, 24h — blank = permanent)')
+								.setLabel('Temp ban duration (optional)')
 								.setStyle(TextInputStyle.Short)
 								.setRequired(false)
-								.setPlaceholder('leave blank for permanent'),
+								.setPlaceholder('e.g. 7d or 24h, max 28d. Leave blank for a permanent ban.'),
 						),
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
 							new TextInputBuilder()
@@ -233,6 +242,8 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 
 				try {
 					await interaction.guild.bans.remove(targetId, `[${interaction.user.username}] Removed via mod button`);
+					// Drop any pending temp-ban expiry so it can't lift a later ban.
+					await clearTempbans(interaction.guild.id, targetId);
 
 					const infraction = await createInfraction({
 						guildId: interaction.guild.id,
@@ -263,39 +274,41 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				const target = await interaction.client.users.fetch(targetId).catch(() => null);
 				const infractions = await getInfractions(interaction.guild.id, targetId);
 
+				const header = `Moderation History — ${target?.username ?? targetId}`;
+				const summary = `${userMention(targetId)} \`${targetId}\` — **${infractions.length}** infraction(s) total`;
 				const container = makeContainer({
 					color: infractions.length === 0 ? Colors.Success : Colors.Warning,
-					header: `Moderation History — ${target?.username ?? targetId}`,
+					header,
 				});
 
-				container.addTextDisplayComponents(
-					new TextDisplayBuilder().setContent(
-						`${userMention(targetId)} \`${targetId}\` — **${infractions.length}** infraction(s) total`,
-					),
-				);
+				container.addTextDisplayComponents(new TextDisplayBuilder().setContent(summary));
 
 				if (infractions.length === 0) {
 					container.addTextDisplayComponents(new TextDisplayBuilder().setContent('✅ No infractions found.'));
 				} else {
 					container.addSeparatorComponents(separator());
+					// Clip each reason and stop before the message's total text would pass Discord's CV2 cap.
+					let budget = HISTORY_TEXT_BUDGET - header.length - summary.length;
+					let shown = 0;
 					for (const inf of infractions.slice(0, 10)) {
 						const emoji = INFRACTION_EMOJI[inf.type] ?? '📌';
 						const ts = Math.floor(new Date(inf.createdAt).getTime() / 1000);
-						container.addTextDisplayComponents(
-							new TextDisplayBuilder().setContent(
-								`${emoji} **Case \`${inf.caseId}\`** — ${inf.type.toUpperCase()}\n` +
-									`**Moderator** <@${inf.moderatorId}>\n` +
-									`**Reason** ${inf.reason}\n` +
-									`-# <t:${ts}:F>`,
-							),
-						);
+						const block =
+							`${emoji} **Case \`${inf.caseId}\`** — ${inf.type.toUpperCase()}\n` +
+							`**Moderator** <@${inf.moderatorId}>\n` +
+							`**Reason** ${truncateText(inf.reason, HISTORY_REASON_LENGTH)}\n` +
+							`-# <t:${ts}:F>`;
+						if (block.length > budget) break;
+						budget -= block.length;
+						shown++;
+						container.addTextDisplayComponents(new TextDisplayBuilder().setContent(block));
 						container.addSeparatorComponents(
 							new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small),
 						);
 					}
-					if (infractions.length > 10) {
+					if (infractions.length > shown) {
 						container.addTextDisplayComponents(
-							new TextDisplayBuilder().setContent(`-# … and ${infractions.length - 10} more`),
+							new TextDisplayBuilder().setContent(`-# … and ${infractions.length - shown} more`),
 						);
 					}
 				}
@@ -316,13 +329,23 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 					.setTitle('Edit Case Reason')
 					.addComponents(
 						new ActionRowBuilder<TextInputBuilder>().addComponents(
-							new TextInputBuilder()
-								.setCustomId('reason')
-								.setLabel('New Reason')
-								.setStyle(TextInputStyle.Paragraph)
-								.setRequired(true)
-								.setValue(infraction.reason)
-								.setMaxLength(500),
+							// A pre-filled value longer than max_length makes Discord reject the whole modal, and
+							// merged/long reasons can exceed it — only pre-fill reasons that fit.
+							infraction.reason.length <= CASE_REASON_MAX_LENGTH
+								? new TextInputBuilder()
+										.setCustomId('reason')
+										.setLabel('New Reason')
+										.setStyle(TextInputStyle.Paragraph)
+										.setRequired(true)
+										.setValue(infraction.reason)
+										.setMaxLength(CASE_REASON_MAX_LENGTH)
+								: new TextInputBuilder()
+										.setCustomId('reason')
+										.setLabel('New Reason')
+										.setStyle(TextInputStyle.Paragraph)
+										.setRequired(true)
+										.setPlaceholder('The current reason is too long to edit here — enter a replacement.')
+										.setMaxLength(CASE_REASON_MAX_LENGTH),
 						),
 					);
 
@@ -369,6 +392,9 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 			// ── Slowmode Button ───────────────────────────────────────────────────
 			if (action === 'slowmode') {
 				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+				if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+					return interaction.editReply(errorReply('You need the **Manage Channels** permission to change slowmode.'));
+				}
 				const seconds = parseInt(targetId, 10);
 				const channelId = extraId || interaction.channelId;
 				const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
@@ -430,6 +456,9 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 			if (action === 'copy_id') {
 				return interaction.reply({ content: targetId, flags: MessageFlags.Ephemeral });
 			}
+
+			// No other listener handles `mod:` buttons, so acknowledge unknown/outdated ones here.
+			return interaction.reply(errorReply('This moderation action is no longer available.') as any);
 		}
 
 		// ── Modal submit handler ─────────────────────────────────────────────────
@@ -454,7 +483,8 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				if (target.id === interaction.user.id) return interaction.editReply(errorReply('You cannot warn yourself.'));
 				if (target.bot) return interaction.editReply(errorReply('You cannot warn a bot.'));
 
-				const member = guild.members.cache.get(target.id);
+				// Fetch (not cache-get) so an uncached member can't skip the hierarchy check or the DM.
+				const member = await guild.members.fetch(target.id).catch(() => null);
 				if (member) {
 					const h = checkHierarchy(interaction.member, member);
 					if (!h.ok) return interaction.editReply(errorReply(h.reason));
@@ -619,7 +649,8 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				const target = await interaction.client.users.fetch(targetId).catch(() => null);
 				if (!target) return interaction.editReply(errorReply('Could not find that user.'));
 
-				const member = guild.members.cache.get(target.id);
+				// Fetch (not cache-get) so an uncached member can't skip the hierarchy check.
+				const member = await guild.members.fetch(target.id).catch(() => null);
 				if (member) {
 					if (!member.bannable) return interaction.editReply(errorReply('I cannot ban this user.'));
 					if (member.id === interaction.user.id) return interaction.editReply(errorReply('You cannot ban yourself.'));
@@ -641,6 +672,8 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 						reason: `[${interaction.user.username}] ${reason}`,
 						deleteMessageSeconds: deleteDays * 86400,
 					});
+					// This ban replaces any earlier temp ban; its expiry must not lift this one.
+					await clearTempbans(guild.id, target.id);
 
 					const infraction = await createInfraction({
 						guildId: guild.id,
@@ -700,7 +733,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 							`The reason for your infraction (Case \`${caseId}\`) has been updated by a moderator.\n**New Reason:** ${reason}`,
 						),
 					);
-					const member = guild.members.cache.get(targetUser.id);
+					const member = await guild.members.fetch(targetUser.id).catch(() => null);
 					if (member) {
 						await member.send({ components: [dm], flags: CV2_FLAG }).catch(() => null);
 					}
@@ -708,6 +741,9 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 
 				return interaction.editReply(successReply(`Case \`${caseId}\` reason updated.\n**New reason:** ${reason}`));
 			}
+
+			// Unknown/outdated `mod_modal:` action — the reply is already deferred, so it must be edited.
+			return interaction.editReply(errorReply('This moderation action is no longer available.'));
 		}
 
 		// ── String Select Menu handler ───────────────────────────────────────────
@@ -717,14 +753,11 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				interaction.customId === 'mod:sticky_clear_select' ||
 				interaction.customId.startsWith('mod:stats_inspect:'))
 		) {
-			if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-				return interaction.reply(errorReply('You do not have permission to perform this action.') as any);
-			}
+			// Select menus acknowledge with deferUpdate() first; all feedback goes out as ephemeral followUps.
+			await interaction.deferUpdate();
 
-			if (interaction.customId === 'mod:untimeout_select') {
-				await interaction.deferUpdate();
-			} else {
-				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+			if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+				return interaction.followUp(errorReply('You do not have permission to perform this action.') as any);
 			}
 
 			if (interaction.customId === 'mod:untimeout_select') {
@@ -770,7 +803,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				const channelId = interaction.values[0];
 				const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
 				if (!channel || !channel.isTextBased()) {
-					return interaction.editReply(errorReply('Channel not found or is not text-based.'));
+					return interaction.followUp(errorReply('Channel not found or is not text-based.') as any);
 				}
 
 				const row = await db.query.stickyMessages.findFirst({
@@ -778,7 +811,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				});
 
 				if (!row) {
-					return interaction.editReply(warningReply(`No sticky message found in <#${channel.id}>.`));
+					return interaction.followUp(warningReply(`No sticky message found in <#${channel.id}>.`) as any);
 				}
 
 				if (row.lastMessageId) {
@@ -788,7 +821,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 
 				await db.delete(schema.stickyMessages).where(eq(schema.stickyMessages.channelId, channel.id));
 
-				return interaction.editReply(successReply(`Sticky message cleared from <#${channel.id}>.`));
+				return interaction.followUp(successReply(`Sticky message cleared from <#${channel.id}>.`) as any);
 			}
 
 			if (interaction.customId.startsWith('mod:stats_inspect:')) {
@@ -796,7 +829,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 				const modId = interaction.values[0];
 
 				const member = await interaction.guild.members.fetch(modId).catch(() => null);
-				if (!member) return interaction.editReply(errorReply('Could not find that moderator.'));
+				if (!member) return interaction.followUp(errorReply('Could not find that moderator.') as any);
 
 				let limitDate: Date | null = null;
 				if (timeframe === '7d') {
@@ -841,7 +874,7 @@ export class ModButtonListener extends Listener<typeof Events.InteractionCreate>
 					);
 				}
 
-				return interaction.editReply({ components: [c], flags: CV2_FLAG });
+				return interaction.followUp(cv2Reply(c, true) as any);
 			}
 		}
 	}

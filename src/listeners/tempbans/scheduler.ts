@@ -30,18 +30,26 @@ export class TempbanSchedulerListener extends Listener<typeof Events.ClientReady
 							continue;
 						}
 
-						// Unban first; only delete the DB row after a successful remove
-						// (or if the ban is already gone — Discord 10026 Unknown Ban).
+						// Claim the row before unbanning: a manual unban or a newer ban deletes it, and only the
+						// tick that deletes it may lift the ban — a stale snapshot must never lift a newer ban.
+						const claim = await db.delete(schema.tempbans).where(eq(schema.tempbans.id, entry.id));
+						if (Number((claim as any)[0]?.affectedRows ?? 0) !== 1) continue;
+
 						try {
 							await guild.bans.remove(entry.userId, 'Temp ban expired');
 						} catch (err: any) {
+							// 10026 Unknown Ban — already unbanned. Anything else: restore the row to retry later.
 							if (err?.code !== 10026) {
 								client.logger.warn(`[TempbanScheduler] Failed to unban ${entry.userId} in ${entry.guildId}:`, err);
+								await db
+									.insert(schema.tempbans)
+									.values(entry)
+									.catch((restoreErr) =>
+										client.logger.error(`[TempbanScheduler] Could not restore tempban ${entry.id}:`, restoreErr),
+									);
 								continue;
 							}
 						}
-
-						await db.delete(schema.tempbans).where(eq(schema.tempbans.id, entry.id));
 
 						const target = await client.users.fetch(entry.userId).catch(() => null);
 						if (!target) continue;

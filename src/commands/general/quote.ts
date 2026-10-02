@@ -1,6 +1,13 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
-import { ApplicationCommandType, TextDisplayBuilder, TimestampStyles, time } from 'discord.js';
+import {
+	ApplicationCommandType,
+	ChannelType,
+	PermissionFlagsBits,
+	TextDisplayBuilder,
+	TimestampStyles,
+	time,
+} from 'discord.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, separator, warningReply } from '../../lib/components.js';
 
 const MESSAGE_LINK_RE = /https?:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/channels\/(\d+)\/(\d+)\/(\d+)/i;
@@ -34,6 +41,8 @@ async function buildQuoteReply(
 	return interaction.editReply({
 		components: [c],
 		flags: CV2_FLAG as any,
+		// Quoted text is user content — never let it ping @everyone, roles or users
+		allowedMentions: { parse: [] },
 	});
 }
 
@@ -70,6 +79,17 @@ export class QuoteCommand extends Command {
 		const channel = await interaction.guild.channels.fetch(channelId!).catch(() => null);
 		if (!channel?.isTextBased() || channel.isDMBased()) {
 			return interaction.editReply(errorReply('Could not access that channel.', false));
+		}
+
+		// The bot may see channels the invoker can't — never repost from a channel they can't read.
+		const perms = channel.permissionsFor(interaction.member);
+		let canRead = perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]) ?? false;
+		// A thread reports its parent's permissions; a private thread also needs membership (or Manage Threads).
+		if (canRead && channel.type === ChannelType.PrivateThread && !perms?.has(PermissionFlagsBits.ManageThreads)) {
+			canRead = (await channel.members.fetch({ member: interaction.user.id }).catch(() => null)) != null;
+		}
+		if (!canRead) {
+			return interaction.editReply(errorReply("You don't have access to that message.", false));
 		}
 
 		const message = await channel.messages.fetch(messageId!).catch(() => null);

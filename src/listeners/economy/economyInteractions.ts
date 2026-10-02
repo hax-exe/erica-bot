@@ -2,6 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { Events, type Interaction, MessageFlags } from 'discord.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
+import { isStaleInteractionError } from '../../lib/GameStore.js';
 
 @ApplyOptions<Listener.Options>({
 	name: 'economyInteractions',
@@ -65,6 +66,8 @@ export class EconomyInteractionsListener extends Listener<typeof Events.Interact
 					break;
 			}
 		} catch (err) {
+			// Stale / already-acknowledged interactions (10062, 40060, …) — discard silently.
+			if (isStaleInteractionError(err)) return;
 			this.container.logger.error('[EconomyInteractions]', err);
 			if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
 				await interaction.reply({ content: 'An error occurred.', flags: MessageFlags.Ephemeral }).catch(() => null);

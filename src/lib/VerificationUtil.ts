@@ -1,14 +1,8 @@
 ﻿import { randomBytes } from 'node:crypto';
-import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
-	MediaGalleryBuilder,
-	MediaGalleryItemBuilder,
-	TextDisplayBuilder,
-} from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextDisplayBuilder } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { pendingVerifications } from '../db/schema.js';
+import { getMinecraftServerAddress } from './brand.js';
 import { Colors, makeContainer, separator } from './components.js';
 import { db } from './database.js';
 
@@ -64,21 +58,14 @@ export async function consumeVerification(userId: string): Promise<void> {
 /** Build the CV2 verification panel container for posting in a channel. */
 export function buildVerificationPanel() {
 	const container = makeContainer({ color: Colors.Info });
-
-	container.addMediaGalleryComponents(
-		new MediaGalleryBuilder().addItems(
-			new MediaGalleryItemBuilder().setURL(
-				'https://media.discordapp.net/attachments/1025459729155244173/1496253058303266937/AMC_verification-banner.png?ex=69efcd40&is=69ee7bc0&hm=9e38c4844fbbb1f34829f117b3351398bd0c9a636a2a13987821eaf964d366b7&=&format=webp&quality=lossless&width=4096&height=442',
-			),
-		),
-	);
+	const serverAddress = getMinecraftServerAddress();
 
 	container.addTextDisplayComponents(
 		new TextDisplayBuilder().setContent(
 			[
-				'### 📖 Verify with AloraMC',
+				'### 📖 Verify your account',
 				'',
-				'Welcome to the AloraMC Discord! Before you can explore our server, you must verify your Discord account with Minecraft. This ensures your identity in AloraMC is correctly reflected here!',
+				'Welcome! Before you can explore the server, you must verify your Discord account with Minecraft. This ensures your in-game identity is correctly reflected here!',
 				'',
 				"> ❕ If you have purchased rank(s), after verification they will be reflected in this Discord server — so you're always walking around in style!",
 			].join('\n'),
@@ -92,7 +79,7 @@ export function buildVerificationPanel() {
 			[
 				'### Instructions',
 				'1. Press the button below and copy the **verification token** it gives you',
-				'2. Join our server via the IP **play.aloramc.net**',
+				serverAddress ? `2. Join our Minecraft server via the IP **${serverAddress}**` : '2. Join our Minecraft server',
 				'3. In any server, type `/verify <token>`',
 				'4. And huzzah, you are now verified! 🎉',
 			].join('\n'),

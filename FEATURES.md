@@ -1,6 +1,6 @@
 # Erica — Feature List
 
-AloraMC's Discord moderation and community bot (Erica). Modules can be toggled per guild with `/module` or `/config modules` (bot owners: `/admin modules`).
+Erica — a Discord moderation and community bot. Modules can be toggled per guild with `/module` or `/config modules` (bot owners: `/admin modules`).
 
 ---
 

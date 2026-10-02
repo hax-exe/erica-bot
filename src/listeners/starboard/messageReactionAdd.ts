@@ -108,8 +108,7 @@ export class StarboardReactionAddListener extends Listener<typeof Events.Message
 		if (!starboardMsg) return;
 
 		// Use onDuplicateKeyUpdate noop to handle the race where two reactions fire simultaneously.
-		// If the insert conflicts (another request beat us), delete the duplicate message.
-		const insertResult = await db
+		await db
 			.insert(schema.starboardEntries)
 			.values({
 				guildId,
@@ -119,8 +118,17 @@ export class StarboardReactionAddListener extends Listener<typeof Events.Message
 				channelId: message.channelId,
 			})
 			.onDuplicateKeyUpdate({ set: { id: sql`${schema.starboardEntries.id}` } });
-		// MySQL: affectedRows === 1 means a new row was inserted; 0/2 means duplicate.
-		if (Number((insertResult as any)[0]?.affectedRows ?? 0) !== 1) {
+
+		// affectedRows can't tell a fresh insert from a duplicate here (mysql2 reports FOUND_ROWS, so the
+		// no-op upsert also returns 1) — read back which post was stored. If another request won the race,
+		// delete our duplicate post.
+		const stored = await db
+			.select({ starboardMessageId: schema.starboardEntries.starboardMessageId })
+			.from(schema.starboardEntries)
+			.where(eq(schema.starboardEntries.sourceMessageId, message.id))
+			.limit(1)
+			.then((r) => r[0] ?? null);
+		if (stored && stored.starboardMessageId !== starboardMsg.id) {
 			await starboardMsg.delete().catch(() => null);
 		}
 	}

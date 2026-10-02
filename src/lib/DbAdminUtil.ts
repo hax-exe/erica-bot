@@ -4,6 +4,7 @@ import { and, type Column, count, desc, eq, getTableColumns, getTableName, like,
 import type { MySqlTable } from 'drizzle-orm/mysql-core';
 import * as schema from '../db/schema.js';
 import { db } from './database.js';
+import { invalidateModuleCache } from './ModuleUtil.js';
 
 export type ColumnMeta = {
 	/** Drizzle / JS property name (camelCase) */
@@ -25,6 +26,11 @@ export type TableMeta = {
 	columns: ColumnMeta[];
 	primaryKey: ColumnMeta[];
 };
+
+/** Raw writes bypass ModuleUtil's setters, so every mutation drops its cached module rows. */
+function afterWrite(): void {
+	invalidateModuleCache();
+}
 
 const MAX_LIST = 50;
 const DEFAULT_LIST = 20;
@@ -289,6 +295,7 @@ export async function setColumn(
 		.update(meta.table as any)
 		.set({ [col.key]: value })
 		.where(pkWhere(meta, key));
+	afterWrite();
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	if (affected === 0) throw new Error(`No row in \`${meta.name}\` for key \`${keyRaw}\`.`);
 
@@ -332,6 +339,7 @@ export async function insertRow(
 	}
 
 	const result = await db.insert(meta.table as any).values(values);
+	afterWrite();
 	const header = (result as any)[0] as { insertId?: number; affectedRows?: number } | undefined;
 	const insertId = header?.insertId;
 
@@ -373,6 +381,7 @@ export async function deleteRow(
 	const key = parseKey(meta, keyRaw);
 
 	const result = await db.delete(meta.table as any).where(pkWhere(meta, key));
+	afterWrite();
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	if (affected === 0) throw new Error(`No row in \`${meta.name}\` for key \`${keyRaw}\`.`);
 
@@ -505,6 +514,7 @@ export async function cloneRow(
 	}
 
 	const result = await db.insert(meta.table as any).values(values);
+	afterWrite();
 	const header = (result as any)[0] as { insertId?: number } | undefined;
 	const insertId = header?.insertId;
 	container.logger.warn(`[DbAdmin] clone ${meta.name} from=${keyRaw} by ${actorId}`);
@@ -557,6 +567,7 @@ export async function patchRow(
 		.update(meta.table as any)
 		.set(patch)
 		.where(pkWhere(meta, key));
+	afterWrite();
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	if (affected === 0) throw new Error(`No row in \`${meta.name}\` for key \`${keyRaw}\`.`);
 
@@ -589,6 +600,7 @@ export async function bulkSet(
 				.set({ [col.key]: value })
 				.where(where)
 		: await db.update(meta.table as any).set({ [col.key]: value });
+	afterWrite();
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	container.logger.warn(
 		`[DbAdmin] bulkset ${meta.name}.${col.key}=${JSON.stringify(value)} filter=${opts.filterColumn ?? '*'} affected=${affected} by ${actorId}`,
@@ -608,6 +620,7 @@ export async function purgeRows(
 	}
 
 	const result = where ? await db.delete(meta.table as any).where(where) : await db.delete(meta.table as any);
+	afterWrite();
 	const affected = Number((result as any)[0]?.affectedRows ?? 0);
 	container.logger.warn(
 		`[DbAdmin] purge ${meta.name} filter=${opts.filterColumn ?? '*'} affected=${affected} by ${actorId}`,

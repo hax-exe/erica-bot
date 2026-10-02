@@ -4,7 +4,7 @@ import { type Message, PermissionFlagsBits, TextDisplayBuilder } from 'discord.j
 import { eq } from 'drizzle-orm';
 import { Colors, CV2_FLAG, makeContainer } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
-import { applyWarnEscalation, createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
+import { applyWarnEscalation, clearTempbans, createInfraction, dispatchModLog } from '../../lib/ModerationUtil.js';
 import { humanDuration } from '../../lib/parseDuration.js';
 
 @ApplyOptions<Listener.Options>({
@@ -139,6 +139,8 @@ export class HoneypotMessageListener extends Listener {
 					reason: `[SYSTEM] ${reason}`,
 					deleteMessageSeconds: 0,
 				});
+				// This ban replaces any earlier temp ban; its expiry must not lift this one.
+				await clearTempbans(guild.id, target.id);
 
 				const infraction = await createInfraction({
 					guildId: guild.id,

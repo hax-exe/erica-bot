@@ -1,6 +1,14 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
-import { Events, type Interaction, MessageFlags, TextDisplayBuilder, userMention } from 'discord.js';
+import {
+	Events,
+	type Interaction,
+	MessageFlags,
+	type MessageMentionOptions,
+	PermissionFlagsBits,
+	TextDisplayBuilder,
+	userMention,
+} from 'discord.js';
 import { ANNOUNCE_COLOR_PRESETS } from '../../commands/moderation/mod.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { CV2_FLAG, errorReply, makeContainer, separator, successReply } from '../../lib/components.js';
@@ -18,6 +26,11 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+		// `/mod announce` requires Manage Server; re-check here since the modal can ping anyone.
+		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+			return interaction.editReply(errorReply('You need the **Manage Server** permission to send announcements.'));
+		}
+
 		// Custom ID format: announce_modal:CHANNEL_ID:COLOR:PING_TYPE:PING_ID
 		const [, channelId, colorKey, pingType, pingId] = interaction.customId.split(':');
 		const color = ANNOUNCE_COLOR_PRESETS[colorKey] ?? ANNOUNCE_COLOR_PRESETS.blue;
@@ -30,12 +43,29 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 			return interaction.editReply(errorReply('Could not find the target channel.'));
 		}
 
-		// Reconstruct the ping mention from the encoded type + ID
-		let pingContent: string | undefined;
+		// Mirror Discord's own rule: @everyone and non-mentionable roles need Mention Everyone in that channel.
 		if (pingType === 'r' && pingId) {
-			pingContent = `<@&${pingId}>`;
+			const role = pingId === interaction.guildId ? null : interaction.guild.roles.cache.get(pingId);
+			const needsMentionEveryone = pingId === interaction.guildId || (role != null && !role.mentionable);
+			if (
+				needsMentionEveryone &&
+				!channel.permissionsFor(interaction.member)?.has(PermissionFlagsBits.MentionEveryone)
+			) {
+				return interaction.editReply(
+					errorReply('You need the **Mention @everyone, @here, and All Roles** permission to ping that role there.'),
+				);
+			}
+		}
+
+		// Reconstruct the ping from the encoded type + ID, allowing exactly that one mention to notify.
+		// The @everyone role is only pinged by the literal `@everyone` text, not its `<@&id>` role mention.
+		let ping: { content: string; allowedMentions: MessageMentionOptions } | undefined;
+		if (pingType === 'r' && pingId === interaction.guildId) {
+			ping = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
+		} else if (pingType === 'r' && pingId) {
+			ping = { content: `<@&${pingId}>`, allowedMentions: { roles: [pingId] } };
 		} else if (pingType === 'u' && pingId) {
-			pingContent = `<@${pingId}>`;
+			ping = { content: `<@${pingId}>`, allowedMentions: { users: [pingId] } };
 		}
 
 		const container = makeContainer({ color, header: heading ?? undefined });
@@ -47,11 +77,19 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 			),
 		);
 
-		// Ping must be sent as plain content before the CV2 container (can't mix both).
-		if (pingContent) {
-			await channel.send({ content: pingContent });
+		try {
+			// Ping must be sent as plain content before the CV2 container (can't mix both).
+			if (ping) {
+				await channel.send(ping);
+			}
+			// Mentions typed into the body/heading never notify — only the explicit ping option does.
+			await channel.send({ components: [container], flags: CV2_FLAG, allowedMentions: { parse: [] } });
+		} catch (err) {
+			this.container.logger.error('[Announce] Failed to send announcement:', err);
+			return interaction.editReply(
+				errorReply(`Failed to send the announcement to <#${channelId}>. Check my permissions in that channel.`),
+			);
 		}
-		await channel.send({ components: [container], flags: CV2_FLAG });
 
 		return interaction.editReply(successReply(`Announcement sent to <#${channelId}>.`));
 	}

@@ -169,10 +169,11 @@ export class MusicButtonListener extends Listener<typeof Events.InteractionCreat
 			}
 			case 'music:pause': // idle jukebox panel uses music:pause
 			case 'music:toggle': {
+				// Moonlink flips `paused` only after the REST call resolves — await so the card/toast match.
 				if (player.paused) {
-					player.resume();
+					await player.resume();
 				} else {
-					player.pause();
+					await player.pause();
 				}
 				await updatePlaybackState(player);
 				await saveMusicQueue(player);

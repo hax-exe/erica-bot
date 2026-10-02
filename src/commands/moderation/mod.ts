@@ -7,6 +7,7 @@ import {
 	ButtonStyle,
 	ChannelType,
 	ContainerBuilder,
+	type GuildMember,
 	MessageFlags,
 	ModalBuilder,
 	PermissionFlagsBits,
@@ -61,9 +62,14 @@ const _TIMEOUT_DURATION_PRESETS: Record<string, number> = {
 	'28d': 2_419_200_000,
 };
 
+const SLOWMODE_OFF_WORDS = new Set(['off', 'disable', 'disabled', 'none']);
+
 function parseSlowmodeDuration(input: string): number | null {
 	const clean = input.trim().toLowerCase();
-	if (clean === 'off' || clean === 'disable') return 0;
+	// parseDuration returns null for zero, so handle "off" and any zero value (`0`, `0s`, `0m`…) here.
+	if (SLOWMODE_OFF_WORDS.has(clean) || /^0+\s*(?:[smh]|secs?|seconds?|mins?|minutes?|hrs?|hours?)?$/.test(clean)) {
+		return 0;
+	}
 	if (/^\d+$/.test(clean)) {
 		return parseInt(clean, 10);
 	}
@@ -83,20 +89,50 @@ async function unlockChannel(ch: any, rolesEveryone: any, auditReason: string) {
 	await ch.permissionOverwrites.edit(rolesEveryone, overwrites, { reason: auditReason });
 }
 
-const DEFAULT_HOIST_PATTERN = '[\\s!"#$%&\'()*+,\\-./:;<=>?@[\\\\\\]^_`{|}~]';
+/** Punctuation that sorts a name to the top of the member list (leading whitespace is matched via `\s`). */
+const HOIST_CHARS = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
 
-function escapeRegex(str: string): string {
-	return str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+/** Characters with a special meaning inside a regex character class. */
+const CLASS_SPECIAL_CHARS = '\\][^-';
+
+/** Escape a character for use inside a regex character class. */
+function escapeClassChar(char: string): string {
+	return CLASS_SPECIAL_CHARS.includes(char) ? `\\${char}` : char;
 }
 
+/**
+ * Matches the whole run of leading hoist characters (so `!!!Bob` → `Bob`), minus any characters
+ * the moderator chose to exclude. The exclude list is user input, so each character is escaped.
+ */
 function getHoistRegex(exclude?: string | null): RegExp {
-	let pattern = DEFAULT_HOIST_PATTERN;
-	if (exclude) {
-		for (const char of exclude) {
-			pattern = pattern.replace(new RegExp(escapeRegex(char), 'g'), '');
-		}
+	const excluded = new Set(exclude ?? '');
+	const chars = [...HOIST_CHARS]
+		.filter((c) => !excluded.has(c))
+		.map(escapeClassChar)
+		.join('');
+	const whitespace = [...excluded].some((c) => /\s/.test(c)) ? '' : '\\s';
+	return new RegExp(`^[${whitespace}${chars}]+`);
+}
+
+/**
+ * Whether `member` may hand out `role`: they need Manage Roles, the role can't be managed or
+ * @everyone, and it must sit below both my highest role and theirs (the owner is exempt from
+ * the latter). Returns an error message, or null when allowed.
+ */
+function checkAssignableRole(member: GuildMember, role: Role): string | null {
+	if (!member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+		return 'You need the **Manage Roles** permission to manage roles.';
 	}
-	return new RegExp(`^${pattern}`);
+	if (role.id === member.guild.id) return 'The @everyone role cannot be assigned.';
+	if (role.managed) return 'Managed/integration roles cannot be assigned manually.';
+	const botTop = member.guild.members.me?.roles.highest;
+	if (botTop && role.comparePositionTo(botTop) >= 0) {
+		return 'That role is equal to or higher than my highest role.';
+	}
+	if (member.id !== member.guild.ownerId && role.comparePositionTo(member.roles.highest) >= 0) {
+		return 'You cannot manage roles equal to or higher than your own.';
+	}
+	return null;
 }
 
 @ApplyOptions<Subcommand.Options>({
@@ -629,7 +665,7 @@ export class ModCommand extends Subcommand {
 								.setName('revoke')
 								.setDescription('Revoke a timed role before it expires.')
 								.addIntegerOption((o) =>
-									o.setName('id').setDescription('Timed role ID from /timerole list.').setRequired(true),
+									o.setName('id').setDescription('Timed role ID from /mod timerole list.').setRequired(true),
 								),
 						)
 						.addSubcommand((sub) =>
@@ -1090,17 +1126,27 @@ export class ModCommand extends Subcommand {
 				}),
 			).catch(() => null);
 
-			const chId = all ? 'all' : channel.id;
-			const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-				new ButtonBuilder().setCustomId(`mod:slowmode:0:${chId}`).setLabel('Disable').setStyle(ButtonStyle.Secondary),
-				new ButtonBuilder().setCustomId(`mod:slowmode:10:${chId}`).setLabel('10s').setStyle(ButtonStyle.Primary),
-				new ButtonBuilder().setCustomId(`mod:slowmode:60:${chId}`).setLabel('1m').setStyle(ButtonStyle.Primary),
-				new ButtonBuilder().setCustomId(`mod:slowmode:300:${chId}`).setLabel('5m').setStyle(ButtonStyle.Primary),
-			);
-
 			const container = makeContainer({ color: seconds === 0 ? Colors.Success : Colors.Moderation });
 			container.addTextDisplayComponents(new TextDisplayBuilder().setContent(msg));
-			container.addActionRowComponents(row);
+			// Quick-change buttons target a single channel (`mod:slowmode:<seconds>:<channelId>`), so skip them for `all`.
+			if (!all) {
+				const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+					new ButtonBuilder()
+						.setCustomId(`mod:slowmode:0:${channel.id}`)
+						.setLabel('Disable')
+						.setStyle(ButtonStyle.Secondary),
+					new ButtonBuilder()
+						.setCustomId(`mod:slowmode:10:${channel.id}`)
+						.setLabel('10s')
+						.setStyle(ButtonStyle.Primary),
+					new ButtonBuilder().setCustomId(`mod:slowmode:60:${channel.id}`).setLabel('1m').setStyle(ButtonStyle.Primary),
+					new ButtonBuilder()
+						.setCustomId(`mod:slowmode:300:${channel.id}`)
+						.setLabel('5m')
+						.setStyle(ButtonStyle.Primary),
+				);
+				container.addActionRowComponents(row);
+			}
 
 			return interaction.editReply(cv2Reply(container, true));
 		} catch (err) {
@@ -1139,6 +1185,21 @@ export class ModCommand extends Subcommand {
 		return new MassHandler().runWarn(interaction);
 	}
 
+	/**
+	 * Server-configuration subcommands need Manage Server: the `Moderation` precondition also lets
+	 * Kick/Ban/Moderate-only moderators through. Sends the error itself and returns false when missing.
+	 */
+	private async requireManageGuild(interaction: Subcommand.ChatInputCommandInteraction): Promise<boolean> {
+		if (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return true;
+		const payload = errorReply('You need the **Manage Server** permission to change server settings.');
+		if (interaction.deferred || interaction.replied) {
+			await interaction.editReply(payload);
+		} else {
+			await interaction.reply(payload as any);
+		}
+		return false;
+	}
+
 	private async upsert(guildId: string, patch: Partial<typeof schema.guilds.$inferInsert>) {
 		await db
 			.insert(schema.guilds)
@@ -1154,6 +1215,7 @@ export class ModCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
+		if (!(await this.requireManageGuild(interaction))) return;
 
 		const days = interaction.options.getInteger('days');
 
@@ -1174,6 +1236,7 @@ export class ModCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
+		if (!(await this.requireManageGuild(interaction))) return;
 
 		const enabled = interaction.options.getBoolean('enabled', true);
 		await this.upsert(interaction.guildId, { proofRequired: enabled });
@@ -1190,6 +1253,7 @@ export class ModCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
+		if (!(await this.requireManageGuild(interaction))) return;
 
 		const enabled = interaction.options.getBoolean('enabled', true);
 		await this.upsert(interaction.guildId, { requireReview: enabled });
@@ -1202,10 +1266,12 @@ export class ModCommand extends Subcommand {
 
 	// ── presets handlers ───────────────────────────────────────────────────────────
 	public async chatInputPresetsAdd(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
 		const { PresetsHandler } = await import('../../lib/config/handlers/presets.js');
 		return new PresetsHandler().runAdd(interaction);
 	}
 	public async chatInputPresetsRemove(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
 		const { PresetsHandler } = await import('../../lib/config/handlers/presets.js');
 		return new PresetsHandler().runRemove(interaction);
 	}
@@ -1216,10 +1282,17 @@ export class ModCommand extends Subcommand {
 
 	// ── autorole handlers ──────────────────────────────────────────────────────────
 	public async chatInputAutoRoleAdd(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
+		// Every new member gets this role, so apply the same hierarchy rules as handing it out directly.
+		if (interaction.inCachedGuild()) {
+			const roleError = checkAssignableRole(interaction.member, interaction.options.getRole('role', true));
+			if (roleError) return interaction.reply(errorReply(roleError) as any);
+		}
 		const { AutoroleHandler } = await import('../../lib/config/handlers/autorole.js');
 		return new AutoroleHandler().runAdd(interaction);
 	}
 	public async chatInputAutoRoleRemove(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
 		const { AutoroleHandler } = await import('../../lib/config/handlers/autorole.js');
 		return new AutoroleHandler().runRemove(interaction);
 	}
@@ -1230,10 +1303,12 @@ export class ModCommand extends Subcommand {
 
 	// ── escalation handlers ────────────────────────────────────────────────────────
 	public async chatInputEscalationAdd(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
 		const { EscalationHandler } = await import('../../lib/config/handlers/escalation.js');
 		return new EscalationHandler().runAdd(interaction);
 	}
 	public async chatInputEscalationRemove(interaction: Subcommand.ChatInputCommandInteraction) {
+		if (!(await this.requireManageGuild(interaction))) return;
 		const { EscalationHandler } = await import('../../lib/config/handlers/escalation.js');
 		return new EscalationHandler().runRemove(interaction);
 	}
@@ -1403,15 +1478,8 @@ export class ModCommand extends Subcommand {
 			return interaction.editReply(errorReply('That user is not in this server.'));
 		}
 
-		const botTop = interaction.guild.members.me?.roles.highest;
-		if (botTop && role.position >= botTop.position) {
-			return interaction.editReply(errorReply('That role is equal to or higher than my highest role.'));
-		}
-
-		const modTop = interaction.member.roles.highest;
-		if (role.position >= modTop.position && interaction.user.id !== interaction.guild.ownerId) {
-			return interaction.editReply(errorReply('You cannot manage roles equal to or higher than your own.'));
-		}
+		const roleError = checkAssignableRole(interaction.member, role);
+		if (roleError) return interaction.editReply(errorReply(roleError));
 
 		if (target.roles.cache.has(role.id)) {
 			return interaction.editReply(warningReply(`**${target.user.username}** already has <@&${role.id}>.`));
@@ -1453,15 +1521,8 @@ export class ModCommand extends Subcommand {
 			return interaction.editReply(errorReply('That user is not in this server.'));
 		}
 
-		const botTop = interaction.guild.members.me?.roles.highest;
-		if (botTop && role.position >= botTop.position) {
-			return interaction.editReply(errorReply('That role is equal to or higher than my highest role.'));
-		}
-
-		const modTop = interaction.member.roles.highest;
-		if (role.position >= modTop.position && interaction.user.id !== interaction.guild.ownerId) {
-			return interaction.editReply(errorReply('You cannot manage roles equal to or higher than your own.'));
-		}
+		const roleError = checkAssignableRole(interaction.member, role);
+		if (roleError) return interaction.editReply(errorReply(roleError));
 
 		if (!target.roles.cache.has(role.id)) {
 			return interaction.editReply(warningReply(`**${target.user.username}** does not have <@&${role.id}>.`));
@@ -1499,17 +1560,27 @@ export class ModCommand extends Subcommand {
 
 		if (!target) return interaction.editReply(errorReply('That user is not in this server.'));
 
+		const roleError = checkAssignableRole(interaction.member, role);
+		if (roleError) return interaction.editReply(errorReply(roleError));
+
 		const durationMs = parseDuration(durationStr);
 		if (!durationMs) return interaction.editReply(errorReply('Invalid duration. Use formats like `1h`, `7d`, `30m`.'));
 		const maxMs = 365 * 24 * 60 * 60 * 1000;
 		if (durationMs > maxMs) return interaction.editReply(errorReply('Maximum duration is 1 year.'));
 
 		if (!target.manageable) return interaction.editReply(errorReply('I cannot manage roles for that member.'));
-		if (role.managed) return interaction.editReply(errorReply('Cannot assign managed/integration roles.'));
 
 		const expiresAt = new Date(Date.now() + durationMs);
 
-		await target.roles.add(role.id).catch(() => null);
+		// Only record the timed role once Discord has actually applied it.
+		try {
+			await target.roles.add(role.id, `[${interaction.user.username}] Timed role for ${humanDuration(durationMs)}`);
+		} catch (err) {
+			this.container.logger.error(err);
+			return interaction.editReply(
+				errorReply(`Failed to give <@&${role.id}>. Check my role position and **Manage Roles** permission.`),
+			);
+		}
 
 		const [idRow] = await db
 			.insert(schema.timedRoles)
@@ -1542,10 +1613,29 @@ export class ModCommand extends Subcommand {
 
 		if (!row || row.done) return interaction.editReply(errorReply(`No active timed role with ID \`${id}\`.`));
 
-		await db.update(schema.timedRoles).set({ done: true }).where(eq(schema.timedRoles.id, id));
+		// Same policy as giving the role: Manage Roles, and a role below both the bot and the invoker.
+		const role = interaction.guild.roles.cache.get(row.roleId);
+		if (role) {
+			const problem = checkAssignableRole(interaction.member, role);
+			if (problem) return interaction.editReply(errorReply(problem));
+		} else if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) {
+			return interaction.editReply(errorReply('You need the **Manage Roles** permission to manage roles.'));
+		}
 
 		const member = await interaction.guild.members.fetch(row.userId).catch(() => null);
-		if (member) await member.roles.remove(row.roleId).catch(() => null);
+		if (member?.roles.cache.has(row.roleId)) {
+			const removed = await member.roles
+				.remove(row.roleId, `Timed role revoked by ${interaction.user.username}`)
+				.then(() => true)
+				.catch(() => false);
+			if (!removed) {
+				return interaction.editReply(
+					errorReply(`I couldn't remove <@&${row.roleId}> — check my permissions and role position.`),
+				);
+			}
+		}
+
+		await db.update(schema.timedRoles).set({ done: true }).where(eq(schema.timedRoles.id, id));
 
 		return interaction.editReply(successReply(`Revoked <@&${row.roleId}> from <@${row.userId}>.`));
 	}
@@ -1577,7 +1667,9 @@ export class ModCommand extends Subcommand {
 		);
 		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(`-# ${rows.length} active • Use \`/timerole revoke <id>\` to remove early`),
+			new TextDisplayBuilder().setContent(
+				`-# ${rows.length} active • Use \`/mod timerole revoke <id>\` to remove early`,
+			),
 		);
 
 		return interaction.editReply({ components: [container], flags: (CV2_FLAG | MessageFlags.Ephemeral) as any });
@@ -1610,7 +1702,7 @@ export class ModCommand extends Subcommand {
 		}
 
 		try {
-			await member.setNickname(newNick, 'Dehoisted via /dehoist user');
+			await member.setNickname(newNick, 'Dehoisted via /mod dehoist user');
 			return interaction.editReply(successReply(`Successfully dehoisted **${oldNick}** to **${newNick}**.`));
 		} catch (err) {
 			this.container.logger.error(err);
@@ -1681,7 +1773,11 @@ export class ModCommand extends Subcommand {
 
 	// ── announce handler ─────────────────────────────────────────────────────────
 	public async chatInputAnnounce(interaction: Subcommand.ChatInputCommandInteraction) {
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) {
+			return interaction.reply(errorReply('This command can only be used in a server.') as any);
+		}
+		// The ping option can target any role (including @everyone), so this is a server-settings level action.
+		if (!(await this.requireManageGuild(interaction))) return;
 
 		const channel = interaction.options.getChannel('channel', true);
 		const colorKey = interaction.options.getString('color') ?? 'blue';
@@ -1719,6 +1815,8 @@ export class ModCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild())
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
+		// Configures an automatic punishment rule for everyone who posts there — a server setting.
+		if (!(await this.requireManageGuild(interaction))) return;
 
 		const enabled = interaction.options.getBoolean('enabled', true);
 		const punishment = (interaction.options.getString('punishment') ?? 'ban') as 'warn' | 'timeout' | 'kick' | 'ban';

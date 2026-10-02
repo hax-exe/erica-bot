@@ -28,12 +28,13 @@ const VERIFICATION_LABELS: Record<GuildVerificationLevel, string> = {
 function hasModPerms(perms: Readonly<import('discord.js').PermissionsBitField> | null): boolean {
 	if (!perms) return false;
 	if (perms.has(PermissionFlagsBits.Administrator)) return true;
-	const modPerms =
-		PermissionFlagsBits.ManageGuild |
-		PermissionFlagsBits.KickMembers |
-		PermissionFlagsBits.BanMembers |
-		PermissionFlagsBits.ModerateMembers;
-	return perms.has(modPerms);
+	// any() = at least one of these; has(a | b) would require all of them
+	return perms.any([
+		PermissionFlagsBits.ManageGuild,
+		PermissionFlagsBits.KickMembers,
+		PermissionFlagsBits.BanMembers,
+		PermissionFlagsBits.ModerateMembers,
+	]);
 }
 
 const DISPLAY_PERMISSIONS = [
@@ -232,11 +233,12 @@ export class InfoCommand extends Subcommand {
 			return interaction.editReply(errorReply('This command can only be used in a server.'));
 		}
 
-		const target = interaction.options.getMember('user') ?? interaction.member;
-		const user = target.user;
+		// Fall back to the invoker only when no user was given — never show the invoker's
+		// profile in place of a target who isn't in this server.
+		const user = interaction.options.getUser('user') ?? interaction.user;
 
 		const member = await interaction.guild.members.fetch(user.id).catch(() => null);
-		if (!member) return interaction.editReply(errorReply('Could not resolve that member.'));
+		if (!member) return interaction.editReply(errorReply('That user is not a member of this server.'));
 
 		const roles = member.roles.cache
 			.filter((r) => r.id !== interaction.guild.id)

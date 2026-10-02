@@ -129,6 +129,9 @@ export class ReportInteractionListener extends Listener<typeof Events.Interactio
 
 			return interaction.editReply(successReply('Your report has been submitted to the staff team. Thank you.'));
 		}
+
+		// Unknown/outdated `report:` modal — the reply is already deferred, so it must be edited.
+		return interaction.editReply(errorReply('This report form is no longer valid. Please try again.'));
 	}
 
 	private async spawnDiscussionThread(interaction: Interaction, reportedUsername: string) {

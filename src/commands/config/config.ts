@@ -2,9 +2,12 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
 import { ChannelType, MessageFlags, PermissionFlagsBits, type TextChannel, WebhookClient } from 'discord.js';
 import { eq } from 'drizzle-orm';
+import { WEBHOOK_NAMES } from '../../lib/brand.js';
 import { errorReply, successReply, warningReply } from '../../lib/components.js';
+import { joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
-import { getOrCreateModules, MODULE_LABELS, MODULES, setModule } from '../../lib/ModuleUtil.js';
+import { getOrCreateModules, invalidateModuleCache, MODULE_LABELS, MODULES, setModule } from '../../lib/ModuleUtil.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 /** Silently deletes a webhook by its URL. Ignores errors (e.g. already deleted). */
 async function tryDeleteWebhook(url: string): Promise<void> {
@@ -268,39 +271,50 @@ export class ConfigCommand extends Subcommand {
 		const [row] = await db.select().from(schema.guilds).where(eq(schema.guilds.id, interaction.guildId)).limit(1);
 
 		const existingUrl: string | null = (row?.[urlField] as string | null | undefined) ?? null;
-		if (existingUrl) {
-			await tryDeleteWebhook(existingUrl);
-		}
 
 		if (!channel) {
 			await this.upsert(interaction.guildId, { [urlField]: null });
+			if (existingUrl) await tryDeleteWebhook(existingUrl);
 			return interaction.editReply(successReply(`${label} log channel cleared.`));
 		}
 
-		let webhookUrl: string;
+		// Create and save the new webhook before deleting the old one, so a failure keeps the working URL.
+		const avatarUrl = interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 });
+		const webhookName = {
+			logWebhookUrl: WEBHOOK_NAMES.logs,
+			modLogWebhookUrl: WEBHOOK_NAMES.modLogs,
+			ticketLogWebhookUrl: WEBHOOK_NAMES.ticketLogs,
+			reportWebhookUrl: WEBHOOK_NAMES.reportLogs,
+		}[urlField];
+		const createWebhook = () =>
+			channel
+				.createWebhook({ name: webhookName, avatar: avatarUrl, reason: `Set by ${interaction.user.tag} via /config` })
+				.then((wh) => wh.url);
+
+		let webhookUrl: string | null = null;
+		let oldDeleted = false;
 		try {
-			const avatarUrl = interaction.client.user.displayAvatarURL({ extension: 'png', size: 256 });
-			const webhookName = {
-				logWebhookUrl: 'Erica — Logs',
-				modLogWebhookUrl: 'Erica — Moderation Logs',
-				ticketLogWebhookUrl: 'Erica — Ticket Logs',
-				reportWebhookUrl: 'Erica — Report Logs',
-			}[urlField];
-			const wh = await channel.createWebhook({
-				name: webhookName,
-				avatar: avatarUrl,
-				reason: `Set by ${interaction.user.tag} via /config`,
-			});
-			webhookUrl = wh.url;
-		} catch {
+			webhookUrl = await createWebhook();
+		} catch (err) {
+			// The channel already has Discord's maximum of 15 webhooks: free the old log webhook first, retry once.
+			if ((err as { code?: unknown } | null)?.code === 30007 && existingUrl) {
+				await tryDeleteWebhook(existingUrl);
+				oldDeleted = true;
+				webhookUrl = await createWebhook().catch(() => null);
+			}
+		}
+		if (!webhookUrl) {
+			// Never keep a URL that points at the webhook just deleted.
+			if (oldDeleted) await this.upsert(interaction.guildId, { [urlField]: null });
 			return interaction.editReply(
 				errorReply(
-					`Failed to create a webhook in <#${channel.id}>. Make sure I have the **Manage Webhooks** permission in that channel.`,
+					`Failed to create a webhook in <#${channel.id}>. Make sure I have the **Manage Webhooks** permission in that channel and that it has fewer than 15 webhooks.`,
 				),
 			);
 		}
 
 		await this.upsert(interaction.guildId, { [urlField]: webhookUrl });
+		if (existingUrl && !oldDeleted && existingUrl !== webhookUrl) await tryDeleteWebhook(existingUrl);
 		return interaction.editReply(successReply(`${label} logs will be posted in <#${channel.id}>.`));
 	}
 
@@ -355,6 +369,7 @@ export class ConfigCommand extends Subcommand {
 		}
 
 		await setModule(interaction.guildId, module, enabled);
+		invalidateModuleCache(interaction.guildId);
 		return interaction.editReply(
 			successReply(`**${MODULE_LABELS[module]}** has been ${enabled ? 'enabled 🟢' : 'disabled 🔴'}.`),
 		);
@@ -363,7 +378,7 @@ export class ConfigCommand extends Subcommand {
 	// ── /config logignore helpers ─────────────────────────────────────────────────
 	private async getIgnored(guildId: string): Promise<string[]> {
 		const [row] = await db.select().from(schema.guilds).where(eq(schema.guilds.id, guildId)).limit(1);
-		return row?.logIgnoredChannelIds ? (JSON.parse(row.logIgnoredChannelIds) as string[]) : [];
+		return safeJsonParse<string[]>(row?.logIgnoredChannelIds, []);
 	}
 
 	private async setIgnored(guildId: string, ids: string[]): Promise<void> {
@@ -422,7 +437,7 @@ export class ConfigCommand extends Subcommand {
 			return interaction.editReply('No channels are currently excluded from general logs.');
 		}
 
-		const list = ignored.map((id) => `• <#${id}>`).join('\n');
+		const list = joinLinesCapped(ignored.map((id) => `• <#${id}>`));
 		return interaction.editReply(`**Channels excluded from general logs:**\n${list}`);
 	}
 

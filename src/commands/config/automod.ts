@@ -1,7 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
 	AUTOMOD_ACTION_LABELS,
 	AUTOMOD_ACTIONS,
@@ -12,7 +12,10 @@ import {
 	getOrCreateAutomodSettings,
 } from '../../lib/AutomodUtil.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, successReply, warningReply } from '../../lib/components.js';
+import { joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
+import { isModuleEnabled, setModule } from '../../lib/ModuleUtil.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 const RULE_CHOICES = AUTOMOD_RULES.map((r) => ({ name: AUTOMOD_RULE_LABELS[r], value: r }));
 const ACTION_CHOICES = AUTOMOD_ACTIONS.map((a) => ({ name: AUTOMOD_ACTION_LABELS[a], value: a }));
@@ -195,9 +198,9 @@ export class AutomodCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server-only command.'));
 
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const exemptRoles = JSON.parse(s.exemptRoles) as string[];
-		const exemptChannels = JSON.parse(s.exemptChannels) as string[];
-		const whitelist = JSON.parse(s.linkWhitelist) as string[];
+		const exemptRoles = safeJsonParse<string[]>(s.exemptRoles, []);
+		const exemptChannels = safeJsonParse<string[]>(s.exemptChannels, []);
+		const whitelist = safeJsonParse<string[]>(s.linkWhitelist, []);
 
 		const line = (enabled: boolean, label: string, detail: string) =>
 			`${enabled ? '🟢' : '🔴'} **${label}**${detail ? `\n-# ${detail}` : ''}`;
@@ -237,6 +240,16 @@ export class AutomodCommand extends Subcommand {
 		];
 
 		const container = makeContainer({ color: Colors.Info, header: 'AutoMod Configuration' });
+		const moduleState = await this.automodModuleState(interaction.guildId);
+		if (moduleState !== 'on') {
+			container.addTextDisplayComponents(
+				new TextDisplayBuilder().setContent(
+					moduleState === 'global-off'
+						? '-# AutoMod is disabled globally by the bot owner, so none of these rules run.'
+						: '-# The **AutoMod** module is off, so none of these rules run. Turn it on with `/module enable`.',
+				),
+			);
+		}
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n\n')));
 
 		if (exemptRoles.length || exemptChannels.length) {
@@ -270,9 +283,31 @@ export class AutomodCommand extends Subcommand {
 				set: { [enabledKey]: enabled },
 			});
 
+		// Rules only run while the AutoMod module is on, and it defaults to off — enabling a rule turns it on.
+		let moduleNote = '';
+		if (enabled) {
+			const moduleState = await this.automodModuleState(interaction.guildId);
+			if (moduleState !== 'on') {
+				// Turn this server's module on — also while AutoMod is disabled globally, so the rules run as
+				// soon as the bot owner re-enables it.
+				await setModule(interaction.guildId, 'automod', true);
+				moduleNote =
+					moduleState === 'global-off'
+						? '\n-# AutoMod is disabled globally by the bot owner, so rules will not run until it is re-enabled.'
+						: '\n-# The **AutoMod** module was off for this server, so I turned it on.';
+			}
+		}
+
 		return interaction.editReply(
-			successReply(`**${AUTOMOD_RULE_LABELS[rule]}** ${enabled ? 'enabled 🟢' : 'disabled 🔴'}.`),
+			successReply(`**${AUTOMOD_RULE_LABELS[rule]}** ${enabled ? 'enabled 🟢' : 'disabled 🔴'}.${moduleNote}`),
 		);
+	}
+
+	/** Whether AutoMod rules can run here: on, off for this guild, or killed by the global module switch. */
+	private async automodModuleState(guildId: string): Promise<'on' | 'guild-off' | 'global-off'> {
+		if (await isModuleEnabled(guildId, 'automod')) return 'on';
+		const globalRow = await db.query.globalModules.findFirst({ where: eq(schema.globalModules.id, 1) });
+		return globalRow?.automod === false ? 'global-off' : 'guild-off';
 	}
 
 	public async chatInputConfigure(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -304,6 +339,21 @@ export class AutomodCommand extends Subcommand {
 		if (window !== null && rule === 'spam') patch.spamWindowSeconds = window;
 		if (minLength !== null && rule === 'caps') patch.capsMinLength = minLength;
 
+		// Options that don't apply to this rule leave the patch empty — and an empty
+		// ON DUPLICATE KEY UPDATE is invalid SQL.
+		if (Object.keys(patch).length === 0) {
+			const applicable = ['`action`', '`timeout-minutes`'];
+			if (rule === 'spam') applicable.push('`threshold`', '`window`');
+			else if (rule === 'caps') applicable.push('`threshold`', '`min-length`');
+			else if (rule === 'mentions' || rule === 'new-account') applicable.push('`threshold`');
+			return interaction.editReply(
+				warningReply(
+					`Nothing to update — those options don't apply to **${AUTOMOD_RULE_LABELS[rule]}**. ` +
+						`Use ${applicable.slice(0, -1).join(', ')} or ${applicable.at(-1)}.`,
+				),
+			);
+		}
+
 		await db
 			.insert(schema.automodSettings)
 			.values({ guildId: interaction.guildId, ...patch })
@@ -324,7 +374,7 @@ export class AutomodCommand extends Subcommand {
 			.toLowerCase()
 			.replace(/^https?:\/\//, '');
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.linkWhitelist) as string[];
+		const list = safeJsonParse<string[]>(s.linkWhitelist, []);
 		if (list.includes(domain)) return interaction.editReply(warningReply(`\`${domain}\` is already whitelisted.`));
 		list.push(domain);
 		await db
@@ -343,7 +393,7 @@ export class AutomodCommand extends Subcommand {
 			.toLowerCase()
 			.replace(/^https?:\/\//, '');
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.linkWhitelist) as string[];
+		const list = safeJsonParse<string[]>(s.linkWhitelist, []);
 		const filtered = list.filter((d) => d !== domain);
 		if (filtered.length === list.length)
 			return interaction.editReply(warningReply(`\`${domain}\` is not in the whitelist.`));
@@ -359,17 +409,22 @@ export class AutomodCommand extends Subcommand {
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server-only command.'));
 
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.linkWhitelist) as string[];
+		const list = safeJsonParse<string[]>(s.linkWhitelist, []);
 		if (list.length === 0) return interaction.editReply(warningReply('No domains are whitelisted yet.'));
-		return interaction.editReply(`**Link whitelist (${list.length}):**\n${list.map((d) => `• \`${d}\``).join('\n')}`);
+		return interaction.editReply(
+			`**Link whitelist (${list.length}):**\n${joinLinesCapped(list.map((d) => `• \`${d}\``))}`,
+		);
 	}
 
 	public async chatInputWordAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server-only command.'));
 
-		const word = interaction.options.getString('word', true).toLowerCase();
 		const isRegex = interaction.options.getBoolean('regex') ?? false;
+		// Plain words are matched case-insensitively, so store them lowercased. Regex patterns are kept
+		// verbatim — lowercasing would rewrite escapes like \S → \s — and are compiled with the `i` flag.
+		const rawWord = interaction.options.getString('word', true);
+		const word = isRegex ? rawWord : rawWord.toLowerCase();
 
 		if (isRegex) {
 			try {
@@ -396,10 +451,16 @@ export class AutomodCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server-only command.'));
 
-		const word = interaction.options.getString('word', true).toLowerCase();
+		// Plain words are stored lowercased, regex patterns verbatim — match either spelling.
+		const word = interaction.options.getString('word', true);
 		const result = await db
 			.delete(schema.automodWordFilter)
-			.where(and(eq(schema.automodWordFilter.guildId, interaction.guildId), eq(schema.automodWordFilter.word, word)));
+			.where(
+				and(
+					eq(schema.automodWordFilter.guildId, interaction.guildId),
+					inArray(schema.automodWordFilter.word, [...new Set([word, word.toLowerCase()])]),
+				),
+			);
 		const affected = Number((result as any)[0]?.affectedRows ?? 0);
 
 		if (affected === 0) return interaction.editReply(warningReply(`\`${word}\` is not in the filter.`));
@@ -418,7 +479,7 @@ export class AutomodCommand extends Subcommand {
 
 		if (words.length === 0) return interaction.editReply(warningReply('No words in the filter yet.'));
 		const lines = words.map((w) => `• \`${w.word}\`${w.isRegex ? ' *(regex)*' : ''}`);
-		return interaction.editReply(`**Word filter (${words.length}):**\n${lines.join('\n')}`);
+		return interaction.editReply(`**Word filter (${words.length}):**\n${joinLinesCapped(lines)}`);
 	}
 
 	public async chatInputExemptRoleAdd(interaction: Subcommand.ChatInputCommandInteraction) {
@@ -427,7 +488,7 @@ export class AutomodCommand extends Subcommand {
 
 		const role = interaction.options.getRole('role', true);
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.exemptRoles) as string[];
+		const list = safeJsonParse<string[]>(s.exemptRoles, []);
 		if (list.includes(role.id)) return interaction.editReply(warningReply(`<@&${role.id}> is already exempt.`));
 		list.push(role.id);
 		await db
@@ -443,7 +504,7 @@ export class AutomodCommand extends Subcommand {
 
 		const role = interaction.options.getRole('role', true);
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.exemptRoles) as string[];
+		const list = safeJsonParse<string[]>(s.exemptRoles, []);
 		const filtered = list.filter((r) => r !== role.id);
 		if (filtered.length === list.length) return interaction.editReply(warningReply(`<@&${role.id}> is not exempt.`));
 		await db
@@ -459,7 +520,7 @@ export class AutomodCommand extends Subcommand {
 
 		const channel = interaction.options.getChannel('channel', true);
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.exemptChannels) as string[];
+		const list = safeJsonParse<string[]>(s.exemptChannels, []);
 		if (list.includes(channel.id)) return interaction.editReply(warningReply(`<#${channel.id}> is already exempt.`));
 		list.push(channel.id);
 		await db
@@ -475,7 +536,7 @@ export class AutomodCommand extends Subcommand {
 
 		const channel = interaction.options.getChannel('channel', true);
 		const s = await getOrCreateAutomodSettings(interaction.guildId);
-		const list = JSON.parse(s.exemptChannels) as string[];
+		const list = safeJsonParse<string[]>(s.exemptChannels, []);
 		const filtered = list.filter((c) => c !== channel.id);
 		if (filtered.length === list.length) return interaction.editReply(warningReply(`<#${channel.id}> is not exempt.`));
 		await db

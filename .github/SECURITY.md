@@ -20,7 +20,7 @@ This project implements the following security practices:
 ### Automated Security
 - **Dependabot**: Automated dependency updates and security alerts
 - **Dependency Review**: PRs are checked for vulnerable dependencies
-- **ESLint Security Rules**: Static analysis for common vulnerabilities
+- **Biome**: Linting and static analysis (`bun run lint`)
 
 ### Code Practices
 - Input validation on all user-provided data
@@ -43,7 +43,7 @@ This project implements the following security practices:
 
 ## Scope
 
-This security policy applies to the Erica Bot codebase. It does not cover:
+This security policy applies to the Erica codebase. It does not cover:
 - Third-party dependencies (report to respective maintainers)
 - Discord platform vulnerabilities (report to Discord)
 - User-hosted instances with custom modifications

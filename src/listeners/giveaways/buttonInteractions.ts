@@ -3,9 +3,11 @@ import { Listener } from '@sapphire/framework';
 import { ContainerBuilder, Events, type Interaction, MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import { buildGiveawayCard } from '../../commands/general/giveaway.js';
+import type { GiveawayBonusRole } from '../../db/schema.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { CV2_FLAG, errorReply, warningReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
+import { safeJsonParse } from '../../lib/safe.js';
 
 @ApplyOptions<Listener.Options>({
 	name: 'giveawayButtonInteractions',
@@ -84,6 +86,7 @@ export class GiveawayButtonListener extends Listener<typeof Events.InteractionCr
 					entrantCount: entrants.length,
 					ended: false,
 					giveawayId: giveaway.id,
+					bonusRoles: safeJsonParse<GiveawayBonusRole[]>(giveaway.bonusRoles, []),
 					requiredRoleId: giveaway.requiredRoleId,
 				}) as any,
 			)

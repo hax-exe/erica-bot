@@ -145,7 +145,7 @@ export class FeedsHandler {
 		});
 
 		if (!feeds.length) {
-			return interaction.editReply(errorReply('No social feed subscriptions set up. Use `/feed add` to add one.'));
+			return interaction.editReply(errorReply('No social feed subscriptions set up. Use `/feeds add` to add one.'));
 		}
 
 		const lines = feeds.map(
@@ -157,7 +157,7 @@ export class FeedsHandler {
 		c.addSeparatorComponents(separator());
 		c.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
-				`-# ${feeds.length} feed${feeds.length === 1 ? '' : 's'} • Use \`/feed remove <id>\` to unsubscribe`,
+				`-# ${feeds.length} feed${feeds.length === 1 ? '' : 's'} • Use \`/feeds remove <id>\` to unsubscribe`,
 			),
 		);
 

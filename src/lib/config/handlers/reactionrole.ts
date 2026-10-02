@@ -19,6 +19,9 @@ import { db, schema } from '../../../lib/database.js';
 type RRPanel = typeof schema.rrPanels.$inferSelect;
 type RRPanelRole = typeof schema.rrPanelRoles.$inferSelect;
 
+/** Discord's button label limit (select option labels allow 100). */
+const BUTTON_LABEL_MAX = 80;
+
 // ─── Panel builder ─────────────────────────────────────────────────────────────
 
 export function buildRRPanelPayload(panel: RRPanel, roles: RRPanelRole[]) {
@@ -51,7 +54,7 @@ export function buildRRPanelPayload(panel: RRPanel, roles: RRPanelRole[]) {
 			for (const r of chunk) {
 				const btn = new ButtonBuilder()
 					.setCustomId(`rr_btn:${panel.id}:${r.roleId}`)
-					.setLabel(r.label)
+					.setLabel(r.label.slice(0, BUTTON_LABEL_MAX)) // older rows may hold labels up to 100 chars
 					.setStyle(ButtonStyle.Secondary);
 				if (r.emoji) btn.setEmoji(r.emoji);
 				row.addComponents(btn);
@@ -137,7 +140,7 @@ export class ReactionRoleHandler {
 
 		return interaction.editReply(
 			successReply(
-				`Panel **#${panel.id}** (${mode}) created in <#${channel.id}>. Use \`/reactionrole add ${panel.id}\` to add roles.`,
+				`Panel **#${panel.id}** (${mode}) created in <#${channel.id}>. Use \`/reactionrole add panel_id:${panel.id}\` to add roles.`,
 			),
 		);
 	}
@@ -150,7 +153,7 @@ export class ReactionRoleHandler {
 
 		const panelId = interaction.options.getInteger('panel_id', true);
 		const role = interaction.options.getRole('role', true);
-		const label = interaction.options.getString('label', true);
+		const label = interaction.options.getString('label', true).slice(0, BUTTON_LABEL_MAX);
 		const description = interaction.options.getString('description');
 		const emoji = interaction.options.getString('emoji');
 

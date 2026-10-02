@@ -2,16 +2,17 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { ActivityType, type Client, Events } from 'discord.js';
 import { eq } from 'drizzle-orm';
+import { BOT_NAME } from '../lib/brand.js';
 import { db, schema } from '../lib/database.js';
 import { cacheGuildInvites } from '../lib/InviteUtil.js';
 import { syncWebhookBranding } from '../lib/LoggingUtil.js';
 
 const PROD_STATUSES = [
 	// --- Friendly & Community Focused ---
-	'✨ Watching over Origin Earth',
-	'🤖 Your friendly neighborhood Erica bot',
+	'✨ Watching over the server',
+	`🤖 Your friendly neighborhood ${BOT_NAME}`,
 	'🧪 Fueled by potions and good intentions',
-	'🪄 Making Origin Earth a little more magical every day',
+	'🪄 Making the server a little more magical every day',
 	'❤️ Here to help. Always.',
 
 	// --- Minecraft Humor & Gameplay Vibes ---
@@ -25,7 +26,7 @@ const PROD_STATUSES = [
 	// --- Playful & Sarcastic Bot Humor ---
 	"📜 Reading the server rules (so you don't have to)",
 	'🍿 Listening to chat drama with a bucket of popcorn',
-	'🤖 Beep boop. Definitely a real Origin Earth player.',
+	'🤖 Beep boop. Definitely a real player.',
 	'🛌 Thinking very hard about doing absolutely nothing',
 	'⚡ Online, awake, and 99% lag-free!',
 	'🕯️ Keeping the lights on around spawn',
@@ -74,11 +75,15 @@ export class ReadyListener extends Listener<typeof Events.ClientReady> {
 
 		this.container.logger.info(`Logged in as ${client.user.tag}`);
 
-		const webhookSync = await syncWebhookBranding().catch(() => null);
-		if (webhookSync) {
+		const webhookSync = await syncWebhookBranding().catch((err) => {
+			this.container.logger.warn('[webhooks] Could not sync log webhook branding:', err);
+			return null;
+		});
+		if (webhookSync && (webhookSync.updated || webhookSync.failed)) {
+			const plural = (n: number) => `${n} log webhook${n === 1 ? '' : 's'}`;
 			this.container.logger.info(
-				`[webhooks] Erica branding applied to ${webhookSync.updated} webhook(s)` +
-					(webhookSync.failed ? `; ${webhookSync.failed} could not be updated` : ''),
+				`[webhooks] Synced ${BOT_NAME} branding on ${plural(webhookSync.updated)}` +
+					(webhookSync.failed ? `; ${plural(webhookSync.failed)} could not be updated` : ''),
 			);
 		}
 

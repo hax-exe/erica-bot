@@ -1,11 +1,12 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { ChannelType, PermissionFlagsBits } from 'discord.js';
+import { ChannelType } from 'discord.js';
 
+// No command-level permission gate: rename / limit / lock / unlock / kick act only on the caller's own
+// space (SpaceHandler.getOwnedSpace), and the set* / toggle subcommands check Manage Server in the handler.
 @ApplyOptions<Subcommand.Options>({
 	name: 'tempvoice',
 	description: 'Temporary voice channels.',
-	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'rename', chatInputRun: 'chatInputRename' },
 		{ name: 'limit', chatInputRun: 'chatInputLimit' },
@@ -25,7 +26,6 @@ export class TempVoiceCommand extends Subcommand {
 			builder
 				.setName('tempvoice')
 				.setDescription('Temporary voice channels.')
-				.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 				.addSubcommand((sub) =>
 					sub
 						.setName('rename')

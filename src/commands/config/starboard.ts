@@ -1,6 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
 import { ChannelType, MessageFlags, PermissionFlagsBits, type TextChannel } from 'discord.js';
+import { eq } from 'drizzle-orm';
 import { errorReply, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 
@@ -19,7 +20,7 @@ export class StarboardCommand extends Command {
 				.addChannelOption((o) =>
 					o
 						.setName('channel')
-						.setDescription('Starboard channel (omit to clear / disable).')
+						.setDescription('Starboard channel (run with no options to disable).')
 						.addChannelTypes(ChannelType.GuildText)
 						.setRequired(false),
 				)
@@ -50,9 +51,8 @@ export class StarboardCommand extends Command {
 		const emoji = interaction.options.getString('emoji') ?? undefined;
 		const threshold = interaction.options.getInteger('threshold') ?? undefined;
 
-		const patch: Partial<typeof schema.starboardSettings.$inferInsert> = {};
-
-		if (!channel) {
+		// No options at all → disable and clear the channel.
+		if (!channel && emoji === undefined && threshold === undefined) {
 			await db
 				.insert(schema.starboardSettings)
 				.values({ guildId: interaction.guildId, enabled: false, channelId: null })
@@ -62,8 +62,12 @@ export class StarboardCommand extends Command {
 			return interaction.editReply(successReply('Starboard disabled and channel cleared.'));
 		}
 
-		patch.channelId = channel.id;
-		patch.enabled = true;
+		// Only change the fields that were provided — e.g. `threshold:5` alone keeps the current channel.
+		const patch: Partial<typeof schema.starboardSettings.$inferInsert> = {};
+		if (channel) {
+			patch.channelId = channel.id;
+			patch.enabled = true;
+		}
 		if (emoji !== undefined) patch.emoji = emoji;
 		if (threshold !== undefined) patch.threshold = threshold;
 
@@ -72,10 +76,22 @@ export class StarboardCommand extends Command {
 			.values({ guildId: interaction.guildId, ...patch })
 			.onDuplicateKeyUpdate({ set: patch });
 
-		const parts: string[] = [`Starboard channel set to <#${channel.id}>.`];
+		const parts: string[] = [channel ? `Starboard channel set to <#${channel.id}>.` : 'Starboard settings updated.'];
 		if (emoji !== undefined) parts.push(`Emoji: ${emoji}`);
 		if (threshold !== undefined) parts.push(`Threshold: **${threshold}** reactions`);
 
-		return interaction.editReply(successReply(parts.join(' ')));
+		let note = '';
+		if (!channel) {
+			const [current] = await db
+				.select({ enabled: schema.starboardSettings.enabled, channelId: schema.starboardSettings.channelId })
+				.from(schema.starboardSettings)
+				.where(eq(schema.starboardSettings.guildId, interaction.guildId))
+				.limit(1);
+			if (!current?.enabled || !current.channelId) {
+				note = '\n-# No starboard channel is set yet — run `/starboard` with a `channel` to turn it on.';
+			}
+		}
+
+		return interaction.editReply(successReply(`${parts.join(' ')}${note}`));
 	}
 }

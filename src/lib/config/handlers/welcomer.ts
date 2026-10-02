@@ -110,7 +110,7 @@ export class WelcomerHandler {
 
 		const settings = await getWelcomeSettings(interaction.guildId);
 		if (!settings?.channelId) {
-			return interaction.editReply(warningReply('Set a welcome channel first with `/welcomer welcome setchannel`.'));
+			return interaction.editReply(warningReply('Set a welcome channel first with `/welcomer welcome-channel`.'));
 		}
 		const newEnabled = !settings.enabled;
 		await upsertWelcomeSettings(interaction.guildId, { enabled: newEnabled });
@@ -213,7 +213,7 @@ export class WelcomerHandler {
 
 		const settings = await getLeaveSettings(interaction.guildId);
 		if (!settings?.channelId) {
-			return interaction.editReply(warningReply('Set a leave channel first with `/welcomer leave setchannel`.'));
+			return interaction.editReply(warningReply('Set a leave channel first with `/welcomer leave-channel`.'));
 		}
 		const newEnabled = !settings.enabled;
 		await upsertLeaveSettings(interaction.guildId, { enabled: newEnabled });
@@ -264,7 +264,7 @@ export class WelcomerHandler {
 
 		const settings = await getWelcomeSettings(interaction.guildId);
 		if (!settings?.dmMessage) {
-			return interaction.editReply(warningReply('Set a DM message first with `/welcomer dm setmessage`.'));
+			return interaction.editReply(warningReply('Set a DM message first with `/welcomer dm-message`.'));
 		}
 		const newEnabled = !settings.dmEnabled;
 		await upsertWelcomeSettings(interaction.guildId, { dmEnabled: newEnabled });

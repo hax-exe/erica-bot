@@ -36,23 +36,27 @@ export async function getBotBlacklistEntry(userId: string): Promise<{ blocked: b
 	let inflight = pending.get(userId);
 	if (!inflight) {
 		inflight = (async () => {
-			const entry = await db
-				.select()
-				.from(schema.botBlacklist)
-				.where(eq(schema.botBlacklist.userId, userId))
-				.limit(1)
-				.then((r) => r[0] ?? null);
+			try {
+				const entry = await db
+					.select()
+					.from(schema.botBlacklist)
+					.where(eq(schema.botBlacklist.userId, userId))
+					.limit(1)
+					.then((r) => r[0] ?? null);
 
-			const result = entry
-				? {
-						blocked: true,
-						reason: entry.reason && entry.reason !== 'No reason provided' ? entry.reason : null,
-					}
-				: { blocked: false, reason: null };
+				const result = entry
+					? {
+							blocked: true,
+							reason: entry.reason && entry.reason !== 'No reason provided' ? entry.reason : null,
+						}
+					: { blocked: false, reason: null };
 
-			cache.set(userId, { ...result, expires: Date.now() + CACHE_TTL_MS });
-			pending.delete(userId);
-			return result;
+				cache.set(userId, { ...result, expires: Date.now() + CACHE_TTL_MS });
+				return result;
+			} finally {
+				// Also on failure: a rejected lookup left in `pending` would fail every later check for this user.
+				pending.delete(userId);
+			}
 		})();
 		pending.set(userId, inflight);
 	}

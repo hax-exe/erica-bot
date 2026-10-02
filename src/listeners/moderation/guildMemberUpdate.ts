@@ -13,6 +13,8 @@ import { pendingTimeoutBypass } from '../../lib/ModerationUtil.js';
  *   have a recorded duration.
  */
 @ApplyOptions<Listener.Options>({
+	// Explicit name: pieces default to the file basename, and other `guildMemberUpdate.ts` listeners exist.
+	name: 'moderationGuildMemberUpdate',
 	event: Events.GuildMemberUpdate,
 })
 export class UserListener extends Listener {

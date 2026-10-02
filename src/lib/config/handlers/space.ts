@@ -208,7 +208,7 @@ export class SpaceHandler {
 			.then((r) => r[0] ?? null);
 
 		if (!settings?.triggerChannelId) {
-			return interaction.editReply(warningReply('Set a trigger channel first with `/space config settrigger`.'));
+			return interaction.editReply(warningReply('Set a trigger channel first with `/tempvoice settrigger`.'));
 		}
 
 		const newEnabled = !settings.enabled;

@@ -1,5 +1,5 @@
 import { ApplyOptions } from '@sapphire/decorators';
-import { Listener } from '@sapphire/framework';
+import { container, Listener } from '@sapphire/framework';
 import { Events, type GuildMember, GuildVerificationLevel, type TextChannel, TextDisplayBuilder } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { Colors, CV2_FLAG, makeContainer } from '../../lib/components.js';
@@ -16,6 +16,13 @@ const raidState = new Map<
 	}
 >();
 
+/** Forget a guild's raid state. Always cancels the pending auto-unlock so it can't fire against missing state. */
+function dropRaidState(guildId: string) {
+	const state = raidState.get(guildId);
+	if (state?.unlockTimer) clearTimeout(state.unlockTimer);
+	raidState.delete(guildId);
+}
+
 @ApplyOptions<Listener.Options>({
 	name: 'antiRaidMonitor',
 	event: Events.GuildMemberAdd,
@@ -27,7 +34,9 @@ export class AntiRaidListener extends Listener<typeof Events.GuildMemberAdd> {
 		});
 
 		if (!cfg?.enabled) {
-			raidState.delete(member.guild.id);
+			// Keep an active lock (e.g. a manual lock) so its auto-unlock or a manual unlock can still
+			// restore the original verification level; only stale join tracking is dropped.
+			if (!raidState.get(member.guild.id)?.active) dropRaidState(member.guild.id);
 			return;
 		}
 
@@ -72,7 +81,11 @@ export class AntiRaidListener extends Listener<typeof Events.GuildMemberAdd> {
 		if (cfg.autoUnlockMinutes > 0) {
 			if (state.unlockTimer) clearTimeout(state.unlockTimer);
 			state.unlockTimer = setTimeout(
-				() => this.unlock(member.guild.id, member.guild),
+				() => {
+					this.unlock(member.guild.id, member.guild).catch((err) =>
+						this.container.logger.error(`[AntiRaid] Auto-unlock failed in ${member.guild.id}:`, err),
+					);
+				},
 				cfg.autoUnlockMinutes * 60 * 1000,
 			);
 		}
@@ -141,7 +154,11 @@ export async function manualLock(guild: import('discord.js').Guild, moderatorId:
 	if (cfg && cfg.autoUnlockMinutes > 0) {
 		if (state.unlockTimer) clearTimeout(state.unlockTimer);
 		state.unlockTimer = setTimeout(
-			() => manualUnlock(guild, 'System (Auto-unlock)'),
+			() => {
+				manualUnlock(guild, 'System (Auto-unlock)').catch((err) =>
+					container.logger.error(`[AntiRaid] Auto-unlock failed in ${guild.id}:`, err),
+				);
+			},
 			cfg.autoUnlockMinutes * 60 * 1000,
 		);
 	}
@@ -164,15 +181,12 @@ export async function manualUnlock(guild: import('discord.js').Guild, moderatorN
 	const state = raidState.get(guild.id);
 	if (!state) return false;
 
-	if (state.unlockTimer) {
-		clearTimeout(state.unlockTimer);
-	}
+	// Drop the state (and its pending timer) before awaiting, so a concurrent unlock can't run twice.
+	dropRaidState(guild.id);
 
 	if (state.originalLevel !== undefined) {
 		await guild.setVerificationLevel(state.originalLevel, `Manual unlock by: ${moderatorNameOrId}`).catch(() => null);
 	}
-
-	raidState.delete(guild.id);
 
 	const cfg = await db.query.antiRaidSettings.findFirst({
 		where: eq(schema.antiRaidSettings.guildId, guild.id),

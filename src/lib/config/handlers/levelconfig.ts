@@ -4,20 +4,23 @@ import { and, eq, sql } from 'drizzle-orm';
 import { Colors, CV2_FLAG, errorReply, makeContainer, successReply } from '../../../lib/components.js';
 import { db, schema } from '../../../lib/database.js';
 import { getOrCreateLevelSettings, upsertLevelSettings } from '../../../lib/LevelingUtil.js';
+import { safeJsonParse } from '../../../lib/safe.js';
+
+const SERVER_ONLY = 'This command can only be used in a server.';
 
 export class LevelConfigHandler {
 	// ─── Enable / Disable ─────────────────────────────────────────────────────
 
 	public async chatInputEnable(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		await upsertLevelSettings(interaction.guildId, { enabled: true });
 		return interaction.editReply(successReply('Leveling is now **enabled**.'));
 	}
 
 	public async chatInputDisable(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		await upsertLevelSettings(interaction.guildId, { enabled: false });
 		return interaction.editReply(successReply('Leveling is now **disabled**.'));
 	}
@@ -26,7 +29,7 @@ export class LevelConfigHandler {
 
 	public async chatInputXpRate(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const min = interaction.options.getInteger('min', true);
 		const max = interaction.options.getInteger('max', true);
 		const cooldown = interaction.options.getInteger('cooldown', true);
@@ -43,7 +46,7 @@ export class LevelConfigHandler {
 
 	public async chatInputLevelupChannel(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const channel = interaction.options.getChannel('channel');
 		await upsertLevelSettings(interaction.guildId, { levelUpChannelId: channel?.id ?? null });
 		return interaction.editReply(
@@ -59,7 +62,7 @@ export class LevelConfigHandler {
 
 	public async chatInputLevelupMessage(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const message = interaction.options.getString('message', true);
 		await upsertLevelSettings(interaction.guildId, { levelUpMessage: message });
 		return interaction.editReply(successReply(`Level-up message updated.`));
@@ -69,10 +72,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpRoleAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const role = interaction.options.getRole('role', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpRoleIds);
+		const list = safeJsonParse<string[]>(settings.noXpRoleIds, []);
 		if (list.includes(role.id)) {
 			return interaction.editReply(errorReply(`<@&${role.id}> is already in the no-XP list.`));
 		}
@@ -83,10 +86,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpRoleRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const role = interaction.options.getRole('role', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpRoleIds);
+		const list = safeJsonParse<string[]>(settings.noXpRoleIds, []);
 		const next = list.filter((id) => id !== role.id);
 		if (next.length === list.length) {
 			return interaction.editReply(errorReply(`<@&${role.id}> was not in the no-XP list.`));
@@ -99,10 +102,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpChannelAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const channel = interaction.options.getChannel('channel', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpChannelIds);
+		const list = safeJsonParse<string[]>(settings.noXpChannelIds, []);
 		if (list.includes(channel.id)) {
 			return interaction.editReply(errorReply(`<#${channel.id}> is already in the no-XP list.`));
 		}
@@ -113,10 +116,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpChannelRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const channel = interaction.options.getChannel('channel', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpChannelIds);
+		const list = safeJsonParse<string[]>(settings.noXpChannelIds, []);
 		const next = list.filter((id) => id !== channel.id);
 		if (next.length === list.length) {
 			return interaction.editReply(errorReply(`<#${channel.id}> was not in the no-XP list.`));
@@ -129,7 +132,7 @@ export class LevelConfigHandler {
 
 	public async chatInputRoleRewardAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const level = interaction.options.getInteger('level', true);
 		const role = interaction.options.getRole('role', true);
 		await db
@@ -143,7 +146,7 @@ export class LevelConfigHandler {
 
 	public async chatInputRoleRewardRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const level = interaction.options.getInteger('level', true);
 		const role = interaction.options.getRole('role', true);
 		const existing = await db
@@ -175,7 +178,7 @@ export class LevelConfigHandler {
 
 	public async chatInputRoleRewardList(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const rewards = await db
 			.select()
 			.from(schema.levelRoles)
@@ -184,7 +187,7 @@ export class LevelConfigHandler {
 
 		if (rewards.length === 0) {
 			return interaction.editReply(
-				errorReply('No role rewards configured. Use `/levelconfig role-reward-add` to add one.'),
+				errorReply('No role rewards configured. Use `/leveling role-reward-add` to add one.'),
 			);
 		}
 
@@ -199,7 +202,7 @@ export class LevelConfigHandler {
 
 	public async chatInputVoiceXp(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const enabled = interaction.options.getBoolean('enabled', true);
 		const xpPerMinute = interaction.options.getInteger('xp-per-minute') ?? undefined;
 		const minMembers = interaction.options.getInteger('min-members') ?? undefined;
@@ -215,10 +218,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpVoiceAdd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const channel = interaction.options.getChannel('channel', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpVoiceChannelIds);
+		const list = safeJsonParse<string[]>(settings.noXpVoiceChannelIds, []);
 		if (list.includes(channel.id)) {
 			return interaction.editReply(errorReply(`<#${channel.id}> is already in the no-XP voice list.`));
 		}
@@ -229,10 +232,10 @@ export class LevelConfigHandler {
 
 	public async chatInputNoXpVoiceRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const channel = interaction.options.getChannel('channel', true);
 		const settings = await getOrCreateLevelSettings(interaction.guildId);
-		const list: string[] = JSON.parse(settings.noXpVoiceChannelIds);
+		const list = safeJsonParse<string[]>(settings.noXpVoiceChannelIds, []);
 		const next = list.filter((id) => id !== channel.id);
 		if (next.length === list.length) {
 			return interaction.editReply(errorReply(`<#${channel.id}> was not in the no-XP voice list.`));
@@ -245,12 +248,12 @@ export class LevelConfigHandler {
 
 	public async chatInputView(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return;
+		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply(SERVER_ONLY));
 		const s = await getOrCreateLevelSettings(interaction.guildId);
 
-		const noXpRoles: string[] = JSON.parse(s.noXpRoleIds);
-		const noXpChannels: string[] = JSON.parse(s.noXpChannelIds);
-		const noXpVoice: string[] = JSON.parse(s.noXpVoiceChannelIds);
+		const noXpRoles = safeJsonParse<string[]>(s.noXpRoleIds, []);
+		const noXpChannels = safeJsonParse<string[]>(s.noXpChannelIds, []);
+		const noXpVoice = safeJsonParse<string[]>(s.noXpVoiceChannelIds, []);
 
 		const lines = [
 			`**Status** ${s.enabled ? 'Enabled' : 'Disabled'}`,
@@ -268,9 +271,7 @@ export class LevelConfigHandler {
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines));
 		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				'-# Use `/admin badge list` and `/levelconfig role-reward-list` for badge and reward details.',
-			),
+			new TextDisplayBuilder().setContent('-# Use `/leveling role-reward-list` for role reward details.'),
 		);
 		return interaction.editReply({ components: [container], flags: CV2_FLAG });
 	}

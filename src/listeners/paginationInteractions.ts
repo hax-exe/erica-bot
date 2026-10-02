@@ -15,7 +15,8 @@ import {
 } from 'discord.js';
 import { isBotBlacklisted } from '../lib/BlacklistUtil.js';
 import { Colors, cv2Reply, field, makeContainer, pageNavRow, separator } from '../lib/components.js';
-import { getInfractions } from '../lib/ModerationUtil.js';
+import { getInfractions, truncateText } from '../lib/ModerationUtil.js';
+import { safeJsonParse } from '../lib/safe.js';
 
 function titleCaseType(type: string): string {
 	return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
@@ -114,7 +115,7 @@ export async function buildTagsPage(guildId: string, page: number) {
 
 	if (rows.length === 0) {
 		const { warningReply } = await import('../lib/components.js');
-		return warningReply('No tags configured for this server. Use `/tag-manage create` to add one.');
+		return warningReply('No tags configured for this server. Use `/tag create` to add one.');
 	}
 
 	const PAGE_SIZE = 15;
@@ -125,7 +126,7 @@ export async function buildTagsPage(guildId: string, page: number) {
 	const slice = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
 	const lines = slice.map((r) => {
-		const aliases = JSON.parse(r.aliases) as string[];
+		const aliases = safeJsonParse<string[]>(r.aliases, []);
 		const aliasPart = aliases.length > 0 ? ` *(${aliases.map((a) => `\`${a}\``).join(', ')})*` : '';
 		return `\`${r.name}\`${aliasPart}`;
 	});
@@ -181,7 +182,7 @@ export async function buildWarningsPage(guildId: string, targetId: string, usern
 			new TextDisplayBuilder().setContent(
 				`**Case \`${inf.caseId}\`** — ${titleCaseType(inf.type)}${expiredLabel}\n` +
 					`${field('Moderator', `<@${inf.moderatorId}>`)}\n` +
-					`${field('Reason', inf.reason)}\n` +
+					`${field('Reason', truncateText(inf.reason, 200))}\n` +
 					`-# <t:${ts}:F>`,
 			),
 		);
@@ -240,7 +241,7 @@ export async function buildMyWarningsPage(guildId: string, targetId: string, use
 		container.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
 				`**Case \`${inf.caseId}\`** — ${titleCaseType(inf.type)}${expiredLabel}\n` +
-					`${field('Reason', inf.reason)}\n` +
+					`${field('Reason', truncateText(inf.reason, 200))}\n` +
 					`-# <t:${ts}:F>`,
 			),
 		);
@@ -367,7 +368,7 @@ export async function buildCasesPage(
 				`**Case \`${inf.caseId}\`** — ${titleCaseType(inf.type)}\n` +
 					`${field('User', `<@${inf.userId}>`)}\n` +
 					`${field('Moderator', `<@${inf.moderatorId}>`)}\n` +
-					`${field('Reason', inf.reason)}\n` +
+					`${field('Reason', truncateText(inf.reason, 200))}\n` +
 					`-# <t:${ts}:F>`,
 			),
 		);
@@ -408,8 +409,8 @@ export class PaginationInteractions extends Listener {
 			const { PermissionFlagsBits } = await import('discord.js');
 			if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
 				const { errorReply } = await import('../lib/components.js');
-				// biome-ignore lint/suspicious/noExplicitAny: CV2 flag type gap
-				await interaction.reply({ ...errorReply('You do not have permission to view this.'), flags: 64 } as any);
+				// errorReply is already CV2 + ephemeral — overriding `flags` would drop the CV2 bit (50035).
+				await interaction.reply(errorReply('You do not have permission to view this.') as any);
 				return;
 			}
 		}

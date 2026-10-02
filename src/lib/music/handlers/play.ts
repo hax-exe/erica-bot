@@ -102,25 +102,10 @@ export class PlayHandler {
 			return interaction.editReply(warningReply(`I'm already playing in <#${existingPlayer.voiceChannelId}>.`));
 		}
 
-		// Moonlink native autoPlay stays off — Erica owns autoplay via AutoplayManager.
-		const player = music.players.create({
-			guildId: interaction.guildId,
-			voiceChannelId: vc.id,
-			textChannelId: interaction.channelId,
-			autoPlay: false,
-		});
-
-		if (!player.connected) {
-			try {
-				await player.connect();
-			} catch (err: unknown) {
-				return interaction.editReply(errorReply((err as Error).message));
-			}
-		}
-
 		const query = interaction.options.getString('query', true);
 		const isUrl = /^https?:\/\//i.test(query);
 
+		// Validate and search before touching voice, so a bad query never leaves the bot idling in a channel.
 		if (isUrl) {
 			const check = allowedUrl(query);
 			if (!check.ok) return interaction.editReply(errorReply(check.reason));
@@ -178,6 +163,30 @@ export class PlayHandler {
 						: `No results for **${query}**. Try a different name or paste a YouTube link.`,
 				),
 			);
+		}
+
+		// Re-check after the search: another /play may have started a player in a different channel meanwhile.
+		const playerBeforeCreate = music.players.get(interaction.guildId);
+		if (playerBeforeCreate && !inSameVC(playerBeforeCreate.voiceChannelId, vc.id)) {
+			return interaction.editReply(warningReply(`I'm already playing in <#${playerBeforeCreate.voiceChannelId}>.`));
+		}
+
+		// Moonlink native autoPlay stays off — Erica owns autoplay via AutoplayManager.
+		const player = music.players.create({
+			guildId: interaction.guildId,
+			voiceChannelId: vc.id,
+			textChannelId: interaction.channelId,
+			autoPlay: false,
+		});
+
+		if (!player.connected) {
+			try {
+				await player.connect();
+			} catch (err: unknown) {
+				// Don't leave a freshly created, never-used player behind.
+				if (!playerBeforeCreate && !player.current) await player.destroy().catch(() => null);
+				return interaction.editReply(errorReply((err as Error).message));
+			}
 		}
 
 		switch (result.loadType) {

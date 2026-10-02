@@ -93,20 +93,30 @@ export const TICKET_REOPEN_CANCEL_ID = 'ticket:reopen:cancel';
 /** Discord attachment limit for webhook/DM uploads (leave headroom under 25 MiB). */
 const TRANSCRIPT_UPLOAD_LIMIT = 24 * 1024 * 1024;
 
-/** Map thrown errors to short, user-friendly ticket messages. Logs stay detailed. */
+/**
+ * Map thrown errors to short, user-friendly ticket messages. Logs stay detailed.
+ * Order matters: specific messages first, so "Ticket not found or already closed." never falls
+ * into a generic not-found rule.
+ */
 export function friendlyTicketError(err: unknown): string {
 	const msg = err instanceof Error ? err.message : String(err);
+	// Already written for the user / admin — pass through (blacklist denials, open-ticket limits, panel setup).
+	if (/blacklisted from/i.test(msg)) return msg;
 	if (/maximum|already have|max open/i.test(msg)) return msg;
-	if (/channel (was deleted|no longer exists|not found)/i.test(msg)) {
-		return 'This ticket channel no longer exists, so it cannot be reopened.';
-	}
-	if (/not found|no longer exists/i.test(msg))
+	if (/tickets\.yml|^Panel channel /i.test(msg)) return msg;
+	// "Ticket not found or already closed/open."
+	if (/already closed/i.test(msg)) return 'This ticket is already closed.';
+	if (/already open/i.test(msg)) return 'This ticket is already open.';
+	// Reopen: "Ticket channel was deleted or no longer exists."
+	if (/channel was deleted/i.test(msg)) return 'This ticket channel no longer exists, so it cannot be reopened.';
+	if (/channel (not found|no longer exists)/i.test(msg)) return 'This ticket channel no longer exists.';
+	// "Ticket category `x` not found." / "That ticket category no longer exists."
+	if (/ticket category/i.test(msg)) {
 		return 'That ticket category is no longer available. Ask staff to update the panel.';
+	}
 	if (/Missing Permissions|Missing Access|50013|50001/i.test(msg)) {
 		return "I don't have permission to create channels here. Please ping staff.";
 	}
-	if (/already closed/i.test(msg)) return 'This ticket is already closed.';
-	if (/already open/i.test(msg)) return 'This ticket is already open.';
 	return 'Something went wrong with that ticket action. Please try again or ping staff.';
 }
 
@@ -579,6 +589,40 @@ async function fetchAllMessages(channel: TextChannel): Promise<Message[]> {
 
 // ─── Ticket close ──────────────────────────────────────────────────────────────
 
+/**
+ * Close a ticket whose channel was already deleted (e.g. by staff by hand): same atomic open → closed
+ * claim, no transcript. Otherwise autoClose retries every hour forever and the opener stays at max-open.
+ */
+async function closeTicketWithoutChannel(
+	guild: Guild,
+	ticket: typeof schema.tickets.$inferSelect,
+	closedBy: GuildMember | import('discord.js').User,
+	categoryLabel: string,
+): Promise<void> {
+	const closedResult = await db
+		.update(schema.tickets)
+		.set({ status: 'closed', closedAt: new Date(), closedById: closedBy.id })
+		.where(and(eq(schema.tickets.id, ticket.id), eq(schema.tickets.status, 'open')));
+	if (Number((closedResult as any)[0]?.affectedRows ?? 0) === 0) {
+		throw new Error('Ticket not found or already closed.');
+	}
+
+	const log = logContainer({
+		title: 'Ticket Closed',
+		color: Colors.Neutral,
+		fields: [
+			logFields.ticketId(ticket.id),
+			logFields.category(categoryLabel),
+			logFields.openedBy(ticket.userId),
+			logFields.closedBy(closedBy.id),
+			{ name: 'Transcript', value: 'Not saved: the ticket channel had already been deleted.' },
+		],
+		timestamp: true,
+	});
+	await sendTicketLog(guild, log);
+	scheduleTicketStatsChannelUpdate(guild);
+}
+
 /** Close an open ticket by its DB ID. Generates transcripts and archives the channel. */
 export async function closeTicket(
 	guild: Guild,
@@ -599,9 +643,17 @@ export async function closeTicket(
 		getCategoryById(guild.id, ticket.categoryId),
 	]);
 
+	const channel = (await guild.channels.fetch(ticket.channelId).catch((err: unknown) => {
+		// 10003 Unknown Channel: deleted by hand. Any other failure leaves the ticket open for a retry.
+		if ((err as { code?: unknown } | null)?.code === 10003) return null;
+		throw err;
+	})) as TextChannel | null;
+	if (!channel) {
+		await closeTicketWithoutChannel(guild, ticket, closedBy, cat?.label ?? ticket.categoryId);
+		return;
+	}
+
 	const transcriptCode = crypto.randomBytes(16).toString('hex');
-	const channel = guild.channels.cache.get(ticket.channelId) as TextChannel | undefined;
-	if (!channel) throw new Error('Ticket channel not found; the ticket was left open.');
 
 	const messages = await fetchAllMessages(channel);
 	const messagesCount = messages.filter((m) => !m.author.bot).length;

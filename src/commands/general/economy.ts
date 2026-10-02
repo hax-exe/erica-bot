@@ -131,7 +131,7 @@ const WORK_JOBS = [
 	{ job: 'shot a sponsored YouTube video', emoji: '📹' },
 	{ job: 'won a local chess tournament', emoji: '♟️' },
 	{ job: 'built a Redstone contraption for a client', emoji: '🔴' },
-	{ job: 'ran the AloraMC store for the day', emoji: '🏪' },
+	{ job: 'ran the server store for the day', emoji: '🏪' },
 ];
 
 const CRIME_SUCCESS_MSGS = [
@@ -168,6 +168,9 @@ const MINE_MISS_MSGS = [
 	'Just gravel. Completely useless gravel.',
 	'You broke your torch mid-dig. Found nothing.',
 ];
+
+/** economy.balance is a signed 32-bit MySQL INT — never credit past it. */
+const MAX_WALLET_BALANCE = 2_147_483_647;
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 
@@ -356,7 +359,12 @@ export class EconomyCommand extends Subcommand {
 								.setDescription('Give coins to a user.')
 								.addUserOption((o) => o.setName('user').setDescription('The user to give coins to.').setRequired(true))
 								.addIntegerOption((o) =>
-									o.setName('amount').setDescription('Amount of coins.').setRequired(true).setMinValue(1),
+									o
+										.setName('amount')
+										.setDescription('Amount of coins.')
+										.setRequired(true)
+										.setMinValue(1)
+										.setMaxValue(MAX_WALLET_BALANCE),
 								),
 						)
 						.addSubcommand((s) =>
@@ -583,6 +591,8 @@ export class EconomyCommand extends Subcommand {
 		}
 
 		const amount = rand(WEEKLY_MIN, WEEKLY_MAX);
+		// Make sure the wallet row exists — otherwise the UPDATE matches nothing while the claim is still logged.
+		await getOrCreateEconomy(interaction.user.id, interaction.guild!.id);
 		await db
 			.update(schema.economy)
 			.set({ balance: sql`${schema.economy.balance} + ${amount}` })
@@ -760,8 +770,10 @@ export class EconomyCommand extends Subcommand {
 		}
 
 		const fine = rand(CRIME_FAIL_MIN, CRIME_FAIL_MAX);
-		const actualFine = Math.min(fine, row.balance);
-		if (actualFine > 0) await walletDeduct(interaction.user.id, interaction.guild!.id, actualFine);
+		const fineDue = Math.min(fine, row.balance);
+		// Only report the fine if the deduction actually went through (the wallet may have changed meanwhile).
+		const actualFine =
+			fineDue > 0 && (await walletDeduct(interaction.user.id, interaction.guild!.id, fineDue)) ? fineDue : 0;
 		await logTx(interaction.guild!.id, interaction.user.id, 'crime', actualFine, { note: 'Failed — fined' });
 		const msg = CRIME_FAIL_MSGS[rand(0, CRIME_FAIL_MSGS.length - 1)];
 		return interaction.editReply(
@@ -814,8 +826,11 @@ export class EconomyCommand extends Subcommand {
 				);
 			}
 			const stolen = Math.min(stealAttempt, targetRow.balance);
-			await walletDeduct(target.id, interaction.guild!.id, stolen);
-			await walletAdd(interaction.user.id, interaction.guild!.id, stolen);
+			// Atomic transfer — if the target's wallet changed since we read it, nothing moves.
+			const moved = await walletTransfer(target.id, interaction.user.id, interaction.guild!.id, stolen);
+			if (!moved) {
+				return interaction.editReply(warningReply(`<@${target.id}> no longer has enough to rob — they got away.`));
+			}
 			await logTx(interaction.guild!.id, interaction.user.id, 'rob_taken', stolen, { toUserId: target.id });
 			await logTx(interaction.guild!.id, target.id, 'rob_lost', stolen, { toUserId: interaction.user.id });
 			return interaction.editReply(
@@ -826,8 +841,10 @@ export class EconomyCommand extends Subcommand {
 		}
 
 		const fine = Math.floor(stealAttempt * ROB_FINE_PERCENT);
-		const actualFine = Math.min(fine, robberRow.balance);
-		if (actualFine > 0) await walletDeduct(interaction.user.id, interaction.guild!.id, actualFine);
+		const fineDue = Math.min(fine, robberRow.balance);
+		// Only report the fine if the deduction actually went through (the wallet may have changed meanwhile).
+		const actualFine =
+			fineDue > 0 && (await walletDeduct(interaction.user.id, interaction.guild!.id, fineDue)) ? fineDue : 0;
 		await logTx(interaction.guild!.id, interaction.user.id, 'rob_lost', actualFine, {
 			note: `Failed rob vs ${target.username}`,
 		});
@@ -1141,9 +1158,18 @@ export class EconomyCommand extends Subcommand {
 			const challengerWins = Math.random() < 0.5;
 			const [winnerId, loserId] = challengerWins ? [interaction.user.id, target.id] : [target.id, interaction.user.id];
 
-			await walletDeduct(interaction.user.id, duel.guildId, duel.amount);
-			await walletDeduct(target.id, duel.guildId, duel.amount);
-			await walletAdd(winnerId, duel.guildId, duel.amount * 2);
+			// Loser pays the winner atomically (same net result as both staking and the winner taking the pot).
+			// Balances may have changed since the check above — never pay out on a failed deduction.
+			const settled = await walletTransfer(loserId, winnerId, duel.guildId, duel.amount);
+			if (!settled) {
+				const broke = makeContainer({ color: Colors.Error });
+				broke.addTextDisplayComponents(
+					new TextDisplayBuilder().setContent("Someone doesn't have enough coins — duel cancelled."),
+				);
+				await interaction.editReply({ components: [broke], flags: CV2_FLAG as any }).catch(() => null);
+				await i.deferUpdate().catch(() => null);
+				return;
+			}
 
 			await logTx(duel.guildId, winnerId, 'duel_win', duel.amount, { toUserId: loserId });
 			await logTx(duel.guildId, loserId, 'duel_loss', duel.amount, { toUserId: winnerId });
@@ -1587,19 +1613,36 @@ export class EconomyCommand extends Subcommand {
 				successReply(`**${item.name}** stays in your inventory and activates automatically when relevant.`),
 			);
 		}
+		// Also passive — the relevant command consumes them, so using them here must not.
+		if (item.itemKey === 'heist_kit')
+			return interaction.editReply(
+				warningReply('The Heist Kit activates automatically on your next `/economy earn crime`.'),
+			);
+		if (item.itemKey === 'lucky_charm')
+			return interaction.editReply(
+				warningReply('The Lucky Charm applies automatically on your next `/economy daily`.'),
+			);
+		if (item.itemKey === 'streak_freeze')
+			return interaction.editReply(
+				warningReply('The Streak Freeze activates automatically if your daily streak is about to break.'),
+			);
+
+		// Timed effects can't stack — refuse while one is active, before the item is consumed.
+		if (item.itemKey === 'padlock' || item.itemKey === 'work_boost') {
+			const ecoRow = await getOrCreateEconomy(interaction.user.id, interaction.guild!.id);
+			const activeUntil = item.itemKey === 'padlock' ? ecoRow.padlockExpiresAt : ecoRow.workBoostExpiresAt;
+			if (activeUntil && activeUntil.getTime() > Date.now()) {
+				const label = item.itemKey === 'padlock' ? 'Padlock' : 'Work Boost';
+				return interaction.editReply(
+					warningReply(`${label} already active — expires <t:${Math.floor(activeUntil.getTime() / 1000)}:R>.`),
+				);
+			}
+		}
 
 		await consumeItem(interaction.user.id, interaction.guild!.id, invRow.id, invRow.quantity);
 
 		// ── Effect: padlock ─────────────────────────────────────────────────────
 		if (item.itemKey === 'padlock') {
-			const ecoRow = await getOrCreateEconomy(interaction.user.id, interaction.guild!.id);
-			if (ecoRow.padlockExpiresAt && ecoRow.padlockExpiresAt.getTime() > Date.now()) {
-				return interaction.editReply(
-					warningReply(
-						`Padlock already active — expires <t:${Math.floor(ecoRow.padlockExpiresAt.getTime() / 1000)}:R>.`,
-					),
-				);
-			}
 			const hours = item.durationHours ?? 24;
 			const expiresAt = new Date(Date.now() + hours * 3_600_000);
 			await db
@@ -1671,14 +1714,6 @@ export class EconomyCommand extends Subcommand {
 
 		// ── Effect: work_boost ──────────────────────────────────────────────────
 		if (item.itemKey === 'work_boost') {
-			const ecoRow = await getOrCreateEconomy(interaction.user.id, interaction.guild!.id);
-			if (ecoRow.workBoostExpiresAt && ecoRow.workBoostExpiresAt.getTime() > Date.now()) {
-				return interaction.editReply(
-					warningReply(
-						`Work Boost already active — expires <t:${Math.floor(ecoRow.workBoostExpiresAt.getTime() / 1000)}:R>.`,
-					),
-				);
-			}
 			const hours = item.durationHours ?? 12;
 			const expiresAt = new Date(Date.now() + hours * 3_600_000);
 			await db
@@ -1691,21 +1726,6 @@ export class EconomyCommand extends Subcommand {
 				),
 			);
 		}
-
-		// ── Passive items (heist_kit, lucky_charm, streak_freeze) ───────────────
-		// These are consumed automatically when the relevant command runs.
-		if (item.itemKey === 'heist_kit')
-			return interaction.editReply(
-				warningReply('The Heist Kit activates automatically on your next `/economy earn crime`.'),
-			);
-		if (item.itemKey === 'lucky_charm')
-			return interaction.editReply(
-				warningReply('The Lucky Charm applies automatically on your next `/economy daily`.'),
-			);
-		if (item.itemKey === 'streak_freeze')
-			return interaction.editReply(
-				warningReply('The Streak Freeze activates automatically if your daily streak is about to break.'),
-			);
 
 		return interaction.editReply(successReply(`Used **${item.name}**.`));
 	}
@@ -1986,7 +2006,15 @@ export class EconomyCommand extends Subcommand {
 		const amount = interaction.options.getInteger('amount', true);
 		if (target.bot) return interaction.editReply(errorReply('Cannot give coins to a bot.'));
 
-		await getOrCreateEconomy(target.id, interaction.guild!.id);
+		const before = await getOrCreateEconomy(target.id, interaction.guild!.id);
+		if (amount > MAX_WALLET_BALANCE - before.balance) {
+			return interaction.editReply(
+				errorReply(
+					`That would push <@${target.id}>'s wallet past the maximum of ${fmtCoins(MAX_WALLET_BALANCE)}. ` +
+						`They can receive at most ${fmtCoins(Math.max(0, MAX_WALLET_BALANCE - before.balance))}.`,
+				),
+			);
+		}
 		await walletAdd(target.id, interaction.guild!.id, amount);
 		await logTx(interaction.guild!.id, target.id, 'admin_add', amount, {
 			note: `Given by staff: ${interaction.user.tag}`,
@@ -2016,9 +2044,10 @@ export class EconomyCommand extends Subcommand {
 		if (target.bot) return interaction.editReply(errorReply('Cannot take coins from a bot.'));
 
 		const row = await getOrCreateEconomy(target.id, interaction.guild!.id);
-		const toTake = Math.min(amount, row.balance);
+		const due = Math.min(amount, row.balance);
+		// Only count what was actually deducted — the wallet may have changed since it was read.
+		const toTake = due > 0 && (await walletDeduct(target.id, interaction.guild!.id, due)) ? due : 0;
 		if (toTake > 0) {
-			await walletDeduct(target.id, interaction.guild!.id, toTake);
 			await logTx(interaction.guild!.id, target.id, 'admin_remove', toTake, {
 				note: `Taken by staff: ${interaction.user.tag}`,
 			});

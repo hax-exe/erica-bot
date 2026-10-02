@@ -5,7 +5,8 @@ import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
 export class AutomodMessageCreateListener extends Listener {
 	public constructor(context: Listener.LoaderContext) {
-		super(context, { event: 'messageCreate' });
+		// Explicit, unique name: pieces default to the file basename, and same-named pieces unload each other.
+		super(context, { name: 'automodMessageCreate', event: 'messageCreate' });
 	}
 
 	public async run(message: Message) {

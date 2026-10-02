@@ -41,7 +41,8 @@ function renderSnipe(entry: SnipeEntry, kind: 'deleted' | 'edited') {
 		);
 	}
 
-	return cv2Reply(container, false);
+	// Sniped text is user content — never let it ping @everyone, roles or users
+	return { ...cv2Reply(container, false), allowedMentions: { parse: [] } };
 }
 
 @ApplyOptions<Subcommand.Options>({

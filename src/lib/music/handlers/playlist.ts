@@ -15,6 +15,7 @@ import {
 } from '../../components.js';
 import { db, schema } from '../../database.js';
 import { formatDuration, inSameVC } from '../../MusicManager.js';
+import { safeJsonParse } from '../../safe.js';
 
 const MAX_PLAYLISTS = 10;
 const MAX_TRACKS = 100;
@@ -80,7 +81,7 @@ export class PlaylistHandler {
 		});
 		if (!pl) return interaction.editReply(errorReply(`No playlist named **${name}** found.`));
 
-		const tracks: PlaylistTrack[] = JSON.parse(pl.tracks);
+		const tracks = safeJsonParse<PlaylistTrack[]>(pl.tracks, []);
 		if (!tracks.length) return interaction.editReply(errorReply('That playlist is empty.'));
 
 		const member = interaction.member;
@@ -140,7 +141,7 @@ export class PlaylistHandler {
 		if (!playlists.length) return interaction.editReply(errorReply('You have no saved playlists.'));
 
 		const lines = playlists.map((pl) => {
-			const tracks: PlaylistTrack[] = JSON.parse(pl.tracks);
+			const tracks = safeJsonParse<PlaylistTrack[]>(pl.tracks, []);
 			return `• **${pl.name}** — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
 		});
 
@@ -165,7 +166,7 @@ export class PlaylistHandler {
 		});
 		if (!pl) return interaction.editReply(errorReply(`No playlist named **${name}** found.`));
 
-		const tracks: PlaylistTrack[] = JSON.parse(pl.tracks);
+		const tracks = safeJsonParse<PlaylistTrack[]>(pl.tracks, []);
 		if (!tracks.length) return interaction.editReply(warningReply('That playlist is empty.'));
 
 		const lines = tracks

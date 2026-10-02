@@ -4,6 +4,7 @@ import { Events, type Interaction, MessageFlags, TextDisplayBuilder } from 'disc
 import { eq } from 'drizzle-orm';
 import { minecraftLinks } from '../../db/schema.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
+import { getMinecraftServerAddress } from '../../lib/brand.js';
 import { Colors, CV2_FLAG, makeContainer, separator } from '../../lib/components.js';
 import { db } from '../../lib/database.js';
 import { generateVerificationCode, VERIFY_BUTTON_ID } from '../../lib/VerificationUtil.js';
@@ -28,10 +29,10 @@ export class VerificationButtonListener extends Listener<typeof Events.Interacti
 
 		const container = makeContainer({ color: Colors.Info });
 
+		const serverAddress = getMinecraftServerAddress();
+		const join = serverAddress ? `Join **${serverAddress}**` : 'Join our Minecraft server';
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				'Join **play.aloramc.net** and run `/verify <token>` to verify this is your account.',
-			),
+			new TextDisplayBuilder().setContent(`${join} and run \`/verify <token>\` to verify this is your account.`),
 		);
 
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### \`${code}\``));

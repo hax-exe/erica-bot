@@ -3,6 +3,7 @@ import { MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { Colors, CV2_FLAG, errorReply, makeContainer, separator, successReply } from '../../../lib/components.js';
 import { db, schema } from '../../../lib/database.js';
+import { safeJsonParse } from '../../../lib/safe.js';
 
 const DEFAULT_BOOST_MESSAGE = '🚀 {user} just boosted **{server}**! Thank you so much! 💜';
 
@@ -74,7 +75,7 @@ export class BoostHandler {
 		});
 
 		const fmt = (id: string | null | undefined) => (id ? `<#${id}>` : '*(not set)*');
-		const milestones: number[] = cfg ? JSON.parse(cfg.milestones) : [];
+		const milestones = safeJsonParse<number[]>(cfg?.milestones, []);
 
 		const c = makeContainer({ color: Colors.Info, header: 'Boost Configuration' });
 		c.addSeparatorComponents(separator());

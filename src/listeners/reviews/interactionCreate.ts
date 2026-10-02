@@ -14,7 +14,7 @@ import {
 } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
-import { Colors, CV2_FLAG, makeContainer } from '../../lib/components.js';
+import { Colors, CV2_FLAG, errorReply, makeContainer } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import {
 	hasReview,
@@ -24,6 +24,7 @@ import {
 	STARS,
 	saveReview,
 } from '../../lib/ReviewUtil.js';
+import { isDuplicateKeyError } from '../../lib/safe.js';
 
 function r(opts: object) {
 	// biome-ignore lint/suspicious/noExplicitAny: Discord.js reply type gap
@@ -146,26 +147,35 @@ export class ReviewInteractionListener extends Listener<typeof Events.Interactio
 
 		const comment = interaction.fields.getTextInputValue('comment').trim() || null;
 
-		// Guard: one review per ticket
-		if (await hasReview(ticketId)) {
-			await interaction.reply(
-				r({
-					content: '❌ A review has already been submitted for this ticket.',
-					flags: MessageFlags.Ephemeral,
-				}),
-			);
-			return;
+		// Acknowledge first — saving, posting and the stats update can outlast the 3-second window.
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		try {
+			await this.submitReview(interaction, ticketId, guildId, rating, comment);
+		} catch (err) {
+			// Don't leave the user on "thinking…"; the listener error handler still logs the failure.
+			await interaction
+				.editReply(errorReply('Something went wrong while saving your review. Please try again.'))
+				.catch(() => null);
+			throw err;
 		}
+	}
 
-		// Save review
-		const saved = await saveReview(ticketId, guildId, interaction.user.id, rating, comment);
+	private async submitReview(
+		interaction: ModalSubmitInteraction,
+		ticketId: number,
+		guildId: string,
+		rating: number,
+		comment: string | null,
+	) {
+		// Guard: one review per ticket (the unique ticket_id index catches a concurrent double submit)
+		const saved = (await hasReview(ticketId))
+			? null
+			: await saveReview(ticketId, guildId, interaction.user.id, rating, comment).catch((err) => {
+					if (isDuplicateKeyError(err)) return null;
+					throw err;
+				});
 		if (!saved) {
-			await interaction.reply(
-				r({
-					content: '❌ A review has already been submitted for this ticket.',
-					flags: MessageFlags.Ephemeral,
-				}),
-			);
+			await interaction.editReply(errorReply('A review has already been submitted for this ticket.'));
 			return;
 		}
 
@@ -187,7 +197,7 @@ export class ReviewInteractionListener extends Listener<typeof Events.Interactio
 			scheduleTicketStatsChannelUpdate(guild);
 		}
 
-		// Confirm to the user (works in DMs too) — reply to the modal submit
+		// Confirm to the user (works in DMs too) — edit the deferred modal reply
 		const confirmContainer = makeContainer({ color: Colors.Success, header: 'Review Submitted!' });
 		confirmContainer.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
@@ -195,6 +205,6 @@ export class ReviewInteractionListener extends Listener<typeof Events.Interactio
 			),
 		);
 		// biome-ignore lint/suspicious/noExplicitAny: Discord.js CV2 flag type gap
-		await interaction.reply({ components: [confirmContainer], flags: CV2_FLAG } as any);
+		await interaction.editReply({ components: [confirmContainer], flags: CV2_FLAG } as any);
 	}
 }

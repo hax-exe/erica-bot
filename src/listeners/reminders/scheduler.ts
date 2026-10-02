@@ -16,6 +16,16 @@ import { Colors, CV2_FLAG } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { humanDuration } from '../../lib/parseDuration.js';
 
+/** Discord errors after which a reminder can never be delivered: unknown channel/guild, DMs closed. */
+const UNDELIVERABLE_ERRORS = new Set([10003, 10004, 50007]);
+/** Also give up on one-off reminders after these (unknown member/role, missing access/permissions). */
+const ONE_OFF_GIVE_UP_ERRORS = new Set([...UNDELIVERABLE_ERRORS, 10007, 10011, 50001, 50013]);
+
+function discordErrorCode(err: unknown): number | null {
+	const code = (err as { code?: unknown } | null)?.code;
+	return typeof code === 'number' ? code : null;
+}
+
 @ApplyOptions<Listener.Options>({
 	name: 'reminderScheduler',
 	event: Events.ClientReady,
@@ -33,17 +43,27 @@ export class ReminderSchedulerListener extends Listener<typeof Events.ClientRead
 					where: and(eq(schema.reminders.done, false), lte(schema.reminders.remindAt, now)),
 				});
 
+				/** Retire a reminder that can never be delivered (guarded on remindAt so a concurrent reschedule wins). */
+				const giveUp = async (reminder: (typeof due)[number], why: string) => {
+					client.logger.warn(`[ReminderScheduler] Dropping reminder ${reminder.id}: ${why}`);
+					await db
+						.update(schema.reminders)
+						.set({ done: true })
+						.where(
+							and(
+								eq(schema.reminders.id, reminder.id),
+								eq(schema.reminders.done, false),
+								eq(schema.reminders.remindAt, reminder.remindAt),
+							),
+						)
+						.catch((err) => client.logger.error(`[ReminderScheduler] Failed to retire reminder ${reminder.id}:`, err));
+				};
+
 				for (const reminder of due) {
 					try {
-						const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
+						const channel = await client.channels.fetch(reminder.channelId);
 						if (!channel?.isTextBased()) {
-							// Channel gone — stop retrying one-off reminders
-							if (!reminder.intervalMs) {
-								await db
-									.update(schema.reminders)
-									.set({ done: true })
-									.where(and(eq(schema.reminders.id, reminder.id), eq(schema.reminders.done, false)));
-							}
+							await giveUp(reminder, `channel ${reminder.channelId} can no longer receive messages.`);
 							continue;
 						}
 
@@ -115,8 +135,17 @@ export class ReminderSchedulerListener extends Listener<typeof Events.ClientRead
 								.where(and(eq(schema.reminders.id, reminder.id), eq(schema.reminders.done, false)));
 						}
 					} catch (err) {
-						client.logger.warn(`[ReminderScheduler] Failed to deliver reminder ${reminder.id}:`, err);
-						// Leave row due so the next tick can retry
+						const code = discordErrorCode(err);
+						// Recurring reminders are only dropped when they can never be delivered again — a
+						// temporary permission problem must not end a daily reminder for good.
+						const giveUpCodes = reminder.intervalMs ? UNDELIVERABLE_ERRORS : ONE_OFF_GIVE_UP_ERRORS;
+						if (code !== null && giveUpCodes.has(code)) {
+							// Unknown channel / no access / DMs closed… — retrying every minute would never succeed.
+							await giveUp(reminder, `Discord error ${code} (${(err as Error).message}).`);
+						} else {
+							// Transient failure — leave the row due so the next tick can retry
+							client.logger.warn(`[ReminderScheduler] Failed to deliver reminder ${reminder.id}; will retry:`, err);
+						}
 					}
 				}
 			} catch (err) {
