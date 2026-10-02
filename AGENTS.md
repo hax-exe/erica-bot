@@ -6,8 +6,8 @@ Erica, a Discord bot. Bun runtime + Sapphire Framework v5 + Drizzle ORM + MySQL 
 
 ```bash
 bun install               # install deps
-bun dev                   # bun --watch src/index.ts  (uses .env.dev)
-bun start                 # production (uses .env.prod)
+bun dev                   # bun --watch src/index.ts
+bun start                 # production
 bun run db:migrate        # apply pending migrations
 bun run db:generate       # generate new migration from schema changes
 bun tsc --noEmit          # type-check (no build output)
@@ -87,10 +87,10 @@ All log types dispatch via `WebhookClient` — no channel IDs stored.
 Moonlink.js client → **NodeLink** audio server (Lavalink-compatible). Docker Compose runs both (`bot` + `nodelink`).
 
 ```bash
-docker compose --env-file .env.prod up -d
+docker compose up -d
 ```
 
-Compose overrides `LAVALINK_HOST=nodelink`. For `bun dev`, run NodeLink on `:3000` or point `LAVALINK_*` at a remote host.
+Compose overrides `LAVALINK_HOST=nodelink`. For `bun dev` on the host, `docker compose up -d mysql nodelink` — Compose publishes MySQL on `127.0.0.1:3306` and NodeLink on `127.0.0.1:3000`; set `DATABASE_URL` to the `MYSQL_USER`/`MYSQL_PASSWORD` values (applied only when the MySQL volume is first created), `LAVALINK_PORT=3000` and a matching `LAVALINK_PASSWORD`. Or point `LAVALINK_*` at a remote host. Keep the NodeLink image current (`docker compose pull nodelink`): old builds (3.3.0) crash with `getTrackUrl` on `ytmusic` tracks.
 
 ### Ticket System
 

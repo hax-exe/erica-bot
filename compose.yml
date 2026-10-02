@@ -1,11 +1,10 @@
 # Erica + MySQL + NodeLink (Moonlink-compatible audio server)
 #
-# Start (loads secrets for ${VAR} interpolation from .env.prod):
-#   docker compose --env-file .env.prod up -d
+# Start (loads secrets for ${VAR} interpolation from .env):
+#   docker compose up -d
 #
-# Or copy/symlink .env.prod → .env (Compose auto-loads `.env` for interpolation).
 # The bot container reads every other setting (MINECRAFT_SERVER_IP, API_ALLOWED_ORIGINS,
-# DISCORD_PRESENCE_INTENT, …) from .env.prod via `env_file`; see .env.example.
+# DISCORD_PRESENCE_INTENT, …) from .env via `env_file`; see .env.example.
 
 services:
   mysql:
@@ -17,6 +16,9 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-erica}
       MYSQL_USER: ${MYSQL_USER:-erica}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+    ports:
+      # Host-side access for `bun dev` / `bun run db:migrate` (localhost only; stop any host MySQL on 3306 first)
+      - '127.0.0.1:3306:3306'
     volumes:
       - erica_mysql:/var/lib/mysql
     networks:
@@ -41,11 +43,10 @@ services:
       NODELINK_SOURCES_SPOTIFY_ENABLED: 'true'
       NODELINK_SOURCES_SPOTIFY_CLIENTID: ${SPOTIFY_CLIENT_ID:-}
       NODELINK_SOURCES_SPOTIFY_CLIENTSECRET: ${SPOTIFY_CLIENT_SECRET:-}
-      # Optional: set NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN in .env.prod if YouTube needs it
+      # Optional: set NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN in .env if YouTube needs it
       NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN: ${NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN:-}
-      # Android/Web have SABR; AndroidVR/TV alone yield "No streaming data"
-      NODELINK_SOURCES_YOUTUBE_CLIENTS_PLAYBACK: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
-      NODELINK_SOURCES_YOUTUBE_CLIENTS_RESOLVE: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
+      # Client lists are left at NodeLink's defaults (non-SABR clients first). Forcing Android/Web first
+      # triggers SABR "Limited Playback" + PoToken failures and tracks stop after a few seconds (NodeLink 3.9.0).
       # Empty [] is ignored by NodeLink (falsy). Prefer Deezer; disable SoundCloud rips.
       NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: '["deezer"]'
       NODELINK_SOURCES_SOUNDCLOUD_ENABLED: 'false'
@@ -56,9 +57,9 @@ services:
       NODELINK_AUDIO_QUALITY: 'high'
     expose:
       - '3000'
-    # Uncomment for host-machine debugging only (not required for the bot container):
-    # ports:
-    #   - '127.0.0.1:3000:3000'
+    # Published to localhost so `bun dev` on the host can reach NodeLink (the bot container uses the internal network):
+    ports:
+      - '127.0.0.1:3000:3000'
     networks:
       - erica
     healthcheck:
@@ -84,7 +85,7 @@ services:
         condition: service_healthy
     volumes:
       - erica_data:/app/data
-    env_file: .env.prod
+    env_file: .env
     environment:
       DATABASE_URL: mysql://${MYSQL_USER:-erica}:${MYSQL_PASSWORD:-changeme}@mysql:3306/${MYSQL_DATABASE:-erica}
       # Override any localhost NodeLink from env_file — talk to the sidecar

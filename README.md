@@ -27,7 +27,7 @@ bun install
 
 ### 2. Configure environment variables
 
-Copy `.env.example` to `.env.dev` / `.env.prod` and fill in values (see the example file for the full list):
+Copy `.env.example` to `.env` and fill in values (see the example file for the full list):
 
 ```env
 DISCORD_TOKEN=your_bot_token_here
@@ -63,7 +63,7 @@ Requesting a privileged intent that is not enabled in the portal makes Discord r
 bun run db:migrate
 ```
 
-This applies the SQL migrations in `drizzle/` to the MySQL database in `DATABASE_URL` (the script loads `.env.prod`). Pending migrations are also applied automatically every time the bot starts, so this step is optional.
+This applies the SQL migrations in `drizzle/` to the MySQL database in `DATABASE_URL` (the script loads `.env`). Pending migrations are also applied automatically every time the bot starts, so this step is optional.
 
 ### 4. Configure YAML files
 
@@ -114,19 +114,38 @@ bun dev
 bun start
 ```
 
-`bun dev` runs with `NODE_ENV=development` and `.env.dev` (**debug** logging); `bun start` runs with `NODE_ENV=production` and `.env.prod` (**info** logging).
+`bun dev` runs with `NODE_ENV=development` (**debug** logging); `bun start` runs with `NODE_ENV=production` (**info** logging).
 
 ### Docker Compose (bot + MySQL + NodeLink)
 
 Music uses **Moonlink.js** talking to a **NodeLink** audio server. Production Compose runs the bot image (`ghcr.io/hax-exe/erica-bot:latest`, built by CI), MySQL and NodeLink:
 
 ```bash
-docker compose --env-file .env.prod up -d
+docker compose up -d
 ```
 
-Ensure `.env.prod` has `LAVALINK_PASSWORD`, the `MYSQL_*` credentials, and optionally `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (passed through to NodeLink). The bot container reads the rest of `.env.prod` via `env_file`, builds `DATABASE_URL` from the `MYSQL_*` values, is wired to `LAVALINK_HOST=nodelink` on the internal network, and applies pending migrations before starting.
+Ensure `.env` has `LAVALINK_PASSWORD`, the `MYSQL_*` credentials, and optionally `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (passed through to NodeLink). The bot container reads the rest of `.env` via `env_file`, builds `DATABASE_URL` from the `MYSQL_*` values, is wired to `LAVALINK_HOST=nodelink` on the internal network, and applies pending migrations before starting.
 
-For local `bun dev`, run NodeLink on `:3000` yourself or point `LAVALINK_HOST` at a remote NodeLink instance.
+#### Running the bot on the host against Compose services
+
+To run `bun dev` on the host while MySQL and NodeLink run in Compose:
+
+```bash
+docker compose up -d mysql nodelink
+bun run db:migrate
+bun dev
+```
+
+- Compose publishes MySQL on `127.0.0.1:3306` and NodeLink on `127.0.0.1:3000`. Stop any MySQL already running on the host's port 3306 first.
+- `DATABASE_URL` must use the `MYSQL_USER` / `MYSQL_PASSWORD` values (default `erica` / `changeme`), e.g. `mysql://erica:changeme@localhost:3306/erica`. MySQL only applies these when its volume is first created; after changing them run `docker compose down -v` (this deletes the data) and start again.
+- `LAVALINK_HOST=localhost`, `LAVALINK_PORT=3000`, and `LAVALINK_PASSWORD` equal to the one Compose passes to NodeLink.
+- Use `bun run db:migrate` rather than `bunx drizzle-kit migrate`; the project's migrator handles the pinned `0000` journal entry.
+
+#### Troubleshooting
+
+- **`ER_ACCESS_DENIED_ERROR` on migrate** — the password in `DATABASE_URL` differs from the container's `MYSQL_PASSWORD` (or the volume was created with an older one). The `172.19.0.1`-style address in the error is just the Docker gateway.
+- **NodeLink "invalid password" / connection refused** — check `LAVALINK_PORT` is `3000` (not Lavalink's classic `2333`) and the password matches.
+- **NodeLink `Cannot read properties of undefined (reading 'getTrackUrl')`** — an old NodeLink image (e.g. 3.3.0) returns YouTube Music tracks with source `ytmusic`, which it cannot play. Update with `docker compose pull nodelink && docker compose up -d nodelink`.
 
 ---
 
