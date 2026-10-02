@@ -7,6 +7,11 @@ import { ensureAutoplayBuffer, isAutoplayOn, rememberAutoplaySeed } from '../../
 import { Colors, CV2_FLAG, idleJukeboxCard, makeContainer, musicTrackCard, separator } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { clearMusicQueue, formatDuration, saveMusicQueue, setVoiceChannelStatus } from '../../lib/MusicManager.js';
+import {
+	getPendingYouTubeFallback,
+	shouldTryYouTubeFallback,
+	startYouTubeFallback,
+} from '../../lib/music/youtubeFallback.js';
 
 // Tracks the active "Now Playing" message per guild so we can delete it when done
 export const npMessages = new Map<string, Message>();
@@ -284,6 +289,10 @@ export class MusicListeners extends Listener {
 		});
 
 		music.on('queueEnd', async (player: Player, lastTrack?: Track) => {
+			// A failed YouTube track may be getting replaced by a Deezer/SoundCloud match — don't tear down yet.
+			const fallback = getPendingYouTubeFallback(player.guildId);
+			if (fallback && (await fallback)) return;
+
 			if (lastTrack?.userData?.isTTS) {
 				clearNpMessage(player.guildId);
 				await clearMusicQueue(player.guildId);
@@ -346,9 +355,10 @@ export class MusicListeners extends Listener {
 			textChannelId: string | null | undefined,
 			message: string,
 			color: number,
+			bypassThrottle = false,
 		) {
 			const now = Date.now();
-			if ((lastFailNotice.get(guildId) ?? 0) + 8_000 > now) return;
+			if (!bypassThrottle && (lastFailNotice.get(guildId) ?? 0) + 8_000 > now) return;
 			lastFailNotice.set(guildId, now);
 
 			const ch = await getChannel(textChannelId);
@@ -358,28 +368,48 @@ export class MusicListeners extends Listener {
 			await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
 		}
 
-		music.on(
-			'trackException',
-			async (player: Player, track: Track, exception?: { message?: string; severity?: string }) => {
-				const detail = exception?.message ? ` (${exception.message})` : '';
-				logger.error(`[music] Track exception: ${track?.title} in guild ${player.guildId}${detail}`);
-				await notifyPlaybackFail(
-					player.guildId,
-					player.textChannelId,
-					`Couldn't play **${track?.title ?? 'Unknown'}** — skipping.`,
-					Colors.Error,
-				);
-			},
-		);
+		/**
+		 * YouTube tracks often load fine but fail at playback (bot check). Try one
+		 * Deezer/SoundCloud match in place of the failed track; otherwise keep the
+		 * normal skip notice. Eligibility is decided synchronously because Moonlink
+		 * advances the queue right after emitting the event. Moonlink here runs with
+		 * autoSkipOnError / skipStuckTracks, so every exception / non-stream stuck
+		 * event is already a give-up (no recoverable retries to protect).
+		 */
+		function handlePlaybackFailure(player: Player, track: Track | null | undefined, skipNotice: string, color: number) {
+			if (shouldTryYouTubeFallback(player.guildId, track)) {
+				const failedTitle = track.title ?? 'Unknown';
+				void startYouTubeFallback(player, track).then(async (replaced) => {
+					if (replaced) {
+						const now = player.current;
+						const label = now ? `**${now.title ?? 'Unknown'}**${now.author ? ` by ${now.author}` : ''}` : 'a match';
+						await notifyPlaybackFail(
+							player.guildId,
+							player.textChannelId,
+							`Couldn't play **${failedTitle}** from YouTube — playing ${label} instead.`,
+							Colors.Warning,
+							true,
+						);
+						return;
+					}
+					await notifyPlaybackFail(player.guildId, player.textChannelId, skipNotice, color);
+				});
+				return;
+			}
+			// Same guild already has a fallback in flight (e.g. stuck + exception for one track) — stay quiet.
+			if (getPendingYouTubeFallback(player.guildId)) return;
+			void notifyPlaybackFail(player.guildId, player.textChannelId, skipNotice, color);
+		}
 
-		music.on('trackStuck', async (player: Player, track: Track) => {
+		music.on('trackException', (player: Player, track: Track, exception?: { message?: string; severity?: string }) => {
+			const detail = exception?.message ? ` (${exception.message})` : '';
+			logger.error(`[music] Track exception: ${track?.title} in guild ${player.guildId}${detail}`);
+			handlePlaybackFailure(player, track, `Couldn't play **${track?.title ?? 'Unknown'}** — skipping.`, Colors.Error);
+		});
+
+		music.on('trackStuck', (player: Player, track: Track) => {
 			logger.warn(`[music] Track stuck: ${track?.title} in guild ${player.guildId}`);
-			await notifyPlaybackFail(
-				player.guildId,
-				player.textChannelId,
-				`Track stuck — skipping **${track?.title ?? 'Unknown'}**.`,
-				Colors.Warning,
-			);
+			handlePlaybackFailure(player, track, `Track stuck — skipping **${track?.title ?? 'Unknown'}**.`, Colors.Warning);
 		});
 	}
 }

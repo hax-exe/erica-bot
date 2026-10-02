@@ -31,8 +31,8 @@ services:
       start_period: 30s
 
   nodelink:
-    image: performanc/nodelink:latest
-    # Pin for reproducible deploys, e.g. performanc/nodelink:3.7.0
+    # Pinned to the current stable release (3.9.0 == latest at time of writing); bump deliberately.
+    image: performanc/nodelink:3.9.0
     container_name: erica_nodelink
     restart: unless-stopped
     environment:
@@ -43,13 +43,23 @@ services:
       NODELINK_SOURCES_SPOTIFY_ENABLED: 'true'
       NODELINK_SOURCES_SPOTIFY_CLIENTID: ${SPOTIFY_CLIENT_ID:-}
       NODELINK_SOURCES_SPOTIFY_CLIENTSECRET: ${SPOTIFY_CLIENT_SECRET:-}
-      # Optional: set NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN in .env if YouTube needs it
+      # YouTube cipher (same as scripts/nodelink.env). Optional token if the cipher service requires one.
+      NODELINK_SOURCES_YOUTUBE_CIPHER_URL: ${NODELINK_SOURCES_YOUTUBE_CIPHER_URL:-https://cipher.kikkia.dev/api}
       NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN: ${NODELINK_SOURCES_YOUTUBE_CIPHER_TOKEN:-}
-      # Client lists are left at NodeLink's defaults (non-SABR clients first). Forcing Android/Web first
-      # triggers SABR "Limited Playback" + PoToken failures and tracks stop after a few seconds (NodeLink 3.9.0).
-      # Empty [] is ignored by NodeLink (falsy). Prefer Deezer; disable SoundCloud rips.
-      NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: '["deezer"]'
-      NODELINK_SOURCES_SOUNDCLOUD_ENABLED: 'false'
+      # Explicit client lists (same as scripts/nodelink.env): Android first, Music early.
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_SEARCH: '["Android"]'
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_PLAYBACK: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_RESOLVE: '["Android","Music","Web","TV","WebEmbedded","IOS"]'
+      # YouTube OAuth (burner Google account only). Verified against NodeLink 3.9.0 config.default.ts:
+      # sources.youtube.getOAuthToken (bool) and sources.youtube.clients.settings.TV.refreshToken (array).
+      # One-time setup: set NODELINK_YOUTUBE_GET_OAUTH_TOKEN=true, `docker compose up -d nodelink`,
+      # follow the device-flow URL/code in `docker compose logs -f nodelink`, put the printed token in
+      # NODELINK_YOUTUBE_REFRESH_TOKEN, then set GET_OAUTH_TOKEN back to false (NodeLink exits after printing it).
+      NODELINK_SOURCES_YOUTUBE_GETOAUTHTOKEN: ${NODELINK_YOUTUBE_GET_OAUTH_TOKEN:-false}
+      NODELINK_SOURCES_YOUTUBE_CLIENTS_SETTINGS_TV_REFRESHTOKEN: '["${NODELINK_YOUTUBE_REFRESH_TOKEN:-}"]'
+      # Fallback sources when YouTube streams fail. NodeLink also appends its own hardcoded sources after this list.
+      NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: '["deezer","soundcloud"]'
+      NODELINK_SOURCES_SOUNDCLOUD_ENABLED: 'true'
       NODELINK_DEFAULTSEARCHSOURCE: '["youtube","deezer"]'
       NODELINK_UNIFIEDSEARCHSOURCES: '["youtube","deezer"]'
       NODELINK_SOURCES_JIOSAAVN_ENABLED: 'false'

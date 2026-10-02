@@ -156,6 +156,13 @@ export class PlayHandler {
 		}
 
 		if (!result.tracks.length || result.loadType === 'empty' || result.loadType === 'error') {
+			if (!isUrl) {
+				const prev = result;
+				result = await music.search({ query: `scsearch:${query}`, requester: interaction.user.id }).catch(() => prev);
+			}
+		}
+
+		if (!result.tracks.length || result.loadType === 'empty' || result.loadType === 'error') {
 			return interaction.editReply(
 				errorReply(
 					result.loadType === 'error'

@@ -146,6 +146,12 @@ bun dev
 - **`ER_ACCESS_DENIED_ERROR` on migrate** — the password in `DATABASE_URL` differs from the container's `MYSQL_PASSWORD` (or the volume was created with an older one). The `172.19.0.1`-style address in the error is just the Docker gateway.
 - **NodeLink "invalid password" / connection refused** — check `LAVALINK_PORT` is `3000` (not Lavalink's classic `2333`) and the password matches.
 - **NodeLink `Cannot read properties of undefined (reading 'getTrackUrl')`** — an old NodeLink image (e.g. 3.3.0) returns YouTube Music tracks with source `ytmusic`, which it cannot play. Update with `docker compose pull nodelink && docker compose up -d nodelink`.
+- **NodeLink "Sign in to confirm you're not a bot" (every YouTube client fails)** — YouTube is blocking the server IP. Compose already sets the cipher URL and explicit client lists; the fix is YouTube OAuth with a **burner Google account (never your main account)**:
+  1. In `.env` set `NODELINK_YOUTUBE_GET_OAUTH_TOKEN=true`, then `docker compose up -d nodelink`.
+  2. Run `docker compose logs -f nodelink`, open the printed Google device URL, enter the code and sign in with the burner account.
+  3. Copy the printed refresh token into `NODELINK_YOUTUBE_REFRESH_TOKEN`, set `NODELINK_YOUTUBE_GET_OAUTH_TOKEN=false`, then `docker compose up -d nodelink`. (NodeLink exits after printing the token and Compose restarts it, so flip the flag back promptly.)
+
+  SoundCloud and Deezer are enabled as NodeLink-side fallbacks while YouTube is blocked.
 
 ---
 

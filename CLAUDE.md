@@ -96,6 +96,8 @@ docker compose up -d
 
 Compose overrides `LAVALINK_HOST=nodelink`. For `bun dev` on the host, `docker compose up -d mysql nodelink` — Compose publishes MySQL on `127.0.0.1:3306` and NodeLink on `127.0.0.1:3000`; set `DATABASE_URL` to the `MYSQL_USER`/`MYSQL_PASSWORD` values (applied only when the MySQL volume is first created), `LAVALINK_PORT=3000` and a matching `LAVALINK_PASSWORD`. Or point `LAVALINK_*` at a remote host. Keep the NodeLink image current (`docker compose pull nodelink`): old builds (3.3.0) crash with `getTrackUrl` on `ytmusic` tracks.
 
+YouTube "Sign in to confirm you're not a bot" (all clients rejected) means YouTube blocks the server IP. Compose sets `NODELINK_SOURCES_YOUTUBE_CIPHER_URL`, explicit client lists and Deezer/SoundCloud fallbacks (image pinned to `performanc/nodelink:3.9.0`). Fix with YouTube OAuth on a **burner Google account, never a main account**: set `NODELINK_YOUTUBE_GET_OAUTH_TOKEN=true` in `.env`, `docker compose up -d nodelink`, follow the device-flow URL/code in `docker compose logs nodelink`, paste the refresh token into `NODELINK_YOUTUBE_REFRESH_TOKEN`, then set the flag back to `false`.
+
 ### Ticket System
 
 - Panel + categories live in **`config/tickets.yml`** (hex colors, modern modal fields: text / select / file / checkbox / checkboxGroup). See `config/tickets.example.yml`.
