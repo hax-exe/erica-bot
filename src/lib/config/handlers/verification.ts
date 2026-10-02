@@ -1,5 +1,5 @@
 import type { Command } from '@sapphire/framework';
-import { MessageFlags, type TextChannel } from 'discord.js';
+import { MessageFlags, PermissionFlagsBits, type TextChannel } from 'discord.js';
 import { CV2_FLAG, errorReply, successReply } from '../../../lib/components.js';
 import { buildVerificationPanel } from '../../../lib/VerificationUtil.js';
 
@@ -8,6 +8,9 @@ export class VerificationHandler {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Guild only.'));
+		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+			return interaction.editReply(errorReply('You need Manage Server to do this.'));
+		}
 
 		const channel = (interaction.options.getChannel('channel') ?? interaction.channel) as TextChannel | null;
 		if (!channel?.isTextBased()) {

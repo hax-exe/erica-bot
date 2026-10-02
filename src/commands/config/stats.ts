@@ -5,6 +5,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'stats',
 	description: 'Configure stats voice channels.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'setup', chatInputRun: 'chatInputSetup' },

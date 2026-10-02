@@ -13,7 +13,7 @@ Erica — a Discord moderation and community bot. Modules can be toggled per gui
 | `/snipe deleted` / `edited` | Recently deleted or edited messages |
 | `/quote` (+ context menu) | Quote a message by link |
 | `/tools` | timestamp, color, calc, base64, firstmessage, inrole, boosters, **translate**, **weather** |
-| `/emoji steal` / `enlarge` | Steal or enlarge custom emojis |
+| `/emoji enlarge` · `/emojiadmin steal` | Enlarge custom emojis · staff add emojis from other servers |
 
 Create a tag named **`faq`** — welcome messages get a **Server FAQ / Guide** button that shows it.
 
@@ -23,7 +23,7 @@ Create a tag named **`faq`** — welcome messages get a **Server FAQ / Guide** b
 
 | Command | What it does |
 |---|---|
-| `/level` | Rank card, leaderboard, staff XP tools |
+| `/level` · `/leveladmin` | Rank card, customize, leaderboard · staff XP set/add/remove/reset |
 | `/economy` | Wallet: balance, daily/weekly/monthly, deposit/withdraw/pay, inventory/use, leaderboard/transactions |
 | `/economy earn` | work, crime, rob, fish, mine, scavenge |
 | `/economy shop` / `admin` | Shop items · staff give/take/reset |
@@ -46,6 +46,8 @@ Create a tag named **`faq`** — welcome messages get a **Server FAQ / Guide** b
 Unchanged core: music, afk, remind, birthday, poll, suggest, giveaway, tag, starboard, counting, feeds, tempvoice, sticky, autoresponder, reactionrole, stats, minecraft, tickets (stats now show **claimed**), full mod suite.
 
 **New staff channel tools:** `/nuke`, `/clone`, `/afkchannel`
+
+**Staff-only split commands** (hidden from members via default permissions): `/birthdayadmin`, `/tagadmin`, `/tempvoiceadmin`, `/mcadmin` (forceverify, verify-panel), `/musicadmin` (maxvolume)
 
 ---
 

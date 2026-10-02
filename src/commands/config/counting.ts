@@ -5,6 +5,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'counting',
 	description: 'Configure the counting channel.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'setup', chatInputRun: 'chatInputSetup' },

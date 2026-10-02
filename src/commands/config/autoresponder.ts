@@ -19,6 +19,7 @@ const MATCH_CHOICES = [
 @ApplyOptions<Subcommand.Options>({
 	name: 'autoresponder',
 	description: 'Manage automatic keyword replies.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'add', chatInputRun: 'chatInputAdd' },

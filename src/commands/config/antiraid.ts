@@ -5,6 +5,7 @@ import { PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'antiraid',
 	description: 'Configure anti-raid protection.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'setup', chatInputRun: 'chatInputSetup' },

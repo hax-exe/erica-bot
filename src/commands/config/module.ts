@@ -16,6 +16,7 @@ const MODULE_CHOICES = MODULES.map((m) => ({ name: MODULE_LABELS[m], value: m })
 @ApplyOptions<Command.Options>({
 	name: 'module',
 	description: 'Enable or disable bot modules for this server.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 })
 export class ModuleCommand extends Command {

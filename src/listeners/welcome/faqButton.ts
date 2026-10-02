@@ -27,7 +27,7 @@ export class WelcomeFaqButtonListener extends Listener<typeof Events.Interaction
 		const tag = await resolveTag(interaction.guildId, 'faq');
 		if (!tag) {
 			return interaction.reply({
-				content: 'No `faq` tag found — create one with `/tag create name:faq`.',
+				content: 'No `faq` tag found — create one with `/tagadmin create name:faq`.',
 				flags: MessageFlags.Ephemeral,
 			});
 		}

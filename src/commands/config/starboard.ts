@@ -8,6 +8,7 @@ import { db, schema } from '../../lib/database.js';
 @ApplyOptions<Command.Options>({
 	name: 'starboard',
 	description: 'Configure the starboard for this server.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 })
 export class StarboardCommand extends Command {

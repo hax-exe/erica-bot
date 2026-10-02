@@ -163,7 +163,7 @@ src/
 ├── commands/
 │   ├── config/               # /config (log channels)
 │   ├── moderation/           # /ban, /kick, /warn, /timeout, /purge, etc.
-│   ├── tags/                 # /tag (send, create, edit, delete, …)
+│   ├── tags/                 # /tag (send, list) + /tagadmin (create, edit, delete)
 │   └── tickets/              # /ticket (panel, reload, add, remove, close)
 ├── listeners/
 │   ├── logging/              # Audit log events (joins, leaves, edits, etc.)

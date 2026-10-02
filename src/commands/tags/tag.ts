@@ -1,15 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import {
-	type AutocompleteInteraction,
-	type ContainerBuilder,
-	MessageFlags,
-	PermissionFlagsBits,
-	TextDisplayBuilder,
-} from 'discord.js';
-import { and, eq } from 'drizzle-orm';
-import { Colors, CV2_FLAG, errorReply, field, makeContainer, separator, successReply } from '../../lib/components.js';
-import { db, schema } from '../../lib/database.js';
+import { type AutocompleteInteraction, type ContainerBuilder, MessageFlags, TextDisplayBuilder } from 'discord.js';
+import { Colors, CV2_FLAG, errorReply, field, makeContainer, separator } from '../../lib/components.js';
 import { getTagChoices, resolveTag, type TagData } from '../../lib/TagManager.js';
 
 /** Build a CV2 container from a tag definition. */
@@ -48,26 +40,11 @@ function buildTagContainer(tag: TagData): ContainerBuilder {
 	return container;
 }
 
-function hasModerationPerms(interaction: Subcommand.ChatInputCommandInteraction): boolean {
-	if (!interaction.memberPermissions) return false;
-	const perms = BigInt(interaction.memberPermissions.bitfield);
-	if ((perms & PermissionFlagsBits.Administrator) === PermissionFlagsBits.Administrator) return true;
-	const modPerms =
-		PermissionFlagsBits.ManageGuild |
-		PermissionFlagsBits.KickMembers |
-		PermissionFlagsBits.BanMembers |
-		PermissionFlagsBits.ModerateMembers;
-	return (perms & modPerms) !== 0n;
-}
-
 @ApplyOptions<Subcommand.Options>({
 	name: 'tag',
-	description: 'Send or manage server tags.',
+	description: 'Send or list server tags.',
 	subcommands: [
 		{ name: 'send', chatInputRun: 'chatInputSend' },
-		{ name: 'create', chatInputRun: 'chatInputCreate' },
-		{ name: 'edit', chatInputRun: 'chatInputEdit' },
-		{ name: 'delete', chatInputRun: 'chatInputDelete' },
 		{ name: 'list', chatInputRun: 'chatInputList' },
 	],
 })
@@ -76,7 +53,7 @@ export class TagCommand extends Subcommand {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('tag')
-				.setDescription('Send or manage server tags.')
+				.setDescription('Send or list server tags.')
 				// send
 				.addSubcommand((sub) =>
 					sub
@@ -87,50 +64,6 @@ export class TagCommand extends Subcommand {
 						)
 						.addUserOption((o) =>
 							o.setName('mention').setDescription('Optionally mention a user alongside the tag.').setRequired(false),
-						),
-				)
-				// create
-				.addSubcommand((sub) =>
-					sub
-						.setName('create')
-						.setDescription('Create a new tag.')
-						.addStringOption((o) =>
-							o
-								.setName('name')
-								.setDescription('Tag name (unique per server, max 32 chars).')
-								.setRequired(true)
-								.setMaxLength(32),
-						)
-						.addStringOption((o) =>
-							o
-								.setName('content')
-								.setDescription('Text content of the tag (max 2000 chars).')
-								.setRequired(true)
-								.setMaxLength(2000),
-						)
-						.addStringOption((o) =>
-							o.setName('aliases').setDescription('Comma-separated aliases (e.g. "rules,tos").').setRequired(false),
-						),
-				)
-				// edit
-				.addSubcommand((sub) =>
-					sub
-						.setName('edit')
-						.setDescription("Edit an existing tag's content.")
-						.addStringOption((o) =>
-							o.setName('name').setDescription('Tag name.').setRequired(true).setAutocomplete(true),
-						)
-						.addStringOption((o) =>
-							o.setName('content').setDescription('New content (max 2000 chars).').setRequired(true).setMaxLength(2000),
-						),
-				)
-				// delete
-				.addSubcommand((sub) =>
-					sub
-						.setName('delete')
-						.setDescription('Delete a tag.')
-						.addStringOption((o) =>
-							o.setName('name').setDescription('Tag name.').setRequired(true).setAutocomplete(true),
 						),
 				)
 				// list
@@ -171,96 +104,6 @@ export class TagCommand extends Subcommand {
 		}
 
 		return interaction.reply({ components: [container], flags: CV2_FLAG });
-	}
-
-	// ── /tag create ─────────────────────────────────────────────────────────────
-
-	public async chatInputCreate(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-		if (!hasModerationPerms(interaction)) {
-			return interaction.editReply(errorReply('You do not have permission to manage tags.'));
-		}
-
-		const name = interaction.options.getString('name', true).toLowerCase().trim();
-		const content = interaction.options.getString('content', true);
-		const aliasesRaw = interaction.options.getString('aliases');
-		const aliases: string[] = aliasesRaw
-			? aliasesRaw
-					.split(',')
-					.map((a) => a.trim().toLowerCase())
-					.filter((a) => a.length > 0 && a.length <= 32)
-			: [];
-
-		// Check uniqueness
-		const existing = await resolveTag(interaction.guildId, name);
-		if (existing) {
-			return interaction.editReply(errorReply(`Tag \`${name}\` already exists. Use \`/tag edit\` to update it.`));
-		}
-
-		await db.insert(schema.tags).values({
-			guildId: interaction.guildId,
-			name,
-			aliases: JSON.stringify(aliases),
-			content,
-		});
-
-		const aliasSuffix = aliases.length > 0 ? ` Aliases: ${aliases.map((a) => `\`${a}\``).join(', ')}.` : '';
-		return interaction.editReply(successReply(`Tag \`${name}\` created.${aliasSuffix}`));
-	}
-
-	// ── /tag edit ───────────────────────────────────────────────────────────────
-
-	public async chatInputEdit(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-		if (!hasModerationPerms(interaction)) {
-			return interaction.editReply(errorReply('You do not have permission to manage tags.'));
-		}
-
-		const name = interaction.options.getString('name', true).toLowerCase().trim();
-		const content = interaction.options.getString('content', true);
-
-		const existing = await resolveTag(interaction.guildId, name);
-		if (!existing) {
-			return interaction.editReply(errorReply(`Tag \`${name}\` not found.`));
-		}
-
-		await db
-			.update(schema.tags)
-			.set({ content })
-			.where(and(eq(schema.tags.guildId, interaction.guildId), eq(schema.tags.name, existing.name)));
-
-		return interaction.editReply(successReply(`Tag \`${existing.name}\` updated.`));
-	}
-
-	// ── /tag delete ─────────────────────────────────────────────────────────────
-
-	public async chatInputDelete(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-		if (!hasModerationPerms(interaction)) {
-			return interaction.editReply(errorReply('You do not have permission to manage tags.'));
-		}
-
-		const name = interaction.options.getString('name', true).toLowerCase().trim();
-
-		const existing = await resolveTag(interaction.guildId, name);
-		if (!existing) {
-			return interaction.editReply(errorReply(`Tag \`${name}\` not found.`));
-		}
-
-		await db
-			.delete(schema.tags)
-			.where(and(eq(schema.tags.guildId, interaction.guildId), eq(schema.tags.name, existing.name)));
-
-		return interaction.editReply(successReply(`Tag \`${existing.name}\` deleted.`));
 	}
 
 	// ── /tag list ───────────────────────────────────────────────────────────────

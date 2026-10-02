@@ -1,19 +1,11 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { AttachmentBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { AttachmentBuilder, MessageFlags } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import { errorReply, successReply, warningReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { buildLeaderboardPage } from '../../lib/LeaderboardUtil.js';
-import {
-	addXpAdmin,
-	getOrCreateLevelSettings,
-	getRank,
-	getXpRow,
-	levelFromTotalXp,
-	resetXp,
-	setXp,
-} from '../../lib/LevelingUtil.js';
+import { getOrCreateLevelSettings, getRank, getXpRow, levelFromTotalXp } from '../../lib/LevelingUtil.js';
 import { renderRankCard } from '../../lib/RankCardUtil.js';
 import { isPublicHttpUrl } from '../../lib/safe.js';
 
@@ -27,29 +19,13 @@ function isValidBackgroundUrl(input: string): boolean {
 	return isPublicHttpUrl(input, MAX_BACKGROUND_URL_LENGTH);
 }
 
-function hasModPerms(perms: Readonly<import('discord.js').PermissionsBitField> | null): boolean {
-	if (!perms) return false;
-	if (perms.has(PermissionFlagsBits.Administrator)) return true;
-	// any() = at least one of these; has(a | b) would require all of them
-	return perms.any([
-		PermissionFlagsBits.ManageGuild,
-		PermissionFlagsBits.KickMembers,
-		PermissionFlagsBits.BanMembers,
-		PermissionFlagsBits.ModerateMembers,
-	]);
-}
-
 @ApplyOptions<Subcommand.Options>({
 	name: 'level',
-	description: 'View, customize, or manage leveling and XP.',
+	description: 'View or customize leveling and XP.',
 	subcommands: [
 		{ name: 'rank', chatInputRun: 'chatInputRank', default: true },
 		{ name: 'customize', chatInputRun: 'chatInputCustomize' },
 		{ name: 'leaderboard', chatInputRun: 'chatInputLeaderboard' },
-		{ name: 'set', chatInputRun: 'chatInputSet' },
-		{ name: 'add', chatInputRun: 'chatInputAdd' },
-		{ name: 'remove', chatInputRun: 'chatInputRemove' },
-		{ name: 'reset', chatInputRun: 'chatInputReset' },
 	],
 })
 export class LevelCommand extends Subcommand {
@@ -57,7 +33,7 @@ export class LevelCommand extends Subcommand {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('level')
-				.setDescription('View, customize, or manage leveling and XP.')
+				.setDescription('View or customize leveling and XP.')
 				.addSubcommand((sub) =>
 					sub
 						.setName('rank')
@@ -105,37 +81,6 @@ export class LevelCommand extends Subcommand {
 								.setMaxValue(20)
 								.setRequired(false),
 						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('set')
-						.setDescription("Set a member's total XP (Moderator only).")
-						.addUserOption((o) => o.setName('user').setDescription('Target member').setRequired(true))
-						.addIntegerOption((o) =>
-							o.setName('amount').setDescription('Total XP to set').setMinValue(0).setRequired(true),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('add')
-						.setDescription('Add XP to a member (Moderator only).')
-						.addUserOption((o) => o.setName('user').setDescription('Target member').setRequired(true))
-						.addIntegerOption((o) => o.setName('amount').setDescription('XP to add').setMinValue(1).setRequired(true)),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('remove')
-						.setDescription('Remove XP from a member (Moderator only).')
-						.addUserOption((o) => o.setName('user').setDescription('Target member').setRequired(true))
-						.addIntegerOption((o) =>
-							o.setName('amount').setDescription('XP to remove').setMinValue(1).setRequired(true),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('reset')
-						.setDescription("Reset a member's XP to 0 (Moderator only).")
-						.addUserOption((o) => o.setName('user').setDescription('Target member').setRequired(true)),
 				),
 		);
 	}
@@ -354,81 +299,5 @@ export class LevelCommand extends Subcommand {
 		}
 
 		return interaction.editReply(payload);
-	}
-
-	// ── admin / moderator handlers ──
-
-	public async chatInputSet(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-
-		if (!hasModPerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
-		}
-
-		const user = interaction.options.getUser('user', true);
-		const amount = interaction.options.getInteger('amount', true);
-		await setXp(interaction.guildId, user.id, amount);
-		const { level } = levelFromTotalXp(amount);
-		return interaction.editReply(
-			successReply(`Set **${user.tag}**'s XP to **${amount.toLocaleString()}** (Level ${level}).`),
-		);
-	}
-
-	public async chatInputAdd(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-
-		if (!hasModPerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
-		}
-
-		const user = interaction.options.getUser('user', true);
-		const amount = interaction.options.getInteger('amount', true);
-		const result = await addXpAdmin(interaction.guildId, user.id, amount);
-		return interaction.editReply(
-			successReply(
-				`Added **${amount.toLocaleString()} XP** to **${user.tag}** → ${result.totalXp.toLocaleString()} XP (Level ${result.level}).`,
-			),
-		);
-	}
-
-	public async chatInputRemove(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-
-		if (!hasModPerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
-		}
-
-		const user = interaction.options.getUser('user', true);
-		const amount = interaction.options.getInteger('amount', true);
-		const result = await addXpAdmin(interaction.guildId, user.id, -amount);
-		return interaction.editReply(
-			successReply(
-				`Removed **${amount.toLocaleString()} XP** from **${user.tag}** → ${result.totalXp.toLocaleString()} XP (Level ${result.level}).`,
-			),
-		);
-	}
-
-	public async chatInputReset(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-
-		if (!hasModPerms(interaction.memberPermissions)) {
-			return interaction.editReply(errorReply('You do not have permission to manage member XP.'));
-		}
-
-		const user = interaction.options.getUser('user', true);
-		await resetXp(interaction.guildId, user.id);
-		return interaction.editReply(successReply(`Reset **${user.tag}**'s XP.`));
 	}
 }

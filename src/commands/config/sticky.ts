@@ -20,6 +20,7 @@ const MAX_SELECT_OPTIONS = 25;
 @ApplyOptions<Subcommand.Options>({
 	name: 'sticky',
 	description: 'Manage sticky messages for a channel.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'set', chatInputRun: 'chatInputSet' },

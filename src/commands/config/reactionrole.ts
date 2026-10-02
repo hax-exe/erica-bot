@@ -5,6 +5,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'reactionrole',
 	description: 'Manage role panels (select menus or buttons).',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'panel', chatInputRun: 'chatInputPanel' },

@@ -115,7 +115,7 @@ export async function buildTagsPage(guildId: string, page: number) {
 
 	if (rows.length === 0) {
 		const { warningReply } = await import('../lib/components.js');
-		return warningReply('No tags configured for this server. Use `/tag create` to add one.');
+		return warningReply('No tags configured for this server. Use `/tagadmin create` to add one.');
 	}
 
 	const PAGE_SIZE = 15;

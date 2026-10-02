@@ -96,3 +96,6 @@ export function buildVerificationPanel() {
 
 	return { container, row };
 }
+
+/** Minecraft Java Edition usernames: 3–16 chars, alphanumeric + underscores. */
+export const MC_USERNAME_REGEX = /^[a-zA-Z0-9_]{3,16}$/;

@@ -300,6 +300,8 @@ export class GiveawayCommand extends Subcommand {
 	public async runStart(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
+			return interaction.editReply(errorReply('You need ManageGuild permission to manage giveaways.'));
 		if (!(await isModuleEnabled(interaction.guildId, 'giveaways')))
 			return interaction.editReply(errorReply('Giveaways module is disabled.'));
 
@@ -380,6 +382,8 @@ export class GiveawayCommand extends Subcommand {
 	public async runEnd(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
+			return interaction.editReply(errorReply('You need ManageGuild permission to manage giveaways.'));
 
 		const id = interaction.options.getInteger('id', true);
 		const giveaway = await db.query.giveaways.findFirst({
@@ -396,6 +400,8 @@ export class GiveawayCommand extends Subcommand {
 	public async runReroll(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
+			return interaction.editReply(errorReply('You need ManageGuild permission to manage giveaways.'));
 
 		const id = interaction.options.getInteger('id', true);
 		const giveaway = await db.query.giveaways.findFirst({
@@ -500,6 +506,8 @@ export class GiveawayCommand extends Subcommand {
 	public async runCancel(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
+			return interaction.editReply(errorReply('You need ManageGuild permission to manage giveaways.'));
 
 		const id = interaction.options.getInteger('id', true);
 		const giveaway = await db.query.giveaways.findFirst({
@@ -577,6 +585,8 @@ export class GiveawayCommand extends Subcommand {
 	public async runEdit(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
+			return interaction.editReply(errorReply('You need ManageGuild permission to manage giveaways.'));
 
 		const id = interaction.options.getInteger('id', true);
 		const newPrize = interaction.options.getString('prize');

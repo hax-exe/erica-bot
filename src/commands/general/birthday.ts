@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { ChannelType, MessageFlags, PermissionFlagsBits, TextDisplayBuilder, userMention } from 'discord.js';
+import { MessageFlags, TextDisplayBuilder, userMention } from 'discord.js';
 import { and, asc, eq } from 'drizzle-orm';
 import { CV2_FLAG, errorReply, makeContainer, separator, successReply, warningReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
@@ -62,16 +62,6 @@ function nextBirthday(month: number, day: number, now = new Date()): { year: num
 		{ name: 'remove', chatInputRun: 'chatInputRemove' },
 		{ name: 'view', chatInputRun: 'chatInputView' },
 		{ name: 'upcoming', chatInputRun: 'chatInputUpcoming' },
-		{
-			name: 'config',
-			type: 'group',
-			entries: [
-				{ name: 'setchannel', chatInputRun: 'chatInputConfigSetChannel' },
-				{ name: 'setrole', chatInputRun: 'chatInputConfigSetRole' },
-				{ name: 'setmessage', chatInputRun: 'chatInputConfigSetMessage' },
-				{ name: 'toggle', chatInputRun: 'chatInputConfigToggle' },
-			],
-		},
 	],
 })
 export class BirthdayCommand extends Subcommand {
@@ -118,40 +108,7 @@ export class BirthdayCommand extends Subcommand {
 						),
 				)
 				// ── upcoming ─────────────────────────────────────────────────────────
-				.addSubcommand((sub) => sub.setName('upcoming').setDescription('Show upcoming birthdays in this server.'))
-				// ── config group ─────────────────────────────────────────────────────
-				.addSubcommandGroup((group) =>
-					group
-						.setName('config')
-						.setDescription('Configure birthday announcements (admin).')
-						.addSubcommand((sub) =>
-							sub
-								.setName('setchannel')
-								.setDescription('Set the birthday announcement channel (omit to clear).')
-								.addChannelOption((o) =>
-									o
-										.setName('channel')
-										.setDescription('Channel for birthday messages.')
-										.addChannelTypes(ChannelType.GuildText)
-										.setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('setrole')
-								.setDescription('Set a role to assign on birthdays for 24h (omit to clear).')
-								.addRoleOption((o) => o.setName('role').setDescription('Birthday role.').setRequired(false)),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('setmessage')
-								.setDescription('Set a custom birthday message. Supports {user}, {username}, {server}. Omit to reset.')
-								.addStringOption((o) =>
-									o.setName('text').setDescription('Birthday message.').setMaxLength(500).setRequired(false),
-								),
-						)
-						.addSubcommand((sub) => sub.setName('toggle').setDescription('Enable or disable birthday announcements.')),
-				),
+				.addSubcommand((sub) => sub.setName('upcoming').setDescription('Show upcoming birthdays in this server.')),
 		);
 	}
 
@@ -286,94 +243,5 @@ export class BirthdayCommand extends Subcommand {
 		}
 
 		return interaction.editReply({ components: [container], flags: (CV2_FLAG | MessageFlags.Ephemeral) as never });
-	}
-
-	// ── /birthday config setchannel ────────────────────────────────────────────
-
-	public async chatInputConfigSetChannel(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
-		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You need Manage Server to do this.'));
-		}
-
-		const channel = interaction.options.getChannel('channel');
-		await db
-			.insert(schema.birthdaySettings)
-			.values({ guildId: interaction.guildId, channelId: channel?.id ?? null })
-			.onDuplicateKeyUpdate({ set: { channelId: channel?.id ?? null } });
-
-		return interaction.editReply(
-			channel ? successReply(`Birthday channel set to <#${channel.id}>.`) : successReply('Birthday channel cleared.'),
-		);
-	}
-
-	// ── /birthday config setrole ───────────────────────────────────────────────
-
-	public async chatInputConfigSetRole(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
-		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You need Manage Server to do this.'));
-		}
-
-		const role = interaction.options.getRole('role');
-		await db
-			.insert(schema.birthdaySettings)
-			.values({ guildId: interaction.guildId, roleId: role?.id ?? null })
-			.onDuplicateKeyUpdate({ set: { roleId: role?.id ?? null } });
-
-		return interaction.editReply(
-			role ? successReply(`Birthday role set to <@&${role.id}>.`) : successReply('Birthday role cleared.'),
-		);
-	}
-
-	// ── /birthday config setmessage ────────────────────────────────────────────
-
-	public async chatInputConfigSetMessage(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
-		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You need Manage Server to do this.'));
-		}
-
-		const text = interaction.options.getString('text');
-		await db
-			.insert(schema.birthdaySettings)
-			.values({ guildId: interaction.guildId, message: text ?? null })
-			.onDuplicateKeyUpdate({ set: { message: text ?? null } });
-
-		return interaction.editReply(
-			text ? successReply('Birthday message updated.') : successReply('Birthday message reset to default.'),
-		);
-	}
-
-	// ── /birthday config toggle ────────────────────────────────────────────────
-
-	public async chatInputConfigToggle(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
-		if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You need Manage Server to do this.'));
-		}
-
-		const settings = await db
-			.select()
-			.from(schema.birthdaySettings)
-			.where(eq(schema.birthdaySettings.guildId, interaction.guildId))
-			.limit(1)
-			.then((r) => r[0] ?? null);
-
-		if (!settings?.channelId) {
-			return interaction.editReply(warningReply('Set a channel first with `/birthday config setchannel`.'));
-		}
-
-		const newEnabled = !settings.enabled;
-		await db
-			.insert(schema.birthdaySettings)
-			.values({ guildId: interaction.guildId, enabled: newEnabled })
-			.onDuplicateKeyUpdate({ set: { enabled: newEnabled } });
-
-		return interaction.editReply(successReply(`Birthday announcements ${newEnabled ? 'enabled ✅' : 'disabled ❌'}.`));
 	}
 }

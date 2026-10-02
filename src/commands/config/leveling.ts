@@ -5,6 +5,7 @@ import { PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'leveling',
 	description: 'Configure leveling systems.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'enable', chatInputRun: 'chatInputLevelingEnable' },

@@ -59,6 +59,8 @@ export class PollCommand extends Command {
 	public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!interaction.inCachedGuild()) return interaction.editReply(errorReply('Server only.'));
+		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages))
+			return interaction.editReply(errorReply('You need ManageMessages permission to create polls.'));
 
 		const question = interaction.options.getString('question', true);
 		const duration = interaction.options.getInteger('duration') ?? 24;

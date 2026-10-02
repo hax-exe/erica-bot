@@ -1,9 +1,8 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { ChannelType } from 'discord.js';
 
 // No command-level permission gate: rename / limit / lock / unlock / kick act only on the caller's own
-// space (SpaceHandler.getOwnedSpace), and the set* / toggle subcommands check Manage Server in the handler.
+// space (SpaceHandler.getOwnedSpace). Staff settings live in /tempvoiceadmin.
 @ApplyOptions<Subcommand.Options>({
 	name: 'tempvoice',
 	description: 'Temporary voice channels.',
@@ -13,11 +12,6 @@ import { ChannelType } from 'discord.js';
 		{ name: 'lock', chatInputRun: 'chatInputLock' },
 		{ name: 'unlock', chatInputRun: 'chatInputUnlock' },
 		{ name: 'kick', chatInputRun: 'chatInputKick' },
-		{ name: 'settrigger', chatInputRun: 'chatInputSetTrigger' },
-		{ name: 'setcategory', chatInputRun: 'chatInputSetCategory' },
-		{ name: 'setlimit', chatInputRun: 'chatInputSetLimit' },
-		{ name: 'setname', chatInputRun: 'chatInputSetName' },
-		{ name: 'toggle', chatInputRun: 'chatInputToggle' },
 	],
 })
 export class TempVoiceCommand extends Subcommand {
@@ -49,52 +43,7 @@ export class TempVoiceCommand extends Subcommand {
 						.setName('kick')
 						.setDescription('Disconnect user.')
 						.addUserOption((o) => o.setName('user').setDescription('User.').setRequired(true)),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('settrigger')
-						.setDescription('Set trigger channel.')
-						.addChannelOption((o) =>
-							o
-								.setName('channel')
-								.setDescription('Trigger channel.')
-								.addChannelTypes(ChannelType.GuildVoice)
-								.setRequired(false),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('setcategory')
-						.setDescription('Set category.')
-						.addChannelOption((o) =>
-							o
-								.setName('category')
-								.setDescription('Category.')
-								.addChannelTypes(ChannelType.GuildCategory)
-								.setRequired(false),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('setlimit')
-						.setDescription('Set default limit.')
-						.addIntegerOption((o) =>
-							o.setName('limit').setDescription('Max users.').setRequired(false).setMinValue(0).setMaxValue(99),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('setname')
-						.setDescription('Set template.')
-						.addStringOption((o) =>
-							o
-								.setName('template')
-								.setDescription('e.g. "{displayname}\'s Space"')
-								.setMaxLength(100)
-								.setRequired(false),
-						),
-				)
-				.addSubcommand((sub) => sub.setName('toggle').setDescription('Toggle system.')),
+				),
 		);
 	}
 
@@ -117,25 +66,5 @@ export class TempVoiceCommand extends Subcommand {
 	public async chatInputKick(interaction: Subcommand.ChatInputCommandInteraction) {
 		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
 		return new SpaceHandler().chatInputKick(interaction);
-	}
-	public async chatInputSetTrigger(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
-		return new SpaceHandler().chatInputConfigSetTrigger(interaction);
-	}
-	public async chatInputSetCategory(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
-		return new SpaceHandler().chatInputConfigSetCategory(interaction);
-	}
-	public async chatInputSetLimit(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
-		return new SpaceHandler().chatInputConfigSetLimit(interaction);
-	}
-	public async chatInputSetName(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
-		return new SpaceHandler().chatInputConfigSetName(interaction);
-	}
-	public async chatInputToggle(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SpaceHandler } = await import('../../lib/config/handlers/space.js');
-		return new SpaceHandler().chatInputConfigToggle(interaction);
 	}
 }

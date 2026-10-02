@@ -44,6 +44,7 @@ function ruleFields(rule: AutomodRule): {
 @ApplyOptions<Subcommand.Options>({
 	name: 'automod',
 	description: 'Configure the AutoMod system for this server.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'status', chatInputRun: 'chatInputStatus' },

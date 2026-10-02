@@ -13,6 +13,7 @@ const platforms = [
 @ApplyOptions<Subcommand.Options>({
 	name: 'feeds',
 	description: 'Manage social feeds.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{ name: 'add', chatInputRun: 'chatInputAdd' },

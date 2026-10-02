@@ -27,6 +27,7 @@ async function tryDeleteWebhook(url: string): Promise<void> {
 @ApplyOptions<Subcommand.Options>({
 	name: 'config',
 	description: 'Configure bot settings for this server.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{

@@ -1,8 +1,5 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags, PermissionFlagsBits } from 'discord.js';
-import { errorReply, successReply } from '../../lib/components.js';
-import { db, schema } from '../../lib/database.js';
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'music',
@@ -28,10 +25,8 @@ import { db, schema } from '../../lib/database.js';
 		},
 		{ name: 'remove', chatInputRun: 'chatInputRemove' },
 		{ name: 'seek', chatInputRun: 'chatInputSeek' },
-		{ name: 'setup-music', chatInputRun: 'chatInputSetupMusic' },
 		{ name: 'shuffle', chatInputRun: 'chatInputShuffle' },
 		{ name: 'tts', chatInputRun: 'chatInputTts' },
-		{ name: 'maxvolume', chatInputRun: 'chatInputMaxVolume' },
 	],
 })
 export class MusicCommand extends Subcommand {
@@ -169,19 +164,6 @@ export class MusicCommand extends Subcommand {
 							o.setName('time').setDescription('Position to seek to (e.g. 1m30s, 45s, 1:30).').setRequired(true),
 						),
 				)
-				// ── setup-music ────────────────────────────────────────────────────────
-				.addSubcommand((sub) =>
-					sub
-						.setName('setup-music')
-						.setDescription('Set up or destroy a dedicated music requests channel.')
-						.addStringOption((o) =>
-							o
-								.setName('action')
-								.setDescription('Setup action.')
-								.setRequired(true)
-								.addChoices({ name: 'Setup channel', value: 'setup' }, { name: 'Destroy channel', value: 'destroy' }),
-						),
-				)
 				// ── shuffle ────────────────────────────────────────────────────────────
 				.addSubcommand((sub) => sub.setName('shuffle').setDescription('Shuffle the current queue.'))
 				// ── tts ────────────────────────────────────────────────────────────────
@@ -213,20 +195,6 @@ export class MusicCommand extends Subcommand {
 									{ name: 'Russian', value: 'ru' },
 									{ name: 'Korean', value: 'ko' },
 								),
-						),
-				)
-				// ── maxvolume ──────────────────────────────────────────────────────────
-				.addSubcommand((sub) =>
-					sub
-						.setName('maxvolume')
-						.setDescription('Set the maximum music playback volume limit for this server.')
-						.addIntegerOption((o) =>
-							o
-								.setName('level')
-								.setDescription('Maximum volume level (0–200). Default is 100.')
-								.setMinValue(0)
-								.setMaxValue(200)
-								.setRequired(true),
 						),
 				),
 		);
@@ -313,11 +281,6 @@ export class MusicCommand extends Subcommand {
 		return new SeekHandler().chatInputRun(interaction);
 	}
 
-	public async chatInputSetupMusic(interaction: Subcommand.ChatInputCommandInteraction) {
-		const { SetupMusicHandler } = await import('../../lib/music/handlers/setup-music.js');
-		return new SetupMusicHandler().chatInputRun(interaction);
-	}
-
 	public async chatInputShuffle(interaction: Subcommand.ChatInputCommandInteraction) {
 		const { ShuffleHandler } = await import('../../lib/music/handlers/shuffle.js');
 		return new ShuffleHandler().chatInputRun(interaction);
@@ -326,25 +289,5 @@ export class MusicCommand extends Subcommand {
 	public async chatInputTts(interaction: Subcommand.ChatInputCommandInteraction) {
 		const { TtsHandler } = await import('../../lib/music/handlers/tts.js');
 		return new TtsHandler().chatInputRun(interaction);
-	}
-
-	public async chatInputMaxVolume(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!interaction.inCachedGuild()) {
-			return interaction.editReply(errorReply('This command can only be used in a server.'));
-		}
-		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You need the **Manage Server** permission to change the volume limit.'));
-		}
-
-		const level = interaction.options.getInteger('level', true);
-		await db
-			.insert(schema.guilds)
-			.values({ id: interaction.guildId, maxVolumeLimit: level })
-			.onDuplicateKeyUpdate({
-				set: { maxVolumeLimit: level },
-			});
-
-		return interaction.editReply(successReply(`Maximum volume limit set to **${level}%**.`));
 	}
 }

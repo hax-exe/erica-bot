@@ -5,6 +5,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 @ApplyOptions<Subcommand.Options>({
 	name: 'welcomer',
 	description: 'Configure welcomer, leave, and server boost announcements.',
+	requiredUserPermissions: [PermissionFlagsBits.ManageGuild],
 	preconditions: ['Moderation'],
 	subcommands: [
 		{
