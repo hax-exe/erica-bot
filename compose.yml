@@ -58,11 +58,8 @@ services:
     expose:
       - '3000'
     # Published to localhost so `bun dev` on the host can reach NodeLink (the bot container uses the internal network):
-<<<<<<< HEAD
-=======
     # ports:
     #   - '127.0.0.1:3000:3000'
->>>>>>> claude/tender-einstein-oxklpt
     networks:
       - erica
 
