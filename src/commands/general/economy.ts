@@ -66,6 +66,7 @@ import {
 	MONTHLY_MAX,
 	MONTHLY_MIN,
 	pickTier,
+	RETIRED_ITEM_KEYS,
 	ROB_COOLDOWN_MS,
 	ROB_FINE_PERCENT,
 	ROB_MIN_ROBBER_WALLET,
@@ -125,7 +126,7 @@ const WORK_JOBS = [
 	{ job: 'did some freelance coding', emoji: '💻' },
 	{ job: 'taught piano lessons', emoji: '🎹' },
 	{ job: 'sold merch at a concert', emoji: '🎤' },
-	{ job: 'mined Minecraft diamonds all day', emoji: '⛏️' },
+	{ job: 'mined gemstones all day', emoji: '⛏️' },
 	{ job: 'completed a bug bounty report', emoji: '🐛' },
 	{ job: 'flipped burgers at a diner', emoji: '🍔' },
 	{ job: 'shot a sponsored YouTube video', emoji: '📹' },
@@ -164,7 +165,7 @@ const FISH_MISS_MSGS = [
 
 const MINE_MISS_MSGS = [
 	'You dug for an hour and found nothing but dirt.',
-	'Your pickaxe hit bedrock. No luck.',
+	'Your pickaxe hit solid stone. No luck.',
 	'Just gravel. Completely useless gravel.',
 	'You broke your torch mid-dig. Found nothing.',
 ];
@@ -1837,7 +1838,9 @@ export class EconomyCommand extends Subcommand {
 		if (!(await ecoGuard(interaction))) return;
 
 		await ensureShopSeeded(interaction.guild!.id);
-		const items = await db.query.shopItems.findMany({ where: eq(schema.shopItems.guildId, interaction.guild!.id) });
+		const items = (
+			await db.query.shopItems.findMany({ where: eq(schema.shopItems.guildId, interaction.guild!.id) })
+		).filter((i) => !RETIRED_ITEM_KEYS.has(i.itemKey ?? ''));
 		if (!items.length) return interaction.editReply(errorReply('The shop has no items.'));
 
 		const lines = items.map((item) => {
@@ -1875,7 +1878,7 @@ export class EconomyCommand extends Subcommand {
 		const item = await db.query.shopItems.findFirst({
 			where: and(eq(schema.shopItems.guildId, interaction.guild!.id), eq(schema.shopItems.name, itemName)),
 		});
-		if (!item)
+		if (!item || RETIRED_ITEM_KEYS.has(item.itemKey ?? ''))
 			return interaction.editReply(
 				errorReply(`No item named **${itemName}** found. Use \`/economy shop list\` to browse.`),
 			);

@@ -22,11 +22,11 @@ categories:
         url: https://example.com
 
   - id: game
-    label: Game Servers
+    label: Community Servers
     services:
       # TCP connect check
       - id: proxy
         label: Proxy
         type: tcp
         host: play.example.com
-        port: 25565
+        port: 8080

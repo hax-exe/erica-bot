@@ -15,21 +15,21 @@ const PROD_STATUSES = [
 	'🪄 Making the server a little more magical every day',
 	'❤️ Here to help. Always.',
 
-	// --- Minecraft Humor & Gameplay Vibes ---
-	'⛏️ Mining straight down (against better judgment)',
-	'🪵 Smelting cobblestone and thinking about life',
-	'🌌 Chasing phantoms out of the server',
+	// --- Community Vibes ---
+	'⛏️ Digging for hidden treasure',
+	'🪵 Stacking logs and thinking about life',
+	'🌌 Chasing gremlins out of the server',
 	"📦 Organizing chests so you don't have to",
-	'💣 Defending spawn from stray creepers',
-	'🌾 Trading with villagers (and getting totally ripped off)',
+	'🛡️ Defending the lobby from stray spam',
+	'🌾 Trading with merchants (and getting totally ripped off)',
 
 	// --- Playful & Sarcastic Bot Humor ---
 	"📜 Reading the server rules (so you don't have to)",
 	'🍿 Listening to chat drama with a bucket of popcorn',
-	'🤖 Beep boop. Definitely a real player.',
+	'🤖 Beep boop. Definitely a real person.',
 	'🛌 Thinking very hard about doing absolutely nothing',
 	'⚡ Online, awake, and 99% lag-free!',
-	'🕯️ Keeping the lights on around spawn',
+	'🕯️ Keeping the lights on around here',
 ];
 
 const STATUS_INTERVAL_MS = 5 * 60 * 1000; // rotate every 5 minutes

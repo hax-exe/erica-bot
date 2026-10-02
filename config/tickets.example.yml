@@ -28,7 +28,7 @@ categories:
   - id: support
     label: General Support
     emoji: "❓"
-    description: Account, gameplay, or other questions
+    description: Account, general questions, or other assistance
     discordCategoryId: "DISCORD_CATEGORY_ID"
     staffRoleIds:
       - "STAFF_ROLE_ID"
@@ -57,12 +57,15 @@ categories:
         minValues: 1
         maxValues: 1
         options:
-          - value: java
-            label: Java Edition
-            emoji: "☕"
-          - value: bedrock
-            label: Bedrock
-            emoji: "📱"
+          - value: discord
+            label: Discord
+            emoji: "💬"
+          - value: website
+            label: Website
+            emoji: "🌐"
+          - value: other
+            label: Other
+            emoji: "❓"
 
       - id: topics
         type: checkboxGroup

@@ -876,7 +876,6 @@ export const HANGMAN_WORDS = [
 	'antigravity',
 	'bot',
 	'gaming',
-	'minecraft',
 	'pokemon',
 	'pikachu',
 	'developer',

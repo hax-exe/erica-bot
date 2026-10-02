@@ -24,6 +24,9 @@ export const MAX_WALLET_BALANCE = 2_147_483_647;
 
 // ─── Shop items ────────────────────────────────────────────────────────────────
 
+/** Shop item keys that are no longer sold; hidden in code, rows left untouched. */
+export const RETIRED_ITEM_KEYS: ReadonlySet<string> = new Set(['bg_minecraft']);
+
 export const PREDEFINED_SHOP_ITEMS: ReadonlyArray<{
 	name: string;
 	description: string;
@@ -94,14 +97,6 @@ export const PREDEFINED_SHOP_ITEMS: ReadonlyArray<{
 		cost: 500,
 		type: 'consumable',
 		itemKey: 'bg_galaxy',
-		durationHours: null,
-	},
-	{
-		name: 'Minecraft Background Card',
-		description: 'Unlocks the Minecraft preset background for your /rank card.',
-		cost: 500,
-		type: 'consumable',
-		itemKey: 'bg_minecraft',
 		durationHours: null,
 	},
 	{

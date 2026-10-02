@@ -260,7 +260,6 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 					reactionRoles: true,
 					reports: true,
 					reviews: true,
-					verification: true,
 					automod: false,
 					suggestions: true,
 					fun: true,

@@ -3,8 +3,8 @@
 # Start (loads secrets for ${VAR} interpolation from .env):
 #   docker compose up -d
 #
-# The bot container reads every other setting (MINECRAFT_SERVER_IP, API_ALLOWED_ORIGINS,
-# DISCORD_PRESENCE_INTENT, …) from .env via `env_file`; see .env.example.
+# The bot container reads every other setting (API_ALLOWED_ORIGINS, DISCORD_PRESENCE_INTENT, …)
+# from .env via `env_file`; see .env.example.
 
 services:
   mysql:

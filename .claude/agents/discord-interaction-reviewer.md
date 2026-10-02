@@ -21,7 +21,7 @@ Default model is sonnet. Reviews of small diffs (a few lines, one file) are fine
    - StringSelectMenuInteraction: primary response must be `interaction.update()`; feedback afterwards via `interaction.followUp()`. Not `reply()`/`deferReply()` first.
    - `showModal()` must be the sole response (no prior reply/defer/update).
    - Discord errors 10062 and 40060 (stale interactions) must be caught and silently discarded, never re-thrown.
-   - No hard-coded bot name, server address or website domains. Use `BOT_NAME`, `USER_AGENT`, `WEBHOOK_NAMES`, `getMinecraftServerAddress()`, `getAllowedOrigins()` from src/lib/brand.ts.
+   - No hard-coded bot name, server address or website domains. Use `BOT_NAME`, `USER_AGENT`, `WEBHOOK_NAMES`, `getAllowedOrigins()` from src/lib/brand.ts.
    - Logging goes through `sendLog` / `sendModLog` / `sendTicketLog` / `sendReportLog` (WebhookClient). No stored channel IDs for logs.
    - JSON stored in text columns parsed with `safeJsonParse(raw, fallback)`, not bare `JSON.parse`.
 4. If a `docs/work/<slug>/spec.md` / `plan.md` exists for this change, also check the diff against them.

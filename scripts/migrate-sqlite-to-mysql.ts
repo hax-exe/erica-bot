@@ -65,8 +65,6 @@ const TABLES = [
 	'service_overrides',
 	'status_checks',
 	'status_panel',
-	'minecraft_links',
-	'pending_verifications',
 	'sticky_messages',
 	'automod_settings',
 	'automod_word_filter',
@@ -94,6 +92,12 @@ const TABLES = [
 	'social_feeds',
 	'honeypot_channels',
 ] as const;
+
+/** Retired columns that may still exist in older SQLite (or MySQL) schemas; never copied. */
+const SKIPPED_COLUMNS: Partial<Record<(typeof TABLES)[number], readonly string[]>> = {
+	guild_modules: ['verification'],
+	global_modules: ['verification'],
+};
 
 type MySqlColumn = { Field: string; Type: string };
 
@@ -153,7 +157,8 @@ async function main() {
 			let cols: MySqlColumn[];
 			try {
 				const [colRows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
-				cols = colRows as MySqlColumn[];
+				const skipped = SKIPPED_COLUMNS[table] ?? [];
+				cols = (colRows as MySqlColumn[]).filter((c) => !skipped.includes(c.Field));
 			} catch {
 				console.log(`[skip] ${table} (missing in MySQL — run bun src/migrate.ts first)`);
 				continue;

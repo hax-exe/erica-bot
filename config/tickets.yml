@@ -89,7 +89,7 @@ categories:
   - id: reports
     label: Reports
     emoji: "🚨"
-    description: Report a player, staff member, or serious issue
+    description: Report a community member, staff member, or serious issue
     discordCategoryId: "1534693435750219883"
     staffRoleIds:
       - "1534693426891722857"
@@ -168,18 +168,15 @@ categories:
         minValues: 1
         maxValues: 1
         options:
-          - value: java
-            label: Java Edition
-            emoji: "☕"
-          - value: bedrock
-            label: Bedrock Edition
-            emoji: "📱"
           - value: discord
             label: Discord
             emoji: "💬"
           - value: website
             label: Website
             emoji: "🌐"
+          - value: other
+            label: Other
+            emoji: "❓"
 
       - id: details
         type: text
@@ -201,7 +198,7 @@ categories:
   - id: support
     label: General Support
     emoji: "🛟"
-    description: Account, purchase, gameplay, or other support
+    description: Account, purchase, general questions, or other support
     discordCategoryId: "1534693435750219880"
     staffRoleIds:
       - "1534693426891722857"
@@ -229,18 +226,15 @@ categories:
         minValues: 1
         maxValues: 1
         options:
-          - value: java
-            label: Java Edition
-            emoji: "☕"
-          - value: bedrock
-            label: Bedrock Edition
-            emoji: "📱"
           - value: discord
             label: Discord
             emoji: "💬"
           - value: website
             label: Website
             emoji: "🌐"
+          - value: other
+            label: Other
+            emoji: "❓"
 
       - id: attachments
         type: file

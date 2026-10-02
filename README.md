@@ -42,7 +42,6 @@ LAVALINK_PASSWORD=youshallnotpass
 - **`BOT_OWNER_IDS`** — Comma-separated owner IDs for admin commands
 - **`DATABASE_URL`** — MySQL connection string (`mysql://user:pass@host:3306/dbname`)
 - **`LAVALINK_*`** — NodeLink connection (Moonlink client); Compose overrides host to `nodelink`
-- **`MINECRAFT_SERVER_IP`** — Public Minecraft server address shown in verification instructions and used as the `/minecraft status` default (optional)
 - **`DISCORD_PRESENCE_INTENT`** — Set to `true` to request the privileged Presence intent (see below; default off)
 
 #### Privileged gateway intents
@@ -58,6 +57,8 @@ DISCORD_PRESENCE_INTENT=true
 Requesting a privileged intent that is not enabled in the portal makes Discord reject the login (close code `4014`), so leave this unset or `false` otherwise.
 
 ### 3. Run database migrations
+
+**Back up your database before running migrations — schema changes are irreversible.**
 
 ```bash
 bun run db:migrate
@@ -84,19 +85,19 @@ Use these slash commands in your server after the bot starts:
 
 ### 6. HTTP API Server (opt-in)
 
-The website / Minecraft verification / portal role-sync API is **off by default**. Enable it only when you need those integrations:
+The website API is **off by default**. Enable it only when you need it:
 
 ```env
 BOT_API_ENABLED=true
 BOT_API_PORT=3001
 BOT_API_SECRET=your_shared_secret
-PORTAL_API_URL=https://example.com
 API_ALLOWED_ORIGINS=https://example.com,https://www.example.com
 ```
 
 - **`API_ALLOWED_ORIGINS`** — Comma-separated browser origins allowed to call the API (CORS). Leave empty if only servers call it; requests without an `Origin` header are unaffected.
+- **`SUPPORT_GUILD_ID`** — Required by `/api/team`, `/api/guild/member/:id`, and `/api/guild/set-roles` for member and role lookups.
 
-With `BOT_API_ENABLED=false` (or unset), Discord moderation, tickets, music, etc. work normally; website verify and portal sync simply do not run. `/api/health`, `/api/status` and `/api/team` are always served on `BOT_API_PORT`.
+With `BOT_API_ENABLED=false` (or unset), Discord moderation, tickets, music, etc. work normally. `/api/health`, `/api/status` and `/api/team` are always served on `BOT_API_PORT`.
 
 ---
 
@@ -170,7 +171,7 @@ src/
 │   ├── tickets/              # Ticket interaction handler
 │   └── ready.ts              # Bot ready event
 ├── lib/
-│   ├── brand.ts              # Bot name, User-Agent, webhook names, MC address / CORS env helpers
+│   ├── brand.ts              # Bot name, User-Agent, webhook names, CORS origins env helper
 │   ├── components.ts         # CV2 helpers, colours, reply utilities
 │   ├── database.ts           # Drizzle DB instance (applies pending migrations on startup)
 │   ├── LoggingUtil.ts        # Shared logging helpers

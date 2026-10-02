@@ -1,11 +1,6 @@
-import { createCanvas, GlobalFonts, type Image, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
+import { createCanvas, type Image, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { BOT_NAME } from './brand.js';
 import { isPublicHttpUrl } from './safe.js';
-
-// ─── Fonts ────────────────────────────────────────────────────────────────────
-GlobalFonts.registerFromPath('./assets/fonts/Minecraft-Seven_v2.ttf', 'MCseven');
-GlobalFonts.registerFromPath('./assets/fonts/Minecraft-Tenv2.ttf', 'MCten');
-GlobalFonts.registerFromPath('./assets/fonts/MinecraftFive-Regular.ttf', 'MCfive');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,9 +128,15 @@ const SANS = '"Segoe UI", "Helvetica Neue", "Arial", "Liberation Sans", sans-ser
 export const PRESET_BACKGROUNDS: Record<string, string> = {
 	cyberpunk: 'https://images.unsplash.com/photo-1578894381163-e72c17f2d45f?w=1000&q=80',
 	galaxy: 'https://images.unsplash.com/photo-1538370965046-79c0d6907d47?w=1000&q=80',
-	minecraft: 'https://images.unsplash.com/photo-1607988795691-3d0147b43231?w=1000&q=80',
 	sunset: 'https://images.unsplash.com/photo-1472214222541-d510753a8707?w=1000&q=80',
 };
+
+export const DEFAULT_PRESET = 'galaxy';
+
+/** Resolve a preset name to its background URL; unknown/retired presets fall back to DEFAULT_PRESET. */
+export function resolvePresetBackground(name: string): string {
+	return PRESET_BACKGROUNDS[name] ?? PRESET_BACKGROUNDS[DEFAULT_PRESET]!;
+}
 
 export interface RankCardOptions {
 	displayName: string;
@@ -158,7 +159,7 @@ export async function renderRankCard(opts: RankCardOptions): Promise<Buffer> {
 
 	let bgImgUrl: string | null = null;
 	if (opts.backgroundType === 'preset' && opts.backgroundValue) {
-		bgImgUrl = PRESET_BACKGROUNDS[opts.backgroundValue] ?? null;
+		bgImgUrl = resolvePresetBackground(opts.backgroundValue);
 	} else if (opts.backgroundType === 'image' && opts.backgroundValue) {
 		bgImgUrl = opts.backgroundValue;
 	}

@@ -1,7 +1,7 @@
 {
   "id": "no-hardcoded-brand",
   "source": "acf2778 Maintenance pass: unify Erica branding; CLAUDE.md branding rule",
-  "prompt": "Add a feature that makes an outbound HTTP request. Do not hard-code a User-Agent string or server address.",
-  "acceptance": "brand.ts exports USER_AGENT and getMinecraftServerAddress, and outbound HTTP code imports USER_AGENT.",
-  "check": "grep -q USER_AGENT src/lib/brand.ts && grep -q getMinecraftServerAddress src/lib/brand.ts && grep -rq USER_AGENT src --include=*.ts --exclude=brand.ts"
+  "prompt": "Add a feature that makes an outbound HTTP request. Do not hard-code a User-Agent string.",
+  "acceptance": "brand.ts exports USER_AGENT, and outbound HTTP code imports USER_AGENT.",
+  "check": "grep -q USER_AGENT src/lib/brand.ts && grep -rq USER_AGENT src --include=*.ts --exclude=brand.ts"
 }

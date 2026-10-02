@@ -54,7 +54,7 @@ export class FeedsHandler {
 			}
 			case 'reddit': {
 				const r = normaliseRedditHandle(rawHandle);
-				handle = r.displayName; // e.g. "r/minecraft" or "u/someone"
+				handle = r.displayName; // e.g. "r/programming" or "u/someone"
 				displayName = r.displayName;
 				break;
 			}

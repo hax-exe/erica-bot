@@ -20,14 +20,6 @@ export const WEBHOOK_NAMES = {
 } as const;
 
 /**
- * Public Minecraft server address shown to users (e.g. in verification instructions and
- * as the `/minecraft status` default). Configured via `MINECRAFT_SERVER_IP`; `null` when unset.
- */
-export function getMinecraftServerAddress(): string | null {
-	return process.env.MINECRAFT_SERVER_IP?.trim() || null;
-}
-
-/**
  * Browser origins allowed to call the HTTP API (CORS). Comma-separated `API_ALLOWED_ORIGINS`;
  * empty when unset (server-to-server calls without an Origin header are unaffected).
  */

@@ -97,7 +97,7 @@ void (async () => {
 		const { loadStatusConfig } = await import('./lib/StatusUtil.js');
 		loadStatusConfig();
 		client.logger.info('Loaded config/status.yml');
-		// Health is always served. Website/MC/config routes remain opt-in.
+		// Health is always served. Website/config routes remain opt-in.
 		apiServer = startApiServer({ fullApiEnabled: process.env.BOT_API_ENABLED === 'true' });
 		await Promise.race([
 			client.login(discordToken),

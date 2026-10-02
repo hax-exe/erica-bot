@@ -11,7 +11,7 @@ alerts:
 
 categories:
   - id: game
-    label: Game Servers
+    label: Community Servers
     services:
       - id: lobby-1
         label: Lobby 1

@@ -41,13 +41,13 @@ Create a tag named **`faq`** — welcome messages get a **Server FAQ / Guide** b
 
 ---
 
-## Music / Community / Minecraft / Tickets / Moderation
+## Music / Community / Tickets / Moderation
 
-Unchanged core: music, afk, remind, birthday, poll, suggest, giveaway, tag, starboard, counting, feeds, tempvoice, sticky, autoresponder, reactionrole, stats, minecraft, tickets (stats now show **claimed**), full mod suite.
+Unchanged core: music, afk, remind, birthday, poll, suggest, giveaway, tag, starboard, counting, feeds, tempvoice, sticky, autoresponder, reactionrole, stats, tickets (stats now show **claimed**), full mod suite.
 
 **New staff channel tools:** `/nuke`, `/clone`, `/afkchannel`
 
-**Staff-only split commands** (hidden from members via default permissions): `/birthdayadmin`, `/tagadmin`, `/tempvoiceadmin`, `/mcadmin` (forceverify, verify-panel), `/musicadmin` (maxvolume)
+**Staff-only split commands** (hidden from members via default permissions): `/birthdayadmin`, `/tagadmin`, `/tempvoiceadmin`, `/musicadmin` (maxvolume)
 
 ---
 

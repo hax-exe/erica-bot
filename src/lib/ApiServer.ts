@@ -4,9 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { container } from '@sapphire/framework';
 import { z } from 'zod';
-import { minecraftLinks } from '../db/schema.js';
 import { BOT_NAME, getAllowedOrigins } from './brand.js';
-import { db } from './database.js';
 import { handleGuildRoute } from './GuildConfigApi.js';
 import {
 	getActiveIncidents,
@@ -19,31 +17,6 @@ import {
 	getUptime,
 } from './StatusUtil.js';
 import { safeJsonParse } from './safe.js';
-import { consumeVerification, lookupVerificationCode } from './VerificationUtil.js';
-
-const RANK_PRIORITY = [
-	'leadership',
-	'admin',
-	'community_manager',
-	'developer',
-	'senior_moderator',
-	'moderator',
-	'jr_moderator',
-	'helper',
-	'builder',
-] as const;
-
-export type PortalRank =
-	| 'member'
-	| 'builder'
-	| 'helper'
-	| 'jr_moderator'
-	| 'moderator'
-	| 'senior_moderator'
-	| 'developer'
-	| 'community_manager'
-	| 'admin'
-	| 'leadership';
 
 const ALLOWED_ROLE_IDS = [
 	process.env.DISCORD_ROLE_COMMUNITY_MANAGER,
@@ -53,7 +26,6 @@ const ALLOWED_ROLE_IDS = [
 	process.env.DISCORD_ROLE_JR_MODERATOR,
 	process.env.DISCORD_ROLE_HELPER,
 	process.env.DISCORD_ROLE_BUILDER,
-	process.env.VERIFIED_ROLE_ID,
 ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
 function safeCompare(a: string, b: string): boolean {
@@ -121,17 +93,6 @@ function getClientIp(req: Request, server: any): string {
 	return server?.requestIP(req)?.address ?? 'unknown';
 }
 
-const assignVerifiedSchema = z.object({
-	discordId: z.string().regex(/^\d{17,20}$/, 'Invalid Discord ID'),
-});
-
-const verifySchema = z.object({
-	code: z.string().min(1),
-	username: z.string().min(1).max(16),
-	// z.guid(), not z.uuid(): Bedrock/Floodgate UUIDs (0000…-0009-…) lack RFC 4122 version/variant bits.
-	uuid: z.guid().nullable().optional(),
-});
-
 const setRolesSchema = z.object({
 	discordId: z.string().regex(/^\d{17,20}$/, 'Invalid Discord ID'),
 	addRoleIds: z.array(z.string().regex(/^\d{17,20}$/)).optional(),
@@ -144,74 +105,6 @@ const sendDmSchema = z.object({
 	embed: z.record(z.string(), z.any()).optional(),
 });
 
-/** Resolve the highest website rank + full roles array from a member's Discord role IDs. */
-export function resolveRank(memberRoleIds: Set<string>): { rank: PortalRank; roles: string } {
-	const matched: PortalRank[] = [];
-
-	for (const rank of RANK_PRIORITY) {
-		const roleId = process.env[`DISCORD_ROLE_${rank.toUpperCase()}`];
-		if (roleId && memberRoleIds.has(roleId)) matched.push(rank);
-	}
-
-	matched.push('member');
-	return { rank: matched[0], roles: JSON.stringify(matched) };
-}
-
-/**
- * Update the portal profile to mark a user as verified and sync their rank.
- * Calls the portal's /api/mc/sync-verified endpoint — no D1 credentials needed.
- * Soft-fails — logs a warning but never throws.
- */
-export async function syncPortalProfile(
-	discordUserId: string,
-	minecraftUsername: string,
-	minecraftUuid: string | null,
-	rank: PortalRank,
-	roles: string,
-): Promise<void> {
-	const portalApiUrl = process.env.PORTAL_API_URL?.trim();
-	const botApiSecret = process.env.BOT_API_SECRET?.trim();
-
-	container.logger.info(
-		`[PortalSync] starting sync for Discord user ${discordUserId} (mc: ${minecraftUsername}, uuid: ${minecraftUuid}, rank: ${rank})`,
-	);
-	container.logger.info(`[PortalSync] PORTAL_API_URL: ${portalApiUrl ?? '(not set)'}`);
-	container.logger.info(`[PortalSync] BOT_API_SECRET configured: ${!!botApiSecret}`);
-
-	if (!portalApiUrl || !botApiSecret) {
-		container.logger.warn('[PortalSync] PORTAL_API_URL or BOT_API_SECRET not set — skipping portal sync.');
-		return;
-	}
-
-	const url = `${portalApiUrl}/api/mc/sync-verified`;
-	container.logger.info(`[PortalSync] POST ${url}`);
-
-	try {
-		const res = await fetch(url, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'X-Bot-Secret': botApiSecret },
-			body: JSON.stringify({ discordId: discordUserId, minecraftUsername, minecraftUuid, rank, roles }),
-		});
-
-		const responseText = await res.text().catch(() => '');
-		container.logger.info(`[PortalSync] response status: ${res.status}`);
-		container.logger.info(`[PortalSync] response body: ${responseText}`);
-
-		if (res.status === 404) {
-			container.logger.warn(`[PortalSync] Discord user ${discordUserId} has no portal account.`);
-			return;
-		}
-		if (!res.ok) {
-			container.logger.warn(`[PortalSync] sync-verified failed — ${res.status}: ${responseText}`);
-			return;
-		}
-
-		container.logger.info(`[PortalSync] successfully synced portal profile for Discord user ${discordUserId}`);
-	} catch (err) {
-		container.logger.warn('[PortalSync] fetch threw an error:', err);
-	}
-}
-
 export function startApiServer(options: { fullApiEnabled?: boolean } = {}): ReturnType<typeof Bun.serve> {
 	const port = Number(process.env.BOT_API_PORT ?? 3001);
 	const token = process.env.BOT_API_SECRET?.trim() ?? '';
@@ -219,8 +112,6 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 	const fullApiEnabled = fullApiRequested && token.length > 0;
 	const supportGuildId = process.env.SUPPORT_GUILD_ID;
 	const teamRoleId = process.env.TEAM_ROLE_ID;
-	const verificationGuildId = process.env.VERIFICATION_GUILD_ID;
-	const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
 
 	if (fullApiRequested && !token) {
 		container.logger.warn('[API] BOT_API_SECRET is not set — private API disabled; health endpoint remains online.');
@@ -445,133 +336,20 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 			}
 		}
 
-		// ── Assign verified role (called by portal after website verification) ─
-		// Body: { discordId: string }
-		if (url.pathname === '/api/mc/assign-verified' && req.method === 'POST') {
-			container.logger.info('[API /mc/assign-verified] received request');
-			if (!verificationGuildId || !verifiedRoleId) {
-				container.logger.warn('[API /mc/assign-verified] missing VERIFICATION_GUILD_ID or VERIFIED_ROLE_ID');
-				return Response.json({ error: 'VERIFICATION_GUILD_ID or VERIFIED_ROLE_ID not configured.' }, { status: 500 });
-			}
-
-			let rawBody: unknown;
-			try {
-				rawBody = await req.json();
-			} catch (err) {
-				container.logger.warn('[API /mc/assign-verified] invalid JSON:', err);
-				return Response.json({ error: 'Invalid JSON body.' }, { status: 400 });
-			}
-
-			const parsed = assignVerifiedSchema.safeParse(rawBody);
-			if (!parsed.success) {
-				container.logger.warn('[API /mc/assign-verified] validation failed:', parsed.error.format());
-				return Response.json({ error: 'Invalid request payload.', details: parsed.error.format() }, { status: 400 });
-			}
-
-			const { discordId } = parsed.data;
-			container.logger.info(`[API /mc/assign-verified] discordId=${discordId}`);
-
-			try {
-				const guild = await container.client.guilds.fetch(verificationGuildId);
-				const member = await guild.members.fetch(discordId).catch(() => null);
-				container.logger.info(`[API /mc/assign-verified] member found: ${!!member}`);
-				if (!member) return Response.json({ ok: false, reason: 'member_not_found' });
-				await member.roles.add(verifiedRoleId, 'Website Minecraft verification');
-				container.logger.info(`[API /mc/assign-verified] verified role assigned to ${discordId}`);
-				return Response.json({ ok: true, discordId });
-			} catch (err) {
-				container.logger.error('[API /mc/assign-verified] error:', err);
-				return Response.json({ error: 'Failed to assign verified role.' }, { status: 502 });
-			}
-		}
-
-		// ── MC Verify ─────────────────────────────────────────────────────────
-		if (url.pathname === '/api/mc/verify' && req.method === 'POST') {
-			if (!verificationGuildId || !verifiedRoleId) {
-				return Response.json(
-					{ error: 'VERIFICATION_GUILD_ID or VERIFIED_ROLE_ID is not configured on the server.' },
-					{ status: 500 },
-				);
-			}
-
-			let rawBody: unknown;
-			try {
-				rawBody = await req.json();
-			} catch {
-				return Response.json({ error: 'Invalid JSON body.' }, { status: 400 });
-			}
-
-			const parsed = verifySchema.safeParse(rawBody);
-			if (!parsed.success) {
-				container.logger.warn('[API /mc/verify] validation failed:', parsed.error.format());
-				return Response.json({ error: 'Invalid request payload.', details: parsed.error.format() }, { status: 400 });
-			}
-
-			const { code, username, uuid = null } = parsed.data;
-
-			container.logger.info(`[API /mc/verify] code=${code} username=${username} uuid=${uuid}`);
-
-			const pending = await lookupVerificationCode(code);
-			container.logger.info(
-				`[API /mc/verify] code lookup result: ${pending ? `found userId=${pending.userId}` : 'NOT FOUND (invalid/expired)'}`,
-			);
-
-			if (!pending) {
-				return Response.json({ error: 'Invalid or expired verification code.' }, { status: 404 });
-			}
-
-			// Assign the verified Discord role and sync portal profile
-			let memberRoleIds = new Set<string>();
-			try {
-				const guild = await container.client.guilds.fetch(verificationGuildId);
-				const member = await guild.members.fetch(pending.userId);
-				await member.roles.add(verifiedRoleId, 'Minecraft verification completed');
-				memberRoleIds = new Set(member.roles.cache.keys());
-				container.logger.info(`[API /mc/verify] verified role assigned to ${pending.userId}`);
-			} catch (err) {
-				container.logger.warn('[API /mc/verify] could not assign verified role:', err);
-				return Response.json(
-					{ error: 'Could not assign the verified Discord role. Please try again.' },
-					{ status: 502 },
-				);
-			}
-
-			await db
-				.insert(minecraftLinks)
-				.values({ userId: pending.userId, minecraftName: username, minecraftUuid: uuid })
-				.onDuplicateKeyUpdate({
-					set: { minecraftName: username, minecraftUuid: uuid },
-				});
-			container.logger.info(`[API /mc/verify] minecraft link saved — userId=${pending.userId}`);
-
-			await consumeVerification(pending.userId);
-			container.logger.info(`[API /mc/verify] verification code consumed`);
-
-			const resolved = resolveRank(memberRoleIds);
-
-			container.logger.info(`[API /mc/verify] resolved rank=${resolved.rank} roles=${resolved.roles}`);
-			container.logger.info(`[API /mc/verify] calling syncPortalProfile...`);
-
-			await syncPortalProfile(pending.userId, username, uuid, resolved.rank, resolved.roles);
-
-			container.logger.info(`[API /mc/verify] done — returning ok`);
-			return Response.json({ ok: true, userId: pending.userId, username });
-		}
-
 		// ── Guild member check ────────────────────────────────────────────────
 		if (url.pathname.startsWith('/api/guild/member/') && req.method === 'GET') {
 			const discordId = url.pathname.slice('/api/guild/member/'.length);
 			container.logger.info(
-				`[API /guild/member] discordId=${discordId} VERIFICATION_GUILD_ID=${verificationGuildId ?? '(not set)'}`,
+				`[API /guild/member] discordId=${discordId} SUPPORT_GUILD_ID=${supportGuildId ?? '(not set)'}`,
 			);
 
-			if (!discordId || !verificationGuildId) {
-				container.logger.warn('[API /guild/member] missing discordId or VERIFICATION_GUILD_ID');
-				return Response.json({ error: 'Missing discordId or VERIFICATION_GUILD_ID not set.' }, { status: 400 });
+			if (!discordId || !supportGuildId) {
+				container.logger.warn('[API /guild/member] missing discordId or SUPPORT_GUILD_ID');
+				return Response.json({ error: 'Missing discordId or SUPPORT_GUILD_ID not set.' }, { status: 400 });
 			}
 
 			try {
-				const guild = await container.client.guilds.fetch(verificationGuildId);
+				const guild = await container.client.guilds.fetch(supportGuildId);
 				const ban = await guild.bans.fetch(discordId).catch(() => null);
 				container.logger.info(`[API /guild/member] banned=${!!ban}`);
 				if (ban) return Response.json({ inGuild: false, banned: true });
@@ -588,9 +366,9 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 		// ── Set Discord roles ─────────────────────────────────────────────────
 		if (url.pathname === '/api/guild/set-roles' && req.method === 'POST') {
 			container.logger.info('[API /guild/set-roles] received request');
-			if (!verificationGuildId) {
-				container.logger.warn('[API /guild/set-roles] VERIFICATION_GUILD_ID not set');
-				return Response.json({ error: 'VERIFICATION_GUILD_ID not configured.' }, { status: 500 });
+			if (!supportGuildId) {
+				container.logger.warn('[API /guild/set-roles] SUPPORT_GUILD_ID not set');
+				return Response.json({ error: 'SUPPORT_GUILD_ID not configured.' }, { status: 500 });
 			}
 
 			let rawBody: unknown;
@@ -625,13 +403,13 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 			}
 
 			try {
-				const guild = await container.client.guilds.fetch(verificationGuildId);
+				const guild = await container.client.guilds.fetch(supportGuildId);
 				const member = await guild.members.fetch(discordId).catch(() => null);
 				container.logger.info(`[API /guild/set-roles] member found: ${!!member}`);
 				if (!member) return Response.json({ ok: false, reason: 'member_not_found' });
 
-				if (addRoleIds.length > 0) await member.roles.add(addRoleIds, 'MC rank sync');
-				if (removeRoleIds.length > 0) await member.roles.remove(removeRoleIds, 'MC rank sync');
+				if (addRoleIds.length > 0) await member.roles.add(addRoleIds, 'API role sync');
+				if (removeRoleIds.length > 0) await member.roles.remove(removeRoleIds, 'API role sync');
 
 				container.logger.info(`[API /guild/set-roles] roles updated for ${discordId}`);
 				return Response.json({ ok: true, discordId, addRoleIds, removeRoleIds });
@@ -726,10 +504,6 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 		const teamMembers = members.filter((m) => m.roles.cache.has(roleId));
 		container.logger.info(`[API /team] total members=${members.size} team members=${teamMembers.size}`);
 
-		const links = await db.select().from(minecraftLinks);
-		const linkMap = new Map(links.map((l) => [l.userId, l.minecraftName]));
-		container.logger.info(`[API /team] minecraft links loaded: ${links.length}`);
-
 		const result = teamMembers.map((m) => ({
 			id: m.id,
 			username: m.user.username,
@@ -738,7 +512,6 @@ export function startApiServer(options: { fullApiEnabled?: boolean } = {}): Retu
 				.filter((r) => r.id !== guild.id)
 				.sort((a, b) => b.position - a.position)
 				.map((r) => ({ id: r.id, name: r.name })),
-			minecraftName: linkMap.get(m.id) ?? null,
 		}));
 
 		container.logger.info(`[API /team] returning ${result.length} members`);

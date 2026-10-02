@@ -65,7 +65,7 @@ export class LevelCommand extends Subcommand {
 						.addStringOption((o) =>
 							o
 								.setName('background_value')
-								.setDescription('The hex color, preset name (cyberpunk, galaxy, minecraft, sunset), or image URL.')
+								.setDescription('The hex color, preset name (cyberpunk, galaxy, sunset), or image URL.')
 								.setRequired(false),
 						),
 				)
@@ -169,7 +169,7 @@ export class LevelCommand extends Subcommand {
 					updates.backgroundValue = cleanHex;
 				} else if (bgTypeInput === 'preset') {
 					const presetKey = bgValue.trim().toLowerCase();
-					const validPresets = ['cyberpunk', 'galaxy', 'minecraft', 'sunset'];
+					const validPresets = ['cyberpunk', 'galaxy', 'sunset'];
 					if (!validPresets.includes(presetKey)) {
 						return interaction.editReply(errorReply(`Invalid preset name. Choose from: ${validPresets.join(', ')}`));
 					}

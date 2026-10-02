@@ -349,7 +349,6 @@ export const guildModules = mysqlTable('guild_modules', {
 	reactionRoles: boolean('reaction_roles').notNull().default(true),
 	reports: boolean('reports').notNull().default(true),
 	reviews: boolean('reviews').notNull().default(true),
-	verification: boolean('verification').notNull().default(true),
 	automod: boolean('automod').notNull().default(false),
 	suggestions: boolean('suggestions').notNull().default(true),
 	fun: boolean('fun').notNull().default(true),
@@ -375,7 +374,6 @@ export const globalModules = mysqlTable('global_modules', {
 	reactionRoles: boolean('reaction_roles').notNull().default(true),
 	reports: boolean('reports').notNull().default(true),
 	reviews: boolean('reviews').notNull().default(true),
-	verification: boolean('verification').notNull().default(true),
 	automod: boolean('automod').notNull().default(true), // kill-switch row: everything allowed by default
 	suggestions: boolean('suggestions').notNull().default(true),
 	fun: boolean('fun').notNull().default(true),
@@ -443,22 +441,6 @@ export const statusPanel = mysqlTable('status_panel', {
 	channelId: varchar('channel_id', { length: 64 }).notNull(),
 	messageId: varchar('message_id', { length: 64 }).notNull(),
 	guildId: varchar('guild_id', { length: 64 }).notNull(),
-});
-
-// Minecraft username links
-export const minecraftLinks = mysqlTable('minecraft_links', {
-	userId: varchar('user_id', { length: 64 }).primaryKey(),
-	minecraftName: varchar('minecraft_name', { length: 255 }).notNull(),
-	minecraftUuid: varchar('minecraft_uuid', { length: 64 }),
-	linkedAt: datetime('linked_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
-});
-
-// Pending Minecraft verifications
-export const pendingVerifications = mysqlTable('pending_verifications', {
-	userId: varchar('user_id', { length: 64 }).primaryKey(),
-	guildId: varchar('guild_id', { length: 64 }).notNull(),
-	code: varchar('code', { length: 64 }).notNull(),
-	expiresAt: datetime('expires_at', { mode: 'date' }).notNull(),
 });
 
 // Sticky messages

@@ -103,7 +103,7 @@ function helpBody(section: string): string {
 			'• `/nuke` `/clone` `/afkchannel` — channel tools',
 			'• `/poll` `/giveaway` — create polls and giveaways',
 			'• `/emojiadmin steal` — add custom emojis',
-			'• `/leveladmin` `/tagadmin` `/mcadmin` — member XP, server tags, Minecraft tools',
+			'• `/leveladmin` `/tagadmin` — member XP, server tags',
 			'• `/ticket` — close, add/remove, stats (includes claims)',
 			'• Context menus: Report, View Infractions, Delete & Warn/Timeout/Ban',
 		].join('\n');
@@ -116,7 +116,7 @@ function helpBody(section: string): string {
 			'• `/ecoadmin` — give, take, or reset economy balances',
 			'• `/birthdayadmin` — manage birthday settings and channels',
 			'• `/musicadmin setup-music` `/musicadmin maxvolume` — music configuration',
-			'• `/leveladmin` `/tagadmin` `/mcadmin` — member XP, server tags, Minecraft verification',
+			'• `/leveladmin` `/tagadmin` — member XP, server tags',
 			'• `/welcomer` `/automod` `/antiraid`',
 			'• `/leveling` `/starboard` `/counting` `/feeds`',
 			'• `/tempvoiceadmin` `/sticky` `/autoresponder` `/reactionrole` `/stats`',

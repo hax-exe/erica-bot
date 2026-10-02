@@ -57,7 +57,7 @@ src/
   commands/          # slash commands (auto-loaded)
   listeners/         # Discord/Sapphire listeners (auto-loaded)
   lib/               # shared utilities (music, tickets, API, etc.)
-    brand.ts         # BOT_NAME, USER_AGENT, WEBHOOK_NAMES, getMinecraftServerAddress(), getAllowedOrigins()
+    brand.ts         # BOT_NAME, USER_AGENT, WEBHOOK_NAMES, getAllowedOrigins()
     safe.ts          # safeJsonParse(), isDuplicateKeyError()
     database.ts      # Drizzle instance; applies pending migrations on import
   preconditions/     # Sapphire preconditions (BotAdmin, Moderation, …)
@@ -76,7 +76,7 @@ Toggleable modules include `autoresponder` (`/autoresponder` + message listener)
 
 ### Shared helpers
 
-- **Branding**: the bot is "Erica". Use `BOT_NAME`, `USER_AGENT` (outbound HTTP `User-Agent`) and `WEBHOOK_NAMES` from `src/lib/brand.ts` instead of hard-coding names. Never hard-code server addresses or website domains — use `getMinecraftServerAddress()` (`MINECRAFT_SERVER_IP`) and `getAllowedOrigins()` (`API_ALLOWED_ORIGINS`).
+- **Branding**: the bot is "Erica". Use `BOT_NAME`, `USER_AGENT` (outbound HTTP `User-Agent`) and `WEBHOOK_NAMES` from `src/lib/brand.ts` instead of hard-coding names. Never hard-code server addresses or website domains — use `getAllowedOrigins()` (`API_ALLOWED_ORIGINS`).
 - **`src/lib/safe.ts`**: `safeJsonParse(raw, fallback)` for JSON stored in text columns (never throws); `isDuplicateKeyError(err)` to detect MySQL `ER_DUP_ENTRY` through Drizzle's error wrapping.
 
 ## Architecture Conventions
@@ -152,8 +152,7 @@ LAVALINK_HOST=localhost
 LAVALINK_PORT=3000
 LAVALINK_PASSWORD=
 DISCORD_PRESENCE_INTENT=false  # true only if Presence Intent is enabled in the Developer Portal (else login fails, 4014)
-MINECRAFT_SERVER_IP=     # public MC address shown to users
-BOT_API_ENABLED=false    # set true to enable website/MC API
+BOT_API_ENABLED=false    # set true to enable website API
 BOT_API_SECRET=          # required when API is enabled
 API_ALLOWED_ORIGINS=     # comma-separated CORS origins for the API
 ```
