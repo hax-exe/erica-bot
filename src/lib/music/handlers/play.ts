@@ -4,6 +4,7 @@ import type { Track } from 'moonlink.js';
 import { errorReply, successReply, warningReply } from '../../components.js';
 import { formatDuration, inSameVC, saveMusicQueue, spotifySearch } from '../../MusicManager.js';
 import { resolveNamedTrack } from '../resolveTrack.js';
+import { searchSuggestions, type TrackSuggestion } from '../suggest.js';
 
 const ALLOWED_HOSTS = new Set([
 	'youtube.com',
@@ -54,16 +55,16 @@ export class PlayHandler {
 			if (!focused || focused.length < 2) return interaction.respond([]);
 			if (/^https?:\/\//i.test(focused)) return interaction.respond([]);
 
-			// Discord autocomplete must respond within ~3s — never wait on a slow Spotify call.
+			// Discord autocomplete must respond within ~3s — never wait on a slow suggestion call.
 			const results = await Promise.race([
-				spotifySearch(focused, 8),
-				new Promise<Awaited<ReturnType<typeof spotifySearch>>>((resolve) => setTimeout(() => resolve([]), 2_400)),
+				searchSuggestions(focused, 8),
+				new Promise<TrackSuggestion[]>((resolve) => setTimeout(() => resolve([]), 2_400)),
 			]);
 
 			return await interaction.respond(
 				results.map((r) => ({
-					name: `${r.title} — ${r.artist} (${formatDuration(r.durationMs)})`.slice(0, 100),
-					value: r.url,
+					name: `${r.title} — ${r.artist}${r.durationMs > 0 ? ` (${formatDuration(r.durationMs)})` : ''}`.slice(0, 100),
+					value: `${r.title} ${r.artist}`.slice(0, 100),
 				})),
 			);
 		} catch (err) {

@@ -13,6 +13,16 @@ const SPOTIFY_TIMEOUT_MS = 10_000;
 // ---------------------------------------------------------------------------
 let _spotifyToken: string | null = null;
 let _spotifyTokenExpiry = 0;
+let _spotifyWarned = false;
+
+/** Log the first Spotify API failure only, so the cause (e.g. 403 = app owner lacks Premium) is visible. */
+function warnSpotifyOnce(what: string, status: number) {
+	if (_spotifyWarned) return;
+	_spotifyWarned = true;
+	container.logger?.warn(
+		`[music] Spotify ${what} failed with HTTP ${status}. A 403 usually means the app owner has no Premium subscription; Spotify lookups are disabled until fixed.`,
+	);
+}
 
 /** Returns null when credentials are missing or the token request fails (never throws). */
 async function getSpotifyToken(): Promise<string | null> {
@@ -29,7 +39,10 @@ async function getSpotifyToken(): Promise<string | null> {
 			body: 'grant_type=client_credentials',
 			signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
 		});
-		if (!res.ok) return null;
+		if (!res.ok) {
+			warnSpotifyOnce('token request', res.status);
+			return null;
+		}
 		const json = (await res.json()) as { access_token?: string; expires_in?: number };
 		if (!json.access_token) return null;
 		_spotifyToken = json.access_token;
@@ -47,7 +60,10 @@ async function spotifyGet<T>(url: string, token: string): Promise<T | null> {
 			headers: { Authorization: `Bearer ${token}` },
 			signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
 		});
-		if (!res.ok) return null;
+		if (!res.ok) {
+			warnSpotifyOnce('API request', res.status);
+			return null;
+		}
 		return (await res.json()) as T;
 	} catch {
 		return null;

@@ -2,6 +2,7 @@ import { type Command, container } from '@sapphire/framework';
 import { MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { Colors, CV2_FLAG, errorReply, makeContainer, separator } from '../../components.js';
 import { formatDuration, spotifySearch } from '../../MusicManager.js';
+import { searchSuggestions, type TrackSuggestion } from '../suggest.js';
 
 interface LyricsLine {
 	timestamp: number;
@@ -30,14 +31,14 @@ export class LyricsHandler {
 			if (/^https?:\/\//i.test(focused)) return interaction.respond([]);
 
 			const results = await Promise.race([
-				spotifySearch(focused, 8),
-				new Promise<Awaited<ReturnType<typeof spotifySearch>>>((resolve) => setTimeout(() => resolve([]), 2_400)),
+				searchSuggestions(focused, 8),
+				new Promise<TrackSuggestion[]>((resolve) => setTimeout(() => resolve([]), 2_400)),
 			]);
 
 			return await interaction.respond(
 				results.map((r) => ({
-					name: `${r.title} — ${r.artist} (${formatDuration(r.durationMs)})`.slice(0, 100),
-					value: r.url,
+					name: `${r.title} — ${r.artist}${r.durationMs > 0 ? ` (${formatDuration(r.durationMs)})` : ''}`.slice(0, 100),
+					value: `${r.title} ${r.artist}`.slice(0, 100),
 				})),
 			);
 		} catch (err) {
