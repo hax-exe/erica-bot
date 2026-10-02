@@ -21,12 +21,17 @@ Default model is sonnet. Reviews of small diffs (one column, one migration) are 
    - Every new `drizzle/NNNN_*.sql` is accompanied by changes to `drizzle/meta/_journal.json` and a new `drizzle/meta/NNNN_snapshot.json`. Existing snapshots must not be modified.
    - In `drizzle/meta/_journal.json` the entry for `0000_overrated_otto_octavius` still has `"when": 1700000000000`, and new entries have a `when` newer than the previous one.
    - Schema changes in src/db/schema.ts actually have a matching migration (otherwise tell the caller to run `bun run db:generate`).
-4. Report only real violations.
+4. If a `docs/work/<slug>/spec.md` / `plan.md` exists for this change, also check the schema/migration diff against them.
+5. Report only real violations.
+
+## Severity
+
+Tag every finding `Important` (bug, convention violation that breaks behavior, spec/plan mismatch) or `Nit` (minor; cap at about 5). See /home/kiana/projects/erica-bot/REVIEW.md.
 
 ## Output format
 
 One line per finding:
 
-`path:LINE - problem - fix`
+`[Important|Nit] path:LINE - problem - fix`
 
 If everything is fine, output exactly `No violations found.`

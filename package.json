@@ -15,7 +15,11 @@
     "lint": "biome lint src/",
     "format": "biome format --write src/",
     "check": "biome check --write src/",
-    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('husky', {stdio:'inherit'})\""
+    "test": "bun test",
+    "typecheck": "bun tsc --noEmit",
+    "verify": "bun run typecheck && biome check src/ && bun test",
+    "evals": "bun evals/run.ts",
+    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production') {try{require('child_process').execSync('husky',{stdio:'ignore'})}catch{}}\""
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": ["biome check --write --no-errors-on-unmatched"]

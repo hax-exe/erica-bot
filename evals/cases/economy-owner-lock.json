@@ -1,0 +1,7 @@
+{
+  "id": "economy-owner-lock",
+  "source": "c3d4030 fix: lock economy dashboard to owner and hide admin commands",
+  "prompt": "Anyone can press another user's economy dashboard buttons. Lock component interactions to the user who opened the dashboard.",
+  "acceptance": "A ComponentOwner helper exists and the economy listener uses it.",
+  "check": "test -f src/lib/ComponentOwner.ts && grep -q ComponentOwner src/listeners/economy/economyInteractions.ts"
+}

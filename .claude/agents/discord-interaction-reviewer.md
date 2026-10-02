@@ -24,12 +24,17 @@ Default model is sonnet. Reviews of small diffs (a few lines, one file) are fine
    - No hard-coded bot name, server address or website domains. Use `BOT_NAME`, `USER_AGENT`, `WEBHOOK_NAMES`, `getMinecraftServerAddress()`, `getAllowedOrigins()` from src/lib/brand.ts.
    - Logging goes through `sendLog` / `sendModLog` / `sendTicketLog` / `sendReportLog` (WebhookClient). No stored channel IDs for logs.
    - JSON stored in text columns parsed with `safeJsonParse(raw, fallback)`, not bare `JSON.parse`.
-4. Report only real violations in changed code. Do not nitpick style.
+4. If a `docs/work/<slug>/spec.md` / `plan.md` exists for this change, also check the diff against them.
+5. Report only real violations in changed code. Do not nitpick style.
+
+## Severity
+
+Tag every finding `Important` (bug, convention violation that breaks behavior, spec/plan mismatch) or `Nit` (minor; cap at about 5). See /home/kiana/projects/erica-bot/REVIEW.md.
 
 ## Output format
 
 One line per finding, nothing else:
 
-`path/to/file.ts:LINE - problem - fix`
+`[Important|Nit] path/to/file.ts:LINE - problem - fix`
 
 If there are no violations, output exactly `No violations found.`

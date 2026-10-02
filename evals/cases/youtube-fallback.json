@@ -1,0 +1,7 @@
+{
+  "id": "youtube-fallback",
+  "source": "42197e6 fix: youtube bot-check auth and playback fallback",
+  "prompt": "YouTube tracks fail with 'Sign in to confirm you're not a bot'. Make the bot retry a failed YouTube track once via Deezer/SoundCloud.",
+  "acceptance": "A youtubeFallback module exists and the music events listener uses it.",
+  "check": "test -f src/lib/music/youtubeFallback.ts && grep -rq youtubeFallback src/listeners/music/events.ts"
+}

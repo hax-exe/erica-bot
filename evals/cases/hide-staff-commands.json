@@ -1,0 +1,7 @@
+{
+  "id": "hide-staff-commands",
+  "source": "24b666f feat: hide staff-only commands from regular users",
+  "prompt": "Staff subcommands on user-facing commands are visible to everyone. Split them into hidden admin commands with default member permissions and a runtime check.",
+  "acceptance": "Admin command files exist and set default member permissions.",
+  "check": "test -f src/commands/tags/tagadmin.ts && grep -q setDefaultMemberPermissions src/commands/tags/tagadmin.ts"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "central-owner-ids",
+  "source": "c3d4030 (BOT_OWNER_IDS centralization)",
+  "prompt": "BOT_OWNER_IDS is parsed in several places. Centralize parsing in one helper.",
+  "acceptance": "src/lib/owners.ts exists and BotAdmin precondition imports it.",
+  "check": "test -f src/lib/owners.ts && grep -q owners src/preconditions/BotAdmin.ts"
+}

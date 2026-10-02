@@ -2,9 +2,38 @@
 
 Erica, a Discord bot. Bun runtime + Sapphire Framework v5 + Drizzle ORM + MySQL (mysql2).
 
-Never do the work yourself.
+## Workflow (AI-native SDLC)
 
-Always hand it to multiple sub-agents to split the work and work in parallel.
+Pipeline: intent -> spec -> plan -> build -> verify -> review. Artifacts live in `docs/work/<slug>/{intent,spec,plan}.md` (templates in `docs/work/_templates/`).
+
+| Stage | Agent |
+|---|---|
+| Intent | `intent-writer` |
+| Spec | `spec-writer` |
+| Plan | `Plan` agent (tasks, file sets, tier per task) |
+| Build | `implementer-small` (trivial) / `implementer` (normal) / `implementer-heavy` (multi-file, schema, overhauls) |
+| Verify | `verifier` |
+| Review | `discord-interaction-reviewer`, `migration-reviewer`, `spec-compliance-reviewer` |
+
+Rules:
+- The orchestrator (main session) does not write code; it delegates.
+- Parallelize implementers only on disjoint file sets.
+- `implementer` and `implementer-heavy` need an approved `plan.md` task. Trivial tasks skip intent/spec/plan (`implementer-small` only; it bounces anything non-trivial).
+- Run `verifier` before reporting done.
+- Reviewers are never the implementer.
+- A human approves intent, spec, plan, and every commit/PR.
+- `REVIEW.md` governs reviews.
+- `CLAUDE_FIX_MODE=1`: the human exports it before launching the session; the hooks then block edits to existing test files (fix the code, not the tests).
+- Writer agents (intent-writer, spec-writer) are restricted to `docs/work/<slug>/`. The hook can only enforce this if its input exposes an agent name (best-effort); the agent prompts enforce it too.
+
+## Things Claude gets wrong
+
+- `check-ts` hook only reports type errors in the edited file. Cross-file breakage shows up only in `verifier` / `bun run verify`, so run it before reporting done.
+- Select menus: `interaction.update()` first, `followUp()` after; `showModal()` must be the sole response.
+- Never edit, rename or regenerate existing drizzle migrations or snapshots.
+- Never use `npm`/`yarn`/`npx`; use `bun`/`bunx`.
+- Never set `content` with `IsComponentsV2`; never `ephemeral: true`.
+- Never hard-code branding, server addresses or domains (`src/lib/brand.ts`).
 
 ## Build & Dev
 
@@ -15,6 +44,8 @@ bun start                 # production
 bun run db:migrate        # apply pending migrations
 bun run db:generate       # generate new migration from schema changes
 bun tsc --noEmit          # type-check (no build output)
+bun test                  # run tests
+bun run verify            # typecheck + biome check + test
 ```
 
 **Do not use `npm` or `yarn`.** Bun is both runtime and package manager.
