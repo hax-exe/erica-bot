@@ -4,7 +4,7 @@ Erica, a Discord bot. Bun runtime + Sapphire Framework v5 + Drizzle ORM + MySQL 
 
 Never do the work yourself.
 
-Always hand it to a sub-agent.
+Always hand it to multiple sub-agents to split the work and work in parallel.
 
 ## Build & Dev
 
