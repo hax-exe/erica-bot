@@ -2,6 +2,10 @@
 
 Erica, a Discord bot. Bun runtime + Sapphire Framework v5 + Drizzle ORM + MySQL (mysql2).
 
+Never do the work yourself.
+
+Always hand it to a sub-agent.
+
 ## Build & Dev
 
 ```bash
