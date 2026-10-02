@@ -22,6 +22,7 @@ export class NukeCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('nuke')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 				.setDescription('Clone this channel and delete the original (clears all messages).')
 				.addBooleanOption((o) => o.setName('confirm').setDescription('Must be true to nuke.').setRequired(true))
 				.addChannelOption((o) =>

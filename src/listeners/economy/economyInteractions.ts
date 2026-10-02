@@ -2,7 +2,10 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { Events, type Interaction, MessageFlags } from 'discord.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
+import { requireComponentOwner } from '../../lib/ComponentOwner.js';
+import { errorReply } from '../../lib/components.js';
 import { isStaleInteractionError } from '../../lib/GameStore.js';
+import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
 @ApplyOptions<Listener.Options>({
 	name: 'economyInteractions',
@@ -15,7 +18,18 @@ export class EconomyInteractionsListener extends Listener<typeof Events.Interact
 
 		if (!interaction.customId.startsWith('eco:dash:')) return;
 
-		const action = interaction.customId.replace('eco:dash:', '');
+		const [action, ownerId] = interaction.customId.slice('eco:dash:'.length).split(':');
+		// Old customIds carried no owner — reject them rather than act for the wrong user.
+		if (!(await requireComponentOwner(interaction, ownerId))) return;
+
+		if (!(await isModuleEnabled(interaction.guildId, 'economy'))) {
+			await interaction
+				.reply({ ...errorReply('Economy module is disabled.') } as any)
+				.catch((err) =>
+					isStaleInteractionError(err) ? null : this.container.logger.error('[EconomyInteractions]', err),
+				);
+			return;
+		}
 
 		const command = this.container.stores.get('commands').get('economy') as any;
 		if (!command) return;

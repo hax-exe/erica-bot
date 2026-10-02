@@ -30,6 +30,7 @@ export class KickCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('kick')
+				.setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
 				.setDescription('Kick a member from the server.')
 				.addUserOption((o) => o.setName('user').setDescription('The member to kick.').setRequired(true))
 				.addStringOption((o) =>

@@ -21,6 +21,7 @@ export class CloneCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('clone')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 				.setDescription('Clone a channel (keeps the original).')
 				.addChannelOption((o) =>
 					o

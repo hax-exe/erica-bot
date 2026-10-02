@@ -69,7 +69,7 @@ This applies the SQL migrations in `drizzle/` to the MySQL database in `DATABASE
 
 #### `config/status.yml`
 
-Status-page service definitions for `/status` / the public status API. Copy from `config/status.example.yml`, then `/status reload` after edits.
+Status-page service definitions for `/status` / `/admin status` / the public status API. Copy from `config/status.example.yml`, then `/admin status reload` after edits.
 
 ### 5. Configure log/mod-log channels
 
@@ -185,7 +185,7 @@ src/
 └── preconditions/            # Sapphire preconditions (e.g. Moderation role check)
 
 config/
-├── status.yml                # Status-page services (edit + /status reload)
+├── status.yml                # Status-page services (edit + /admin status reload)
 ├── status.example.yml
 ├── tickets.yml               # Ticket panel + categories (edit + /ticket reload)
 └── tickets.example.yml       # Documented example with all question types

@@ -1,6 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { AllFlowsPrecondition } from '@sapphire/framework';
 import type { ChatInputCommandInteraction, ContextMenuCommandInteraction, Message } from 'discord.js';
+import { isBotOwner } from '../lib/owners.js';
 
 /**
  * Precondition: BotAdmin
@@ -15,16 +16,6 @@ import type { ChatInputCommandInteraction, ContextMenuCommandInteraction, Messag
 	name: 'BotAdmin',
 })
 export class BotAdminPrecondition extends AllFlowsPrecondition {
-	private get ownerIds(): Set<string> {
-		const raw = process.env.BOT_OWNER_IDS ?? '';
-		return new Set(
-			raw
-				.split(',')
-				.map((id) => id.trim())
-				.filter(Boolean),
-		);
-	}
-
 	public override chatInputRun(interaction: ChatInputCommandInteraction) {
 		return this.check(interaction.user.id);
 	}
@@ -38,7 +29,7 @@ export class BotAdminPrecondition extends AllFlowsPrecondition {
 	}
 
 	private check(userId: string) {
-		return this.ownerIds.has(userId) ? this.ok() : this.error({ message: 'Only bot admins can use this command.' });
+		return isBotOwner(userId) ? this.ok() : this.error({ message: 'Only bot admins can use this command.' });
 	}
 }
 

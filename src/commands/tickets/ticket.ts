@@ -92,6 +92,7 @@ export class TicketCommand extends Subcommand {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('ticket')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 				.setDescription('Manage the ticket system.')
 				// ── panel ──────────────────────────────────────────────────────
 				.addSubcommand((sub) =>

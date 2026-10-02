@@ -31,6 +31,7 @@ export class BanCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('ban')
+				.setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
 				.setDescription('Ban a member from the server.')
 				.addUserOption((o) => o.setName('user').setDescription('The user to ban.').setRequired(true))
 				.addStringOption((o) =>

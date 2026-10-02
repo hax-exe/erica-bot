@@ -42,7 +42,7 @@ export class StatusSchedulerListener extends Listener<typeof Events.ClientReady>
 		await updateStatusPanel(client).catch((err) => this.container.logger.error('[status] startup check failed:', err));
 		let lastCheckAt = Date.now();
 
-		// Poll the configured interval dynamically so /status reload takes effect without a restart.
+		// Poll the configured interval dynamically so /admin status reload takes effect without a restart.
 		setInterval(() => {
 			const intervalMs = getStatusConfig().intervalMinutes * 60_000;
 			if (Date.now() - lastCheckAt < intervalMs) return;

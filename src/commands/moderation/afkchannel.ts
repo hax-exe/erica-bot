@@ -21,6 +21,7 @@ export class AfkChannelCommand extends Subcommand {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('afkchannel')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 				.setDescription('Configure the server AFK voice channel (moves idle members).')
 				.addSubcommand((sub) =>
 					sub

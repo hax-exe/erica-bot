@@ -1,5 +1,26 @@
+import type { ChatInputCommandInteraction } from 'discord.js';
 import { and, eq, sql } from 'drizzle-orm';
+import { errorReply } from './components.js';
 import { db, schema } from './database.js';
+import { isModuleEnabled } from './ModuleUtil.js';
+
+// ─── Command guard ─────────────────────────────────────────────────────────────
+
+/** Shared by /economy and /ecoadmin: server-only + economy module enabled. Expects a deferred interaction. */
+export async function ecoGuard(interaction: ChatInputCommandInteraction): Promise<boolean> {
+	if (!interaction.inCachedGuild()) {
+		await interaction.editReply(errorReply('Server only.'));
+		return false;
+	}
+	if (!(await isModuleEnabled(interaction.guildId, 'economy'))) {
+		await interaction.editReply(errorReply('Economy module is disabled.'));
+		return false;
+	}
+	return true;
+}
+
+/** economy.balance is a signed 32-bit MySQL INT — never credit past it. */
+export const MAX_WALLET_BALANCE = 2_147_483_647;
 
 // ─── Shop items ────────────────────────────────────────────────────────────────
 

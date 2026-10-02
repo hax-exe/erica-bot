@@ -45,6 +45,7 @@ export class TimeoutCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('timeout')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 				.setDescription('Temporarily mute (timeout) a member.')
 				.addUserOption((o) => o.setName('user').setDescription('The member to timeout.').setRequired(true))
 				.addStringOption((o) =>

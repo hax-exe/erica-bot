@@ -1,6 +1,7 @@
 import { type Interaction, MessageFlags } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db, schema } from './database.js';
+import { isBotOwner } from './owners.js';
 
 const CACHE_TTL_MS = 30_000;
 
@@ -8,15 +9,6 @@ type CacheEntry = { blocked: boolean; reason: string | null; expires: number };
 
 const cache = new Map<string, CacheEntry>();
 const pending = new Map<string, Promise<{ blocked: boolean; reason: string | null }>>();
-
-function ownerIdSet(): Set<string> {
-	return new Set(
-		(process.env.BOT_OWNER_IDS ?? '')
-			.split(',')
-			.map((s) => s.trim())
-			.filter(Boolean),
-	);
-}
 
 export function invalidateBotBlacklistCache(userId?: string): void {
 	if (userId) cache.delete(userId);
@@ -27,7 +19,7 @@ export function invalidateBotBlacklistCache(userId?: string): void {
 
 export async function getBotBlacklistEntry(userId: string): Promise<{ blocked: boolean; reason: string | null }> {
 	// Owners always bypass — /admin blacklist already refuses to add them.
-	if (ownerIdSet().has(userId)) return { blocked: false, reason: null };
+	if (isBotOwner(userId)) return { blocked: false, reason: null };
 
 	const now = Date.now();
 	const hit = cache.get(userId);

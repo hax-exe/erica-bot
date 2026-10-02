@@ -32,6 +32,7 @@ export class WarnCommand extends Command {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('warn')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 				.setDescription('Issue a formal warning to a member.')
 				.addUserOption((o) => o.setName('user').setDescription('The member to warn.').setRequired(true))
 				.addStringOption((o) =>

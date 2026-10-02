@@ -1,4 +1,4 @@
-# Status page services — edit then run /status reload
+# Status page services — edit then run /admin status reload
 intervalMinutes: 5
 
 # Outage alerts. Set IDs here or use STATUS_ALERT_CHANNEL_ID / STATUS_ALERT_ROLE_ID.

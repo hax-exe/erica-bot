@@ -46,6 +46,16 @@ import {
 	setGlobalModule,
 	setModule,
 } from '../../lib/ModuleUtil.js';
+import { isBotOwner } from '../../lib/owners.js';
+import {
+	addStatusAdminSubcommands,
+	runStatusIncident,
+	runStatusMaintenance,
+	runStatusPanel,
+	runStatusRefresh,
+	runStatusReload,
+	runStatusService,
+} from '../../lib/StatusAdmin.js';
 import { addMaintenanceUpdate, getMaintenance, reloadStatusConfig, setMaintenance } from '../../lib/StatusUtil.js';
 import { updateTicketStatsChannels } from '../../lib/TicketStatsChannelUtil.js';
 import { reloadTicketsConfig } from '../../lib/TicketsConfig.js';
@@ -134,373 +144,401 @@ function tableOption(o: any, required = true) {
 				{ name: 'update', chatInputRun: 'chatInputMaintUpdate' },
 			],
 		},
+		{
+			name: 'status',
+			type: 'group',
+			entries: [
+				{ name: 'panel', chatInputRun: 'chatInputStatusPanel' },
+				{ name: 'refresh', chatInputRun: 'chatInputStatusRefresh' },
+				{ name: 'reload', chatInputRun: 'chatInputStatusReload' },
+				{ name: 'maintenance', chatInputRun: 'chatInputStatusMaintenance' },
+				{ name: 'service', chatInputRun: 'chatInputStatusService' },
+				{ name: 'incident', chatInputRun: 'chatInputStatusIncident' },
+			],
+		},
 	],
 })
 export class AdminCommand extends Subcommand {
 	public override registerApplicationCommands(registry: Subcommand.Registry) {
-		registry.registerChatInputCommand((builder) =>
-			builder
-				.setName('admin')
-				.setDescription('Bot owner admin commands.')
-				// ── blacklist group ───────────────────────────────────────────────────
-				.addSubcommandGroup((group) =>
-					group
-						.setName('blacklist')
-						.setDescription('Manage the global bot user blacklist.')
-						.addSubcommand((sub) =>
-							sub
-								.setName('add')
-								.setDescription('Blacklist a user from using the bot globally.')
-								.addUserOption((o) => o.setName('user').setDescription('The user to blacklist.').setRequired(true))
-								.addStringOption((o) =>
-									o.setName('reason').setDescription('Reason for the blacklist.').setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('remove')
-								.setDescription('Remove a user from the global blacklist.')
-								.addUserOption((o) => o.setName('user').setDescription('The user to unblacklist.').setRequired(true)),
-						)
-						.addSubcommand((sub) => sub.setName('list').setDescription('List all globally blacklisted users.')),
-				)
-				// ── modules ───────────────────────────────────────────────────────────
-				.addSubcommand((sub) =>
-					sub
-						.setName('modules')
-						.setDescription('View or toggle modules globally or for a specific guild.')
-						.addStringOption((o) =>
-							o
-								.setName('module')
-								.setDescription('Module to toggle (omit to view all).')
-								.setRequired(false)
-								.addChoices(...MODULES.map((m) => ({ name: MODULE_LABELS[m], value: m }))),
-						)
-						.addBooleanOption((o) =>
-							o.setName('enabled').setDescription('Enable or disable the module globally.').setRequired(false),
-						)
-						.addStringOption((o) =>
-							o
-								.setName('guild-id')
-								.setDescription('Override for a specific guild only (omit for global).')
-								.setRequired(false),
+		registry.registerChatInputCommand(
+			(builder) =>
+				builder
+					.setName('admin')
+					.setDefaultMemberPermissions(0n)
+					.setDescription('Bot owner admin commands.')
+					// ── blacklist group ───────────────────────────────────────────────────
+					.addSubcommandGroup((group) =>
+						group
+							.setName('blacklist')
+							.setDescription('Manage the global bot user blacklist.')
+							.addSubcommand((sub) =>
+								sub
+									.setName('add')
+									.setDescription('Blacklist a user from using the bot globally.')
+									.addUserOption((o) => o.setName('user').setDescription('The user to blacklist.').setRequired(true))
+									.addStringOption((o) =>
+										o.setName('reason').setDescription('Reason for the blacklist.').setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('remove')
+									.setDescription('Remove a user from the global blacklist.')
+									.addUserOption((o) => o.setName('user').setDescription('The user to unblacklist.').setRequired(true)),
+							)
+							.addSubcommand((sub) => sub.setName('list').setDescription('List all globally blacklisted users.')),
+					)
+					// ── modules ───────────────────────────────────────────────────────────
+					.addSubcommand((sub) =>
+						sub
+							.setName('modules')
+							.setDescription('View or toggle modules globally or for a specific guild.')
+							.addStringOption((o) =>
+								o
+									.setName('module')
+									.setDescription('Module to toggle (omit to view all).')
+									.setRequired(false)
+									.addChoices(...MODULES.map((m) => ({ name: MODULE_LABELS[m], value: m }))),
+							)
+							.addBooleanOption((o) =>
+								o.setName('enabled').setDescription('Enable or disable the module globally.').setRequired(false),
+							)
+							.addStringOption((o) =>
+								o
+									.setName('guild-id')
+									.setDescription('Override for a specific guild only (omit for global).')
+									.setRequired(false),
+							),
+					)
+					// ── db group (structured table CRUD — no raw SQL) ─────────────────────
+					.addSubcommandGroup((group) =>
+						group
+							.setName('db')
+							.setDescription('Edit schema tables (bot owner). No raw SQL.')
+							.addSubcommand((sub) => sub.setName('tables').setDescription('List whitelisted schema tables.'))
+							.addSubcommand((sub) =>
+								sub
+									.setName('columns')
+									.setDescription('Show columns for a table.')
+									.addStringOption((o) => tableOption(o)),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('list')
+									.setDescription('List rows from a table.')
+									.addStringOption((o) => tableOption(o))
+									.addIntegerOption((o) =>
+										o
+											.setName('limit')
+											.setDescription('Max rows (default 20, max 50).')
+											.setMinValue(1)
+											.setMaxValue(50)
+											.setRequired(false),
+									)
+									.addStringOption((o) =>
+										o
+											.setName('filter_column')
+											.setDescription('Optional equality filter column.')
+											.setRequired(false)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) =>
+										o
+											.setName('filter_value')
+											.setDescription('Filter value (use null for SQL NULL).')
+											.setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('get')
+									.setDescription('Get one row by primary key.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('set')
+									.setDescription('Update one column on a row.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
+									)
+									.addStringOption((o) =>
+										o.setName('column').setDescription('Column to update.').setRequired(true).setAutocomplete(true),
+									)
+									.addStringOption((o) =>
+										o.setName('value').setDescription('New value (null clears nullable fields).').setRequired(true),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('insert')
+									.setDescription('Insert a row from a JSON object.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('data').setDescription('JSON object of column → value.').setRequired(true),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('delete')
+									.setDescription('Delete a row by primary key.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
+									),
+							)
+							.addSubcommand((sub) => sub.setName('stats').setDescription('Row counts for every schema table.'))
+							.addSubcommand((sub) =>
+								sub
+									.setName('count')
+									.setDescription('Count rows in a table (optional filter).')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o
+											.setName('filter_column')
+											.setDescription('Optional equality filter column.')
+											.setRequired(false)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false)),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('recent')
+									.setDescription('Newest rows (by createdAt / datetime column).')
+									.addStringOption((o) => tableOption(o))
+									.addIntegerOption((o) =>
+										o
+											.setName('limit')
+											.setDescription('Max rows (default 20, max 50).')
+											.setMinValue(1)
+											.setMaxValue(50)
+											.setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('search')
+									.setDescription('Substring search on a text column.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o
+											.setName('column')
+											.setDescription('Text column to search.')
+											.setRequired(true)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('query').setDescription('Substring to find.').setRequired(true))
+									.addIntegerOption((o) =>
+										o
+											.setName('limit')
+											.setDescription('Max rows (default 20, max 50).')
+											.setMinValue(1)
+											.setMaxValue(50)
+											.setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('export')
+									.setDescription('Export rows as a JSON file (up to 2000).')
+									.addStringOption((o) => tableOption(o))
+									.addIntegerOption((o) =>
+										o
+											.setName('limit')
+											.setDescription('Max rows (default 2000).')
+											.setMinValue(1)
+											.setMaxValue(2000)
+											.setRequired(false),
+									)
+									.addStringOption((o) =>
+										o
+											.setName('filter_column')
+											.setDescription('Optional equality filter column.')
+											.setRequired(false)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false)),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('patch')
+									.setDescription('Update multiple columns on a row via JSON.')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
+									)
+									.addStringOption((o) =>
+										o.setName('data').setDescription('JSON object of columns to update.').setRequired(true),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('clone')
+									.setDescription('Duplicate a row (new autoincrement PK).')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) => o.setName('key').setDescription('Source row PK.').setRequired(true))
+									.addStringOption((o) =>
+										o
+											.setName('overrides')
+											.setDescription('Optional JSON fields to change on the clone.')
+											.setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('bulkset')
+									.setDescription('Set a column on many rows (filter or confirm_all).')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o.setName('column').setDescription('Column to update.').setRequired(true).setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('value').setDescription('New value.').setRequired(true))
+									.addStringOption((o) =>
+										o
+											.setName('filter_column')
+											.setDescription('Equality filter column.')
+											.setRequired(false)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false))
+									.addBooleanOption((o) =>
+										o
+											.setName('confirm_all')
+											.setDescription('Required to update every row when no filter.')
+											.setRequired(false),
+									),
+							)
+							.addSubcommand((sub) =>
+								sub
+									.setName('purge')
+									.setDescription('Delete many rows (filter or confirm_all).')
+									.addStringOption((o) => tableOption(o))
+									.addStringOption((o) =>
+										o
+											.setName('filter_column')
+											.setDescription('Equality filter column.')
+											.setRequired(false)
+											.setAutocomplete(true),
+									)
+									.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false))
+									.addBooleanOption((o) =>
+										o
+											.setName('confirm_all')
+											.setDescription('Required to delete every row when no filter.')
+											.setRequired(false),
+									),
+							),
+					)
+					// ── runtime / ops ─────────────────────────────────────────────────────
+					.addSubcommand((sub) => sub.setName('info').setDescription('Bot process and Discord stats.'))
+					.addSubcommand((sub) =>
+						sub
+							.setName('guilds')
+							.setDescription('List guilds the bot is in.')
+							.addStringOption((o) => o.setName('query').setDescription('Filter by name or ID.').setRequired(false)),
+					)
+					.addSubcommand((sub) =>
+						sub
+							.setName('leave')
+							.setDescription('Leave a guild by ID.')
+							.addStringOption((o) => o.setName('guild-id').setDescription('Guild snowflake.').setRequired(true))
+							.addBooleanOption((o) => o.setName('confirm').setDescription('Must be true to leave.').setRequired(true)),
+					)
+					.addSubcommand((sub) =>
+						sub
+							.setName('say')
+							.setDescription('Send a message to a channel as the bot.')
+							.addStringOption((o) =>
+								o.setName('channel-id').setDescription('Target channel snowflake.').setRequired(true),
+							)
+							.addStringOption((o) => o.setName('message').setDescription('Message content.').setRequired(true)),
+					)
+					.addSubcommand((sub) =>
+						sub
+							.setName('dm')
+							.setDescription('DM a user as the bot.')
+							.addStringOption((o) => o.setName('user-id').setDescription('User snowflake.').setRequired(true))
+							.addStringOption((o) => o.setName('message').setDescription('Message content.').setRequired(true)),
+					)
+					.addSubcommand((sub) => sub.setName('reload').setDescription('Reload tickets.yml and status.yml from disk.'))
+					.addSubcommand((sub) =>
+						sub
+							.setName('presence')
+							.setDescription('Set the bot presence / activity.')
+							.addStringOption((o) =>
+								o
+									.setName('status')
+									.setDescription('Online status.')
+									.setRequired(false)
+									.addChoices(
+										{ name: 'Online', value: 'online' },
+										{ name: 'Idle', value: 'idle' },
+										{ name: 'Do Not Disturb', value: 'dnd' },
+										{ name: 'Invisible', value: 'invisible' },
+									),
+							)
+							.addStringOption((o) =>
+								o
+									.setName('type')
+									.setDescription('Activity type.')
+									.setRequired(false)
+									.addChoices(
+										{ name: 'Custom', value: 'custom' },
+										{ name: 'Playing', value: 'playing' },
+										{ name: 'Watching', value: 'watching' },
+										{ name: 'Listening', value: 'listening' },
+										{ name: 'Competing', value: 'competing' },
+									),
+							)
+							.addStringOption((o) =>
+								o.setName('text').setDescription('Activity / custom status text.').setRequired(false),
+							)
+							.addBooleanOption((o) =>
+								o.setName('clear').setDescription('Clear activity (keep status if set).').setRequired(false),
+							),
+					)
+					.addSubcommand((sub) =>
+						sub.setName('invite').setDescription('Generate a bot invite URL with recommended permissions.'),
+					)
+					.addSubcommand((sub) =>
+						sub
+							.setName('lookup')
+							.setDescription('Look up a user and mutual guilds.')
+							.addStringOption((o) => o.setName('user-id').setDescription('User snowflake.').setRequired(true)),
+					)
+					.addSubcommandGroup((group) =>
+						group
+							.setName('maintenance')
+							.setDescription('Global status-page maintenance mode.')
+							.addSubcommand((sub) => sub.setName('status').setDescription('Show global maintenance state.'))
+							.addSubcommand((sub) =>
+								sub
+									.setName('on')
+									.setDescription('Enable global maintenance.')
+									.addStringOption((o) =>
+										o.setName('reason').setDescription('Reason shown on the status page.').setRequired(false),
+									),
+							)
+							.addSubcommand((sub) => sub.setName('off').setDescription('Disable global maintenance.'))
+							.addSubcommand((sub) =>
+								sub
+									.setName('update')
+									.setDescription('Post a maintenance update to subscribers.')
+									.addStringOption((o) => o.setName('message').setDescription('Update message.').setRequired(true)),
+							),
+					)
+					// ── status group (global status page) ────────────────────────────────
+					.addSubcommandGroup((group) =>
+						addStatusAdminSubcommands(
+							group.setName('status').setDescription('Manage the global status page, services, and incidents.'),
 						),
-				)
-				// ── db group (structured table CRUD — no raw SQL) ─────────────────────
-				.addSubcommandGroup((group) =>
-					group
-						.setName('db')
-						.setDescription('Edit schema tables (bot owner). No raw SQL.')
-						.addSubcommand((sub) => sub.setName('tables').setDescription('List whitelisted schema tables.'))
-						.addSubcommand((sub) =>
-							sub
-								.setName('columns')
-								.setDescription('Show columns for a table.')
-								.addStringOption((o) => tableOption(o)),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('list')
-								.setDescription('List rows from a table.')
-								.addStringOption((o) => tableOption(o))
-								.addIntegerOption((o) =>
-									o
-										.setName('limit')
-										.setDescription('Max rows (default 20, max 50).')
-										.setMinValue(1)
-										.setMaxValue(50)
-										.setRequired(false),
-								)
-								.addStringOption((o) =>
-									o
-										.setName('filter_column')
-										.setDescription('Optional equality filter column.')
-										.setRequired(false)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) =>
-									o.setName('filter_value').setDescription('Filter value (use null for SQL NULL).').setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('get')
-								.setDescription('Get one row by primary key.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('set')
-								.setDescription('Update one column on a row.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
-								)
-								.addStringOption((o) =>
-									o.setName('column').setDescription('Column to update.').setRequired(true).setAutocomplete(true),
-								)
-								.addStringOption((o) =>
-									o.setName('value').setDescription('New value (null clears nullable fields).').setRequired(true),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('insert')
-								.setDescription('Insert a row from a JSON object.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('data').setDescription('JSON object of column → value.').setRequired(true),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('delete')
-								.setDescription('Delete a row by primary key.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
-								),
-						)
-						.addSubcommand((sub) => sub.setName('stats').setDescription('Row counts for every schema table.'))
-						.addSubcommand((sub) =>
-							sub
-								.setName('count')
-								.setDescription('Count rows in a table (optional filter).')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o
-										.setName('filter_column')
-										.setDescription('Optional equality filter column.')
-										.setRequired(false)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false)),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('recent')
-								.setDescription('Newest rows (by createdAt / datetime column).')
-								.addStringOption((o) => tableOption(o))
-								.addIntegerOption((o) =>
-									o
-										.setName('limit')
-										.setDescription('Max rows (default 20, max 50).')
-										.setMinValue(1)
-										.setMaxValue(50)
-										.setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('search')
-								.setDescription('Substring search on a text column.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('column').setDescription('Text column to search.').setRequired(true).setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('query').setDescription('Substring to find.').setRequired(true))
-								.addIntegerOption((o) =>
-									o
-										.setName('limit')
-										.setDescription('Max rows (default 20, max 50).')
-										.setMinValue(1)
-										.setMaxValue(50)
-										.setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('export')
-								.setDescription('Export rows as a JSON file (up to 2000).')
-								.addStringOption((o) => tableOption(o))
-								.addIntegerOption((o) =>
-									o
-										.setName('limit')
-										.setDescription('Max rows (default 2000).')
-										.setMinValue(1)
-										.setMaxValue(2000)
-										.setRequired(false),
-								)
-								.addStringOption((o) =>
-									o
-										.setName('filter_column')
-										.setDescription('Optional equality filter column.')
-										.setRequired(false)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false)),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('patch')
-								.setDescription('Update multiple columns on a row via JSON.')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('key').setDescription('PK value, or JSON object for composite keys.').setRequired(true),
-								)
-								.addStringOption((o) =>
-									o.setName('data').setDescription('JSON object of columns to update.').setRequired(true),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('clone')
-								.setDescription('Duplicate a row (new autoincrement PK).')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) => o.setName('key').setDescription('Source row PK.').setRequired(true))
-								.addStringOption((o) =>
-									o
-										.setName('overrides')
-										.setDescription('Optional JSON fields to change on the clone.')
-										.setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('bulkset')
-								.setDescription('Set a column on many rows (filter or confirm_all).')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o.setName('column').setDescription('Column to update.').setRequired(true).setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('value').setDescription('New value.').setRequired(true))
-								.addStringOption((o) =>
-									o
-										.setName('filter_column')
-										.setDescription('Equality filter column.')
-										.setRequired(false)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false))
-								.addBooleanOption((o) =>
-									o
-										.setName('confirm_all')
-										.setDescription('Required to update every row when no filter.')
-										.setRequired(false),
-								),
-						)
-						.addSubcommand((sub) =>
-							sub
-								.setName('purge')
-								.setDescription('Delete many rows (filter or confirm_all).')
-								.addStringOption((o) => tableOption(o))
-								.addStringOption((o) =>
-									o
-										.setName('filter_column')
-										.setDescription('Equality filter column.')
-										.setRequired(false)
-										.setAutocomplete(true),
-								)
-								.addStringOption((o) => o.setName('filter_value').setDescription('Filter value.').setRequired(false))
-								.addBooleanOption((o) =>
-									o
-										.setName('confirm_all')
-										.setDescription('Required to delete every row when no filter.')
-										.setRequired(false),
-								),
-						),
-				)
-				// ── runtime / ops ─────────────────────────────────────────────────────
-				.addSubcommand((sub) => sub.setName('info').setDescription('Bot process and Discord stats.'))
-				.addSubcommand((sub) =>
-					sub
-						.setName('guilds')
-						.setDescription('List guilds the bot is in.')
-						.addStringOption((o) => o.setName('query').setDescription('Filter by name or ID.').setRequired(false)),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('leave')
-						.setDescription('Leave a guild by ID.')
-						.addStringOption((o) => o.setName('guild-id').setDescription('Guild snowflake.').setRequired(true))
-						.addBooleanOption((o) => o.setName('confirm').setDescription('Must be true to leave.').setRequired(true)),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('say')
-						.setDescription('Send a message to a channel as the bot.')
-						.addStringOption((o) =>
-							o.setName('channel-id').setDescription('Target channel snowflake.').setRequired(true),
-						)
-						.addStringOption((o) => o.setName('message').setDescription('Message content.').setRequired(true)),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('dm')
-						.setDescription('DM a user as the bot.')
-						.addStringOption((o) => o.setName('user-id').setDescription('User snowflake.').setRequired(true))
-						.addStringOption((o) => o.setName('message').setDescription('Message content.').setRequired(true)),
-				)
-				.addSubcommand((sub) => sub.setName('reload').setDescription('Reload tickets.yml and status.yml from disk.'))
-				.addSubcommand((sub) =>
-					sub
-						.setName('presence')
-						.setDescription('Set the bot presence / activity.')
-						.addStringOption((o) =>
-							o
-								.setName('status')
-								.setDescription('Online status.')
-								.setRequired(false)
-								.addChoices(
-									{ name: 'Online', value: 'online' },
-									{ name: 'Idle', value: 'idle' },
-									{ name: 'Do Not Disturb', value: 'dnd' },
-									{ name: 'Invisible', value: 'invisible' },
-								),
-						)
-						.addStringOption((o) =>
-							o
-								.setName('type')
-								.setDescription('Activity type.')
-								.setRequired(false)
-								.addChoices(
-									{ name: 'Custom', value: 'custom' },
-									{ name: 'Playing', value: 'playing' },
-									{ name: 'Watching', value: 'watching' },
-									{ name: 'Listening', value: 'listening' },
-									{ name: 'Competing', value: 'competing' },
-								),
-						)
-						.addStringOption((o) =>
-							o.setName('text').setDescription('Activity / custom status text.').setRequired(false),
-						)
-						.addBooleanOption((o) =>
-							o.setName('clear').setDescription('Clear activity (keep status if set).').setRequired(false),
-						),
-				)
-				.addSubcommand((sub) =>
-					sub.setName('invite').setDescription('Generate a bot invite URL with recommended permissions.'),
-				)
-				.addSubcommand((sub) =>
-					sub
-						.setName('lookup')
-						.setDescription('Look up a user and mutual guilds.')
-						.addStringOption((o) => o.setName('user-id').setDescription('User snowflake.').setRequired(true)),
-				)
-				.addSubcommandGroup((group) =>
-					group
-						.setName('maintenance')
-						.setDescription('Global status-page maintenance mode.')
-						.addSubcommand((sub) => sub.setName('status').setDescription('Show global maintenance state.'))
-						.addSubcommand((sub) =>
-							sub
-								.setName('on')
-								.setDescription('Enable global maintenance.')
-								.addStringOption((o) =>
-									o.setName('reason').setDescription('Reason shown on the status page.').setRequired(false),
-								),
-						)
-						.addSubcommand((sub) => sub.setName('off').setDescription('Disable global maintenance.'))
-						.addSubcommand((sub) =>
-							sub
-								.setName('update')
-								.setDescription('Post a maintenance update to subscribers.')
-								.addStringOption((o) => o.setName('message').setDescription('Update message.').setRequired(true)),
-						),
-				),
+					),
+			process.env.SUPPORT_GUILD_ID ? { guildIds: [process.env.SUPPORT_GUILD_ID] } : undefined,
 		);
 	}
 
@@ -534,11 +572,7 @@ export class AdminCommand extends Subcommand {
 		const target = interaction.options.getUser('user', true);
 		const reason = interaction.options.getString('reason') ?? 'No reason provided';
 
-		const ownerIds = (process.env.BOT_OWNER_IDS ?? '')
-			.split(',')
-			.map((s) => s.trim())
-			.filter(Boolean);
-		if (ownerIds.includes(target.id)) {
+		if (isBotOwner(target.id)) {
 			return interaction.editReply(errorReply('You cannot blacklist a bot owner.'));
 		}
 		if (target.bot) {
@@ -1274,5 +1308,37 @@ export class AdminCommand extends Subcommand {
 		}
 		await addMaintenanceUpdate(message);
 		return interaction.editReply(successReply('Maintenance update posted to subscribers.'));
+	}
+
+	// ── /admin status (handlers live in lib/StatusAdmin.ts) ────────────────────────
+
+	public async chatInputStatusPanel(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusPanel(interaction);
+	}
+
+	public async chatInputStatusRefresh(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusRefresh(interaction);
+	}
+
+	public async chatInputStatusReload(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusReload(interaction);
+	}
+
+	public async chatInputStatusMaintenance(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusMaintenance(interaction);
+	}
+
+	public async chatInputStatusService(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusService(interaction);
+	}
+
+	public async chatInputStatusIncident(interaction: Subcommand.ChatInputCommandInteraction) {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return runStatusIncident(interaction);
 	}
 }

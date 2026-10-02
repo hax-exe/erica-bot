@@ -233,6 +233,7 @@ export class ModCommand extends Subcommand {
 		registry.registerChatInputCommand((builder) =>
 			builder
 				.setName('mod')
+				.setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 				.setDescription('Perform moderation actions on members or channels.')
 
 				// ── lock ───────────────────────────────────────────────────────────────

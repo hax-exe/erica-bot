@@ -2,6 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
 import { Colors, CV2_FLAG, makeContainer, meta, separator } from '../../lib/components.js';
+import { isBotOwner } from '../../lib/owners.js';
 
 function isStaff(perms: Readonly<import('discord.js').PermissionsBitField> | null | undefined): boolean {
 	if (!perms) return false;
@@ -14,14 +15,6 @@ function isStaff(perms: Readonly<import('discord.js').PermissionsBitField> | nul
 		PermissionFlagsBits.ModerateMembers,
 		PermissionFlagsBits.ManageMessages,
 	]);
-}
-
-function isOwner(userId: string): boolean {
-	return (process.env.BOT_OWNER_IDS ?? '')
-		.split(',')
-		.map((s) => s.trim())
-		.filter(Boolean)
-		.includes(userId);
 }
 
 @ApplyOptions<Command.Options>({
@@ -52,7 +45,7 @@ export class HelpCommand extends Command {
 	public override async chatInputRun(interaction: Command.ChatInputCommandInteraction) {
 		const forced = interaction.options.getString('section');
 		const staff = interaction.inCachedGuild() ? isStaff(interaction.memberPermissions) : false;
-		const owner = isOwner(interaction.user.id);
+		const owner = isBotOwner(interaction.user.id);
 
 		let section = forced ?? 'member';
 		if (!forced) {
@@ -87,6 +80,7 @@ function helpBody(section: string): string {
 			'**For everyone**',
 			'• `/info` — server, user, role, channel, avatar, banner, emoji, invite',
 			'• `/level` `/economy` — XP, wallet, earn, shop',
+			'• `/status incidents` — active status-page incidents',
 			'• `/gamble` — casino (classic, quick, table, risk, tickets)',
 			'• `/play` `/queue` `/skip` — music',
 			'• `/fun` — free games, RP, jokes',
@@ -117,6 +111,7 @@ function helpBody(section: string): string {
 		return [
 			'**Server admins**',
 			'• `/module` `/config` — toggles, logs, suggestions, TTS',
+			'• `/ecoadmin` — give, take, or reset economy balances',
 			'• `/welcomer` `/automod` `/antiraid`',
 			'• `/leveling` `/starboard` `/counting` `/feeds`',
 			'• `/tempvoice` `/sticky` `/autoresponder` `/reactionrole` `/stats`',
@@ -132,7 +127,7 @@ function helpBody(section: string): string {
 		'• `/admin info` `/admin guilds` `/admin leave`',
 		'• `/admin say` `/admin dm` `/admin reload` `/admin presence`',
 		'• `/admin invite` `/admin lookup` `/admin maintenance`',
-		'• `/status` — global status panel, incidents, maintenance',
+		'• `/admin status` — global status panel, services, incidents, maintenance',
 		'',
 		'Also see `/help section:staff` and `admin` for server tooling.',
 	].join('\n');

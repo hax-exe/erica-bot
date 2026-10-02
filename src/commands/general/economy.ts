@@ -48,6 +48,7 @@ import {
 	DAILY_MAX,
 	DAILY_MIN,
 	DIG_TIERS,
+	ecoGuard,
 	ensureShopSeeded,
 	FISH_COOLDOWN_MS,
 	FISH_TIERS,
@@ -84,7 +85,6 @@ import {
 	walletDeduct,
 	walletTransfer,
 } from '../../lib/EconomyUtil.js';
-import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
 // ─── Slots ─────────────────────────────────────────────────────────────────────
 
@@ -169,23 +169,6 @@ const MINE_MISS_MSGS = [
 	'You broke your torch mid-dig. Found nothing.',
 ];
 
-/** economy.balance is a signed 32-bit MySQL INT — never credit past it. */
-const MAX_WALLET_BALANCE = 2_147_483_647;
-
-// ─── Guard ────────────────────────────────────────────────────────────────────
-
-async function ecoGuard(interaction: Subcommand.ChatInputCommandInteraction): Promise<boolean> {
-	if (!interaction.inCachedGuild()) {
-		await interaction.editReply(errorReply('Server only.'));
-		return false;
-	}
-	if (!(await isModuleEnabled(interaction.guildId, 'economy'))) {
-		await interaction.editReply(errorReply('Economy module is disabled.'));
-		return false;
-	}
-	return true;
-}
-
 // ─── Pending duels ────────────────────────────────────────────────────────────
 
 interface PendingDuel {
@@ -233,15 +216,6 @@ const pendingDuels = new Map<string, PendingDuel>();
 			entries: [
 				{ name: 'list', chatInputRun: 'runShopList' },
 				{ name: 'buy', chatInputRun: 'runShopBuy' },
-			],
-		},
-		{
-			name: 'admin',
-			type: 'group',
-			entries: [
-				{ name: 'give', chatInputRun: 'runAdminGive' },
-				{ name: 'take', chatInputRun: 'runAdminTake' },
-				{ name: 'reset', chatInputRun: 'runAdminReset' },
 			],
 		},
 	],
@@ -348,42 +322,6 @@ export class EconomyCommand extends Subcommand {
 									o.setName('item').setDescription('Item name.').setRequired(true).setMaxLength(100),
 								),
 						),
-				)
-				.addSubcommandGroup((group) =>
-					group
-						.setName('admin')
-						.setDescription('Manage server economy balances (Staff only).')
-						.addSubcommand((s) =>
-							s
-								.setName('give')
-								.setDescription('Give coins to a user.')
-								.addUserOption((o) => o.setName('user').setDescription('The user to give coins to.').setRequired(true))
-								.addIntegerOption((o) =>
-									o
-										.setName('amount')
-										.setDescription('Amount of coins.')
-										.setRequired(true)
-										.setMinValue(1)
-										.setMaxValue(MAX_WALLET_BALANCE),
-								),
-						)
-						.addSubcommand((s) =>
-							s
-								.setName('take')
-								.setDescription('Take coins from a user.')
-								.addUserOption((o) =>
-									o.setName('user').setDescription('The user to take coins from.').setRequired(true),
-								)
-								.addIntegerOption((o) =>
-									o.setName('amount').setDescription('Amount of coins.').setRequired(true).setMinValue(1),
-								),
-						)
-						.addSubcommand((s) =>
-							s
-								.setName('reset')
-								.setDescription("Reset a user's wallet, bank, and streak.")
-								.addUserOption((o) => o.setName('user').setDescription('The user to reset.').setRequired(true)),
-						),
 				),
 		);
 	}
@@ -404,7 +342,7 @@ export class EconomyCommand extends Subcommand {
 					'**Items** — `/economy inventory` `use` · `/economy shop list|buy`',
 					'**Stats** — `/economy leaderboard` `transactions`',
 					'**Casino** — `/gamble` (slots, cards, crash, lottery, …)',
-					`-# Staff: \`/economy admin give|take|reset\``,
+					`-# Staff: \`/ecoadmin give|take|reset\``,
 				].join('\n'),
 			),
 		);
@@ -414,10 +352,17 @@ export class EconomyCommand extends Subcommand {
 	// ── balance ────────────────────────────────────────────────────────────────
 
 	public async runBalance(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply();
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!(await ecoGuard(interaction))) return;
 
-		const target = interaction.options.getUser('user') ?? interaction.user;
+		const requestedUser = interaction.options.getUser('user');
+		if (
+			requestedUser &&
+			requestedUser.id !== interaction.user.id &&
+			!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
+		)
+			return interaction.editReply(errorReply("Need Manage Server to view other users' balances."));
+		const target = requestedUser ?? interaction.user;
 		const row = await getOrCreateEconomy(target.id, interaction.guild!.id);
 		const total = row.balance + row.bank;
 		const pct = Math.round((row.bank / Math.max(row.bankCap, 1)) * 100);
@@ -470,34 +415,34 @@ export class EconomyCommand extends Subcommand {
 		if (target.id === interaction.user.id) {
 			const actionRow1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
-					.setCustomId('eco:dash:deposit')
+					.setCustomId(`eco:dash:deposit:${interaction.user.id}`)
 					.setLabel('Deposit All')
 					.setStyle(ButtonStyle.Secondary)
 					.setEmoji('🏦'),
 				new ButtonBuilder()
-					.setCustomId('eco:dash:withdraw')
+					.setCustomId(`eco:dash:withdraw:${interaction.user.id}`)
 					.setLabel('Withdraw All')
 					.setStyle(ButtonStyle.Secondary)
 					.setEmoji('👜'),
 				new ButtonBuilder()
-					.setCustomId('eco:dash:daily')
+					.setCustomId(`eco:dash:daily:${interaction.user.id}`)
 					.setLabel('Daily')
 					.setStyle(dailyReady ? ButtonStyle.Success : ButtonStyle.Secondary)
 					.setDisabled(!dailyReady),
 			);
 			const actionRow2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
-					.setCustomId('eco:dash:work')
+					.setCustomId(`eco:dash:work:${interaction.user.id}`)
 					.setLabel('Work')
 					.setStyle(workReady ? ButtonStyle.Primary : ButtonStyle.Secondary)
 					.setDisabled(!workReady),
 				new ButtonBuilder()
-					.setCustomId('eco:dash:crime')
+					.setCustomId(`eco:dash:crime:${interaction.user.id}`)
 					.setLabel('Crime')
 					.setStyle(crimeReady ? ButtonStyle.Danger : ButtonStyle.Secondary)
 					.setDisabled(!crimeReady),
 				new ButtonBuilder()
-					.setCustomId('eco:dash:slots')
+					.setCustomId(`eco:dash:slots:${interaction.user.id}`)
 					.setLabel('Slots (100)')
 					.setStyle(ButtonStyle.Secondary)
 					.setEmoji('🎰'),
@@ -1530,7 +1475,14 @@ export class EconomyCommand extends Subcommand {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		if (!(await ecoGuard(interaction))) return;
 
-		const target = interaction.options.getUser('user') ?? interaction.user;
+		const requestedUser = interaction.options.getUser('user');
+		if (
+			requestedUser &&
+			requestedUser.id !== interaction.user.id &&
+			!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
+		)
+			return interaction.editReply(errorReply("Need Manage Server to view other users' inventories."));
+		const target = requestedUser ?? interaction.user;
 		const isSelf = target.id === interaction.user.id;
 
 		const rows = await db.query.userInventory.findMany({
@@ -1990,102 +1942,6 @@ export class EconomyCommand extends Subcommand {
 		const row = await getOrCreateEconomy(interaction.user.id, interaction.guild!.id);
 		return interaction.editReply(
 			successReply(`Purchased **${item.name}**! ${useHint}\n-# Wallet: ${fmtCoins(row.balance)}`),
-		);
-	}
-
-	// ── admin give ─────────────────────────────────────────────────────────────
-	public async runAdminGive(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!(await ecoGuard(interaction))) return;
-
-		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the server economy.'));
-		}
-
-		const target = interaction.options.getUser('user', true);
-		const amount = interaction.options.getInteger('amount', true);
-		if (target.bot) return interaction.editReply(errorReply('Cannot give coins to a bot.'));
-
-		const before = await getOrCreateEconomy(target.id, interaction.guild!.id);
-		if (amount > MAX_WALLET_BALANCE - before.balance) {
-			return interaction.editReply(
-				errorReply(
-					`That would push <@${target.id}>'s wallet past the maximum of ${fmtCoins(MAX_WALLET_BALANCE)}. ` +
-						`They can receive at most ${fmtCoins(Math.max(0, MAX_WALLET_BALANCE - before.balance))}.`,
-				),
-			);
-		}
-		await walletAdd(target.id, interaction.guild!.id, amount);
-		await logTx(interaction.guild!.id, target.id, 'admin_add', amount, {
-			note: `Given by staff: ${interaction.user.tag}`,
-		});
-
-		const row = await getOrCreateEconomy(target.id, interaction.guild!.id);
-
-		return interaction.editReply(
-			successReply(
-				`Successfully gave ${fmtCoins(amount)} to <@${target.id}>.\n` +
-					`-# Target's New Wallet: ${row.balance.toLocaleString()} ${CURRENCY}`,
-			),
-		);
-	}
-
-	// ── admin take ─────────────────────────────────────────────────────────────
-	public async runAdminTake(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!(await ecoGuard(interaction))) return;
-
-		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the server economy.'));
-		}
-
-		const target = interaction.options.getUser('user', true);
-		const amount = interaction.options.getInteger('amount', true);
-		if (target.bot) return interaction.editReply(errorReply('Cannot take coins from a bot.'));
-
-		const row = await getOrCreateEconomy(target.id, interaction.guild!.id);
-		const due = Math.min(amount, row.balance);
-		// Only count what was actually deducted — the wallet may have changed since it was read.
-		const toTake = due > 0 && (await walletDeduct(target.id, interaction.guild!.id, due)) ? due : 0;
-		if (toTake > 0) {
-			await logTx(interaction.guild!.id, target.id, 'admin_remove', toTake, {
-				note: `Taken by staff: ${interaction.user.tag}`,
-			});
-		}
-
-		const updatedRow = await getOrCreateEconomy(target.id, interaction.guild!.id);
-
-		return interaction.editReply(
-			successReply(
-				`Successfully took ${fmtCoins(toTake)} from <@${target.id}>'s wallet.\n` +
-					`-# Target's New Wallet: ${updatedRow.balance.toLocaleString()} ${CURRENCY}`,
-			),
-		);
-	}
-
-	// ── admin reset ────────────────────────────────────────────────────────────
-	public async runAdminReset(interaction: Subcommand.ChatInputCommandInteraction) {
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		if (!(await ecoGuard(interaction))) return;
-
-		if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-			return interaction.editReply(errorReply('You do not have permission to manage the server economy.'));
-		}
-
-		const target = interaction.options.getUser('user', true);
-		if (target.bot) return interaction.editReply(errorReply('Cannot reset a bot.'));
-
-		await db
-			.update(schema.economy)
-			.set({ balance: 0, bank: 0, dailyStreak: 0 })
-			.where(and(eq(schema.economy.userId, target.id), eq(schema.economy.guildId, interaction.guild!.id)));
-
-		await logTx(interaction.guild!.id, target.id, 'admin_reset', 0, {
-			note: `Reset by staff: ${interaction.user.tag}`,
-		});
-
-		return interaction.editReply(
-			successReply(`Successfully reset all economy progress (wallet, bank, daily streak) for <@${target.id}>.`),
 		);
 	}
 }
