@@ -16,11 +16,9 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-erica}
       MYSQL_USER: ${MYSQL_USER:-erica}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
-=======
     # ports:
       # Host-side access for `bun dev` / `bun run db:migrate` (localhost only; stop any host MySQL on 3306 first)
     #   - '127.0.0.1:3306:3306'
->>>>>>> claude/tender-einstein-oxklpt
     volumes:
       - erica_mysql:/var/lib/mysql
     networks:
