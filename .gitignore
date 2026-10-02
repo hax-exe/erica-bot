@@ -38,3 +38,5 @@ coverage/
 
 # Lavalink plugin cache
 lavalink/plugins/
+
+.moonlink/
