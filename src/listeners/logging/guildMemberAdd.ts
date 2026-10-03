@@ -2,7 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { Events, type GuildMember } from 'discord.js';
 import { Colors, logContainer } from '../../lib/components.js';
-import { detectUsedInvite } from '../../lib/InviteUtil.js';
+import { getJoinInvite } from '../../lib/InviteUtil.js';
 import { LogEmpty, logFields, sendLog } from '../../lib/LoggingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 
@@ -15,7 +15,7 @@ export class GuildMemberAddListener extends Listener<typeof Events.GuildMemberAd
 		if (member.user.bot) return;
 		if (!(await isModuleEnabled(member.guild.id, 'logging'))) return;
 
-		const invite = await detectUsedInvite(member.guild);
+		const invite = await getJoinInvite(member);
 		const inviteValue = invite
 			? invite.inviterId
 				? `\`${invite.code}\` · created by <@${invite.inviterId}> · ${invite.uses} use${invite.uses === 1 ? '' : 's'}`
