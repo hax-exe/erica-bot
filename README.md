@@ -43,6 +43,7 @@ LAVALINK_PASSWORD=youshallnotpass
 - **`DATABASE_URL`** — MySQL connection string (`mysql://user:pass@host:3306/dbname`)
 - **`LAVALINK_*`** — NodeLink connection (Moonlink client); Compose overrides host to `nodelink`
 - **`DISCORD_PRESENCE_INTENT`** — Set to `true` to request the privileged Presence intent (see below; default off)
+- **`PHISHING_LIST_URL`** — URL to a JSON array of scam domains or newline-separated text (default `https://raw.githubusercontent.com/Discord-AntiScam/scam-links/main/list.json`; used by the phishing automod rule)
 
 #### Privileged gateway intents
 
@@ -98,6 +99,14 @@ API_ALLOWED_ORIGINS=https://example.com,https://www.example.com
 - **`SUPPORT_GUILD_ID`** — Required by `/api/team`, `/api/guild/member/:id`, and `/api/guild/set-roles` for member and role lookups.
 
 With `BOT_API_ENABLED=false` (or unset), Discord moderation, tickets, music, etc. work normally. `/api/health`, `/api/status` and `/api/team` are always served on `BOT_API_PORT`.
+
+---
+
+### Features
+
+See [**FEATURES.md**](FEATURES.md) for a full list of commands and modules, including seven optional community essentials:
+
+**Member Verification** — CAPTCHA gate with optional min account age · **Role Persistence** — save and restore roles on rejoin · **Invite Tracking** — milestone rewards · **Phishing Filter** — auto-delete scam links · **XP Multipliers** — role/channel/boost modifiers · **Scheduled Announcements** — recurring or one-time announcements · **Highlights** — keyword alerts via DM
 
 ---
 
