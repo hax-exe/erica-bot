@@ -5,6 +5,9 @@
 
 export const BOT_NAME = 'Erica';
 
+/** Brand accent (soft violet) for informational cards and panels. */
+export const BRAND_COLOR = 0x8b7cf6;
+
 /** Bot version advertised to external services (User-Agent, Lavalink client name). */
 export const BOT_VERSION = '1.0.0';
 

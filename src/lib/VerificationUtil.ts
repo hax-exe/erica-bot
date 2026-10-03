@@ -12,7 +12,7 @@ import {
 	type User,
 } from 'discord.js';
 import { eq } from 'drizzle-orm';
-import { Colors, logContainer, makeContainer, separator } from './components.js';
+import { Colors, logContainer, makeContainer, spacer } from './components.js';
 import { db, schema } from './database.js';
 import { logFields, sendLog } from './LoggingUtil.js';
 import { isModuleEnabled } from './ModuleUtil.js';
@@ -230,10 +230,10 @@ export function buildVerificationPanel(): ContainerBuilder {
 	const panel = makeContainer({ color: Colors.Info, header: 'Verification' });
 	panel.addTextDisplayComponents(
 		new TextDisplayBuilder().setContent(
-			'Press **Verify** below to confirm you are a real member and unlock the server.',
+			"Press **Verify** to confirm you're a real member and unlock the rest of the server.",
 		),
 	);
-	panel.addSeparatorComponents(separator());
+	panel.addSeparatorComponents(spacer());
 	panel.addActionRowComponents(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder().setCustomId(VERIFY_BUTTON_ID).setLabel('Verify').setStyle(ButtonStyle.Success),

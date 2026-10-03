@@ -1,8 +1,8 @@
 import type { Command } from '@sapphire/framework';
 import type { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags } from 'discord.js';
+import { MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
-import { Colors, errorReply, logContainer, successReply } from '../../../lib/components.js';
+import { Colors, cv2Reply, errorReply, logContainer, makeContainer, successReply } from '../../../lib/components.js';
 import { clip, joinLinesCapped } from '../../../lib/config/listFormat.js';
 import { db, schema } from '../../../lib/database.js';
 
@@ -117,6 +117,8 @@ export class PresetsHandler {
 		}
 
 		const list = joinLinesCapped(current.map((p) => `**ID ${p.id}:** ${clip(p.reason, 200)}`));
-		return interaction.editReply({ content: `**Moderation Presets:**\n${list}` });
+		const container = makeContainer({ color: Colors.Info, header: 'Moderation Presets' });
+		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(list));
+		return interaction.editReply(cv2Reply(container, true));
 	}
 }

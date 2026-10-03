@@ -1,7 +1,16 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
 import { escapeMarkdown, MessageFlags, TextDisplayBuilder } from 'discord.js';
-import { Colors, cv2Reply, errorReply, makeContainer, meta, successReply, warningReply } from '../../lib/components.js';
+import {
+	Colors,
+	chips,
+	cv2Reply,
+	errorReply,
+	hint,
+	makeContainer,
+	successReply,
+	warningReply,
+} from '../../lib/components.js';
 import {
 	addHighlight,
 	clearHighlights,
@@ -129,7 +138,7 @@ export class HighlightCommand extends Subcommand {
 
 		return interaction.editReply(
 			successReply(
-				`I'll DM you when **${escapeMarkdown(keyword)}** is mentioned in a channel you can read.\n-# Your DMs from this server must be open, otherwise I can't reach you. Limits: one DM per channel every ${NOTIFY_COOLDOWN_MS / 60_000} minutes, at most ${MEMBER_DM_BUDGET} highlight DMs every ${MEMBER_DM_WINDOW_MS / 60_000} minutes.`,
+				`Highlight added\nI'll DM you when **${escapeMarkdown(keyword)}** is mentioned in a channel you can read.\n-# Your DMs from this server must be open, otherwise I can't reach you. Limits: one DM per channel every ${NOTIFY_COOLDOWN_MS / 60_000} minutes, at most ${MEMBER_DM_BUDGET} highlight DMs every ${MEMBER_DM_WINDOW_MS / 60_000} minutes.`,
 			),
 		);
 	}
@@ -160,8 +169,8 @@ export class HighlightCommand extends Subcommand {
 
 		const container = makeContainer({ color: Colors.Info, header: 'Your highlights' });
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(keywords.map((k) => `- ${escapeMarkdown(k)}`).join('\n')),
-			new TextDisplayBuilder().setContent(meta(`${keywords.length}/${MAX_HIGHLIGHTS_PER_MEMBER} used`)),
+			new TextDisplayBuilder().setContent(chips(keywords)),
+			hint(`${keywords.length} of ${MAX_HIGHLIGHTS_PER_MEMBER} used · add more with \`/highlight add\``),
 		);
 		return interaction.editReply(cv2Reply(container, true));
 	}

@@ -6,9 +6,9 @@ import {
 	Colors,
 	cv2Reply,
 	errorReply,
-	field,
+	fields,
+	hint,
 	makeContainer,
-	meta,
 	successReply,
 	warningReply,
 } from '../../lib/components.js';
@@ -42,8 +42,8 @@ function moduleHint(state: ModuleState): string | null {
 
 /** Append the "module is off" hint to a confirmation, so staff are not left wondering why nothing happens. */
 async function withModuleHint(guildId: string, message: string): Promise<string> {
-	const hint = moduleHint(await getModuleState(guildId));
-	return hint ? `${message}\n-# ${hint}` : message;
+	const note = moduleHint(await getModuleState(guildId));
+	return note ? `${message}\n-# ${note}` : message;
 }
 
 @ApplyOptions<Subcommand.Options>({
@@ -115,23 +115,21 @@ export class RolePersistCommand extends Subcommand {
 			: 'None';
 
 		const container = makeContainer({ color: Colors.Info, header: 'Role Persistence' });
-		const hint = moduleHint(state);
-		if (hint) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${hint}`));
 		container.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
-				[
-					field('Module', moduleLabel),
-					field('Restore nickname', settings.restoreNickname ? 'Yes' : 'No'),
-					field('Ignored roles', ignored),
-				].join('\n'),
-			),
-			new TextDisplayBuilder().setContent(
-				meta(
-					'Roles are saved when a member leaves and given back when they rejoin',
-					'@everyone, managed, ignored, staff (Administrator, Manage Server, Ban Members…) and roles above mine are never restored',
-				),
+				fields([
+					['Module', moduleLabel],
+					['Restore nickname', settings.restoreNickname ? 'Yes' : 'No'],
+					['Ignored roles', ignored],
+				]),
 			),
 		);
+		const notes = [
+			'Roles are saved when a member leaves and given back when they rejoin.',
+			'@everyone, managed, ignored, staff (Administrator, Manage Server, Ban Members…) and roles above mine are never restored.',
+		];
+		const moduleNote = moduleHint(state);
+		container.addTextDisplayComponents(hint(...(moduleNote ? [moduleNote, ...notes] : notes)));
 
 		return interaction.editReply(cv2Reply(container, true));
 	}

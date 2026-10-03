@@ -2,7 +2,10 @@
  * Components V2 design system.
  *
  * Design principles:
- *  - Accent bar signals status (no emoji prefix on every reply)
+ *  - Accent bar signals status (no emoji prefix on every reply); informational cards and
+ *    panels use the brand accent (`BRAND_COLOR`) so they read as one consistent family
+ *  - Every card follows title -> body -> hint: a ### header (also on multi-line status replies),
+ *    the content, then any -# hint lines at the very end
  *  - ### for section headers (lighter weight than ##); leading emoji stripped via plainHeader()
  *  - **Label** value fields (no trailing colon)
  *  - -# for all metadata / footer lines
@@ -27,6 +30,7 @@ import {
 	ThumbnailBuilder,
 	type User,
 } from 'discord.js';
+import { BRAND_COLOR } from './brand.js';
 
 /** The flag required for all Components V2 messages. */
 export const CV2_FLAG = MessageFlags.IsComponentsV2;
@@ -34,24 +38,24 @@ export const CV2_FLAG = MessageFlags.IsComponentsV2;
 // ─── Colour palette ────────────────────────────────────────────────────────────
 
 export const Colors = {
-	/** Invisible / Neutral — default embed background */
-	Info: 0x2b2d31,
-	/** Sleek Green — success / join */
-	Success: 0x43b581,
-	/** Soft Amber — warning / caution */
-	Warning: 0xfaa61a,
-	/** Soft Red — error / ban / destructive */
-	Error: 0xf04747,
+	/** Brand accent (soft violet) — informational cards and panels */
+	Info: BRAND_COLOR,
+	/** Green — success / join */
+	Success: 0x23a55a,
+	/** Amber — warning / caution */
+	Warning: 0xf0b232,
+	/** Red — error / ban / destructive */
+	Error: 0xf23f43,
 	/** Orange — kick / timeout */
 	Moderation: 0xeb6434,
-	/** Invisible Neutral — minor events */
+	/** Invisible Neutral — minor events / loading states */
 	Neutral: 0x2b2d31,
 	/** Purple — ticket events */
 	Ticket: 0x9b59b6,
 	/** Teal — message events */
 	Message: 0x1abc9c,
 	/** Blurple — voice events */
-	Voice: 0x7289da,
+	Voice: 0x5865f2,
 } as const;
 
 /** Strip leading emoji / pictographs so accent color carries status, not decoration. */
@@ -82,6 +86,49 @@ export function meta(...parts: string[]): string {
 	return `-# ${parts.join(' · ')}`;
 }
 
+/** Several `**Label** value` lines in one block — one `field()` per pair. */
+export function fields(pairs: Array<[string, string]>): string {
+	return pairs.map(([label, value]) => field(label, value)).join('\n');
+}
+
+/** Hint block — one `-# ` line per argument (not one dotted run-on line). Goes last in a card. */
+export function hint(...lines: string[]): TextDisplayBuilder {
+	return new TextDisplayBuilder().setContent(lines.map((line) => `-# ${line}`).join('\n'));
+}
+
+/** Breathing room inside a card without a visible divider. */
+export function spacer(): SeparatorBuilder {
+	return new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small);
+}
+
+/**
+ * Card header: `### title` with an optional `-# subtitle` line.
+ * With a thumbnail URL it is a Section with a thumbnail accessory (e.g. a user's avatar);
+ * otherwise a plain TextDisplay, since a Section requires an accessory.
+ */
+export function headerSection(opts: {
+	title: string;
+	subtitle?: string;
+	thumbnailUrl?: string | null;
+}): SectionBuilder | TextDisplayBuilder {
+	let content = `### ${plainHeader(opts.title)}`;
+	if (opts.subtitle) content += `\n-# ${opts.subtitle}`;
+	const text = new TextDisplayBuilder().setContent(content);
+	if (!opts.thumbnailUrl) return text;
+	return new SectionBuilder()
+		.addTextDisplayComponents(text)
+		.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.thumbnailUrl));
+}
+
+/** Inline code chips for short keyword lists: `` `a` `b` ``. Backticks in items are stripped. */
+export function chips(items: string[]): string {
+	return items
+		.map((item) => item.replace(/`/g, ''))
+		.filter((item) => item.length > 0)
+		.map((item) => `\`${item}\``)
+		.join(' ');
+}
+
 // ─── Container factory ─────────────────────────────────────────────────────────
 
 /**
@@ -109,27 +156,73 @@ export function cv2Reply(container: ContainerBuilder, ephemeral = false): Intera
 	};
 }
 
+const HINT_PREFIX = '-#';
+
+/**
+ * Status reply structure: title -> body -> hint.
+ * A single non-empty line is returned unchanged. Otherwise `-#` hint lines move to the end
+ * after one blank line, and the other lines keep their order. The first line becomes a
+ * `### title` (one trailing `.` or `:` dropped, ellipses kept) only when at least one non-hint body
+ * line follows it and it contains no `**` (titling would invert the caller's emphasis).
+ * Adds at most a few characters.
+ */
+export function formatStatus(message: string): string {
+	const lines = message.split('\n');
+	if (lines.filter((line) => line.trim().length > 0).length <= 1) return message;
+
+	const isHint = (line: string) => line.trim().startsWith(HINT_PREFIX);
+	const [first = '', ...rest] = lines;
+	const main: string[] = [];
+	const hints: string[] = [];
+
+	const firstTrimmed = first.trim();
+	const hasBody = rest.some((line) => line.trim().length > 0 && !isHint(line));
+	if (isHint(first)) {
+		hints.push(firstTrimmed);
+	} else if (hasBody && firstTrimmed.length > 0 && !firstTrimmed.includes('**')) {
+		const title =
+			firstTrimmed.endsWith(':') || (firstTrimmed.endsWith('.') && !firstTrimmed.endsWith('..'))
+				? firstTrimmed.slice(0, -1)
+				: firstTrimmed;
+		main.push(`### ${title}`);
+	} else {
+		main.push(first);
+	}
+
+	for (const line of rest) {
+		if (isHint(line)) hints.push(line.trim());
+		else main.push(line);
+	}
+
+	while (main.length > 0 && main[main.length - 1]?.trim() === '') main.pop();
+	while (main.length > 0 && main[0]?.trim() === '') main.shift();
+
+	if (hints.length === 0) return main.join('\n');
+	if (main.length === 0) return hints.join('\n');
+	return `${main.join('\n')}\n\n${hints.join('\n')}`;
+}
+
 export function errorReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Error);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function successReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Success);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function warningReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Warning);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function loadingReply(message: string): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Neutral);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c);
 }
 

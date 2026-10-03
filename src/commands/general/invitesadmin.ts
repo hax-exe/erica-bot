@@ -1,7 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
 import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
-import { Colors, cv2Reply, errorReply, makeContainer, successReply, warningReply } from '../../lib/components.js';
+import { Colors, cv2Reply, errorReply, hint, makeContainer, successReply, warningReply } from '../../lib/components.js';
 import { joinLinesCapped } from '../../lib/config/listFormat.js';
 import {
 	addInviteReward,
@@ -135,14 +135,16 @@ export class InvitesAdminCommand extends Subcommand {
 			);
 		}
 
-		const card = makeContainer({ color: Colors.Info, header: `Invite Rewards (${rewards.length})` });
+		const card = makeContainer({ color: Colors.Info, header: 'Invite Rewards' });
 		card.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
-				joinLinesCapped(rewards.map((r) => `**${r.invites.toLocaleString()}** invites → <@&${r.roleId}>`)),
+				joinLinesCapped(rewards.map((r) => `<@&${r.roleId}> · **${r.invites.toLocaleString()}** invites`)),
 			),
 		);
 		card.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent('-# Roles are granted automatically when a member reaches the count.'),
+			hint(
+				`${rewards.length} reward${rewards.length === 1 ? '' : 's'} · roles are granted automatically when a member reaches the count`,
+			),
 		);
 		return interaction.editReply(cv2Reply(card, true));
 	}

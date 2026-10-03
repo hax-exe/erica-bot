@@ -10,7 +10,7 @@ import {
 	takePendingSchedule,
 } from '../../lib/AnnouncementUtil.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
-import { errorReply, successReply } from '../../lib/components.js';
+import { errorReply, fields, successReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { humanDuration } from '../../lib/parseDuration.js';
 
@@ -112,11 +112,13 @@ export class ScheduleModalListener extends Listener<typeof Events.InteractionCre
 			.$returningId();
 
 		const first = Math.floor(nextRunAt / 1000);
-		const repeat = pending.intervalMs ? ` Repeats every **${humanDuration(pending.intervalMs)}**.` : '';
+		const details: Array<[string, string]> = [
+			['Channel', `<#${pending.channelId}>`],
+			['First run', `<t:${first}:F> (<t:${first}:R>)`],
+		];
+		if (pending.intervalMs) details.push(['Repeats', `every ${humanDuration(pending.intervalMs)}`]);
 		return interaction.editReply(
-			successReply(
-				`Scheduled announcement \`#${id}\` for <#${pending.channelId}>. First run <t:${first}:F> (<t:${first}:R>).${repeat}`,
-			),
+			successReply(`Announcement scheduled\n${fields(details)}\n-# ID \`#${id}\` · remove with \`/schedule delete\``),
 		);
 	}
 }

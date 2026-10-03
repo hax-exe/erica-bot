@@ -1,8 +1,16 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags, PermissionFlagsBits, TextDisplayBuilder } from 'discord.js';
+import {
+	type ContainerBuilder,
+	escapeMarkdown,
+	MessageFlags,
+	PermissionFlagsBits,
+	SectionBuilder,
+	TextDisplayBuilder,
+	type User,
+} from 'discord.js';
 import { BOT_NAME } from '../../lib/brand.js';
-import { Colors, cv2Reply, field, makeContainer, separator } from '../../lib/components.js';
+import { Colors, cv2Reply, field, fields, headerSection, hint, makeContainer, spacer } from '../../lib/components.js';
 import {
 	buildInviteLeaderboardPage,
 	getInviterCounts,
@@ -19,6 +27,19 @@ function describeInviter(row: InviteJoinRow | null): string {
 	if (!row) return 'Unknown — no join was recorded (they may have joined before tracking was on)';
 	if (!row.inviterId) return 'Unknown — vanity URL, or the invite could not be determined';
 	return row.inviteCode ? `<@${row.inviterId}> · \`${row.inviteCode}\`` : `<@${row.inviterId}>`;
+}
+
+/** Card with the member's name and avatar as its header (no em-dash title). */
+function memberCard(user: User, subtitle: string): ContainerBuilder {
+	const card = makeContainer({ color: Colors.Info });
+	const header = headerSection({
+		title: escapeMarkdown(user.username),
+		subtitle,
+		thumbnailUrl: user.displayAvatarURL(),
+	});
+	if (header instanceof SectionBuilder) card.addSectionComponents(header);
+	else card.addTextDisplayComponents(header);
+	return card;
 }
 
 @ApplyOptions<Subcommand.Options>({
@@ -65,31 +86,26 @@ export class InvitesCommand extends Subcommand {
 			getLatestJoin(guild.id, user.id),
 		]);
 
-		const card = makeContainer({ color: Colors.Info, header: `Invites — ${user.username}` });
+		const card = memberCard(user, 'Invite stats');
 		card.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
 				[
-					field('Invites', counts.effective.toLocaleString()),
-					field('Joins', counts.joins.toLocaleString()),
-					field('Left', counts.left.toLocaleString()),
-					field('Fake', counts.fake.toLocaleString()),
-				].join('\n'),
+					`**${counts.effective.toLocaleString()}** invites`,
+					`**${counts.joins.toLocaleString()}** joins`,
+					`**${counts.left.toLocaleString()}** left`,
+					`**${counts.fake.toLocaleString()}** fake`,
+				].join(' · '),
 			),
 		);
-		card.addSeparatorComponents(separator());
+		card.addSeparatorComponents(spacer());
 		card.addTextDisplayComponents(new TextDisplayBuilder().setContent(field('Invited by', describeInviter(joinRow))));
-		card.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				'-# Invites = joins who are still here and were not fake (account under 7 days old at join).',
-			),
-		);
+		const hints = ['Invites = joins who are still here and were not fake (account under 7 days old at join).'];
 		if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) {
-			card.addTextDisplayComponents(
-				new TextDisplayBuilder().setContent(
-					`-# ${BOT_NAME} needs the **Manage Server** permission to read invites. Without it, new joins can't be attributed.`,
-				),
+			hints.push(
+				`${BOT_NAME} needs the **Manage Server** permission to read invites. Without it, new joins can't be attributed.`,
 			);
 		}
+		card.addTextDisplayComponents(hint(...hints));
 		return interaction.editReply(cv2Reply(card, true));
 	}
 
@@ -109,10 +125,10 @@ export class InvitesCommand extends Subcommand {
 		const user = interaction.options.getUser('user', true);
 		const row = await getLatestJoin(guild.id, user.id);
 
-		const card = makeContainer({ color: Colors.Info, header: `Inviter — ${user.username}` });
-		const lines = [field('Invited by', describeInviter(row))];
-		if (row) lines.push(field('Joined', `<t:${unixSeconds(row.joinedAt)}:R>`));
-		card.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+		const card = memberCard(user, 'Inviter');
+		const pairs: Array<[string, string]> = [['Invited by', describeInviter(row)]];
+		if (row) pairs.push(['Joined', `<t:${unixSeconds(row.joinedAt)}:R>`]);
+		card.addTextDisplayComponents(new TextDisplayBuilder().setContent(fields(pairs)));
 		return interaction.editReply(cv2Reply(card, true));
 	}
 }

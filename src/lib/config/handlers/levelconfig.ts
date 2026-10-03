@@ -1,7 +1,16 @@
 import type { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags, SeparatorBuilder, TextDisplayBuilder } from 'discord.js';
+import { MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { and, eq, sql } from 'drizzle-orm';
-import { Colors, CV2_FLAG, errorReply, makeContainer, successReply } from '../../../lib/components.js';
+import {
+	Colors,
+	CV2_FLAG,
+	errorReply,
+	hint,
+	makeContainer,
+	spacer,
+	successReply,
+	warningReply,
+} from '../../../lib/components.js';
 import { db, schema } from '../../../lib/database.js';
 import {
 	BOOST_MAX_DURATION_MS,
@@ -348,20 +357,20 @@ export class LevelConfigHandler {
 
 		if (rows.length === 0 && !boost) {
 			return interaction.editReply(
-				errorReply('No XP multipliers or boosts are set. Use `/leveling multiplier set-role` or `set-channel`.'),
+				warningReply('No XP multipliers or boosts are set. Use `/leveling multiplier set-role` or `set-channel`.'),
 			);
 		}
 
 		const roleLines = rows
 			.filter((r) => r.targetType === 'role')
-			.map((r) => `<@&${r.targetId}> — ${formatPercent(r.percent)}`);
+			.map((r) => `<@&${r.targetId}> · ${formatPercent(r.percent)}`);
 		const channelLines = rows
 			.filter((r) => r.targetType === 'channel')
-			.map((r) => `<#${r.targetId}> — ${formatPercent(r.percent)}`);
+			.map((r) => `<#${r.targetId}> · ${formatPercent(r.percent)}`);
 
 		const sections: string[] = [];
 		if (boost) {
-			sections.push(`**XP boost**\n${formatPercent(boost.percent)}, ends <t:${unixSeconds(boost.endsAt)}:R>`);
+			sections.push(`**Active boost** ${formatPercent(boost.percent)} · ends <t:${unixSeconds(boost.endsAt)}:R>`);
 		}
 		// Share the text budget between the two lists so a long one cannot hide the other.
 		const roleBudget = channelLines.length > 0 ? Math.floor(LIST_TEXT_BUDGET / 2) : LIST_TEXT_BUDGET;
@@ -374,11 +383,9 @@ export class LevelConfigHandler {
 
 		const container = makeContainer({ color: Colors.Info, header: 'XP Multipliers' });
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(sections.join('\n\n')));
-		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
+		container.addSeparatorComponents(spacer());
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`-# Highest role × channel × boost, capped at ${MAX_XP_MULTIPLIER}x. 150% = 1.5x XP.`,
-			),
+			hint(`Highest role × channel × boost, capped at ${MAX_XP_MULTIPLIER}x. 150% = 1.5x XP.`),
 		);
 		return interaction.editReply({ components: [container], flags: CV2_FLAG });
 	}
@@ -405,9 +412,9 @@ export class LevelConfigHandler {
 		await upsertLevelSettings(interaction.guildId, { boostPercent: percent, boostEndsAt: endsAt });
 		return interaction.editReply(
 			successReply(
-				`XP boost started: **${formatPercent(percent)}** for **${humanDuration(durationMs)}**, ending <t:${unixSeconds(endsAt)}:R>.` +
-					(replaced ? ' It replaces the boost that was running.' : '') +
-					` Combined multipliers are capped at ${MAX_XP_MULTIPLIER}x.`,
+				`XP boost started\n**${formatPercent(percent)}** for **${humanDuration(durationMs)}**, ending <t:${unixSeconds(endsAt)}:R>.` +
+					(replaced ? '\n-# Replaces the boost that was running.' : '') +
+					`\n-# Combined multipliers are capped at ${MAX_XP_MULTIPLIER}x.`,
 			),
 		);
 	}
@@ -436,25 +443,23 @@ export class LevelConfigHandler {
 
 		const lines = [
 			`**Status** ${s.enabled ? 'Enabled' : 'Disabled'}`,
-			`**XP Rate** ${s.xpMin}–${s.xpMax} per message • **Cooldown** ${s.cooldownSeconds}s`,
+			`**XP Rate** ${s.xpMin}–${s.xpMax} per message · **Cooldown** ${s.cooldownSeconds}s`,
 			`**Level-up channel** ${s.levelUpChannelId ? `<#${s.levelUpChannelId}>` : 'Same channel as message'}`,
 			`**Level-up message** \`${s.levelUpMessage}\``,
 			`**No-XP roles** ${noXpRoles.length ? noXpRoles.map((id) => `<@&${id}>`).join(', ') : 'None'}`,
 			`**No-XP channels** ${noXpChannels.length ? noXpChannels.map((id) => `<#${id}>`).join(', ') : 'None'}`,
 			``,
-			`**Voice XP** ${s.voiceXpEnabled ? 'Enabled' : 'Disabled'} • **Rate** ${s.voiceXpPerMinute} XP/min • **Min members** ${s.voiceMinMembers}`,
+			`**Voice XP** ${s.voiceXpEnabled ? 'Enabled' : 'Disabled'} · **Rate** ${s.voiceXpPerMinute} XP/min · **Min members** ${s.voiceMinMembers}`,
 			`**No-XP voice channels** ${noXpVoice.length ? noXpVoice.map((id) => `<#${id}>`).join(', ') : 'None'}`,
 			``,
-			`**XP multipliers** ${multiplierCount} configured • \`/leveling multiplier list\``,
+			`**XP multipliers** ${multiplierCount} configured · \`/leveling multiplier list\``,
 			`**XP boost** ${boost ? `${formatPercent(boost.percent)}, ends <t:${unixSeconds(boost.endsAt)}:R>` : 'None'}`,
 		].join('\n');
 
 		const container = makeContainer({ color: Colors.Info, header: 'Leveling Configuration' });
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines));
-		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true));
-		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent('-# Use `/leveling role-reward-list` for role reward details.'),
-		);
+		container.addSeparatorComponents(spacer());
+		container.addTextDisplayComponents(hint('Use `/leveling role-reward-list` for role reward details.'));
 		return interaction.editReply({ components: [container], flags: CV2_FLAG });
 	}
 }
