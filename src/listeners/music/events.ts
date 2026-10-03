@@ -256,28 +256,14 @@ export class MusicListeners extends Listener {
 					}
 				}
 
-				// One Now Playing message — edit in place on track change; never stack duplicates
+				// Each track start sends a fresh Now Playing message at the bottom; never stack duplicates
 				if (player.textChannelId !== guildRow?.musicChannelId) {
-					const existing = npMessages.get(player.guildId);
-					if (existing) {
-						const edited = await existing.edit({ components: [card], flags: CV2_FLAG as any }).catch(() => null);
-						if (edited) {
-							npMessages.set(player.guildId, edited);
-						} else {
-							npMessages.delete(player.guildId);
-							const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
-								components: [card],
-								flags: CV2_FLAG,
-							}).catch(() => null);
-							if (sent) npMessages.set(player.guildId, sent);
-						}
-					} else {
-						const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
-							components: [card],
-							flags: CV2_FLAG,
-						}).catch(() => null);
-						if (sent) npMessages.set(player.guildId, sent);
-					}
+					clearNpMessage(player.guildId);
+					const sent = await (ch.send as (opts: unknown) => Promise<Message>)({
+						components: [card],
+						flags: CV2_FLAG,
+					}).catch(() => null);
+					if (sent) npMessages.set(player.guildId, sent);
 				}
 
 				await saveMusicQueue(player);
