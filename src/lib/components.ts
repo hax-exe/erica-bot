@@ -19,6 +19,7 @@ import {
 	ButtonStyle,
 	ContainerBuilder,
 	EmbedBuilder,
+	escapeMarkdown,
 	type InteractionEditReplyOptions,
 	MessageFlags,
 	SectionBuilder,
@@ -473,11 +474,38 @@ export function confirmCancelRow(confirmId: string, cancelId: string): ActionRow
 
 export type MusicLoopMode = 'off' | 'track' | 'queue';
 
+/** Longest track title shown in music cards and lists before it is cut with `…`. */
+export const TRACK_TITLE_MAX = 80;
+
+/** Escape markdown, including `[` / `]`, so user-provided text can't break a masked link. */
+export function escapeTrackText(text: string): string {
+	return escapeMarkdown(text).replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+/** Backslash-escape a line-leading block marker (`#`, `-`, `>`, `*`, `+`, `1.`) so it can't become a heading/list/quote. */
+export function escapeLineStart(text: string): string {
+	return text.replace(/^(\s*)([#>+*-])/, '$1\\$2').replace(/^(\s*\d+)\./, '$1\\.');
+}
+
 /**
- * Now Playing card — title + artwork, quiet meta, icon transport controls.
+ * Track title as a masked link (`[title](uri)`), or the escaped title when there is no usable
+ * http(s) URI. The title is cut to `maxLength` characters before escaping.
+ */
+export function trackLink(title: string, uri?: string | null, maxLength = TRACK_TITLE_MAX): string {
+	const clean = title.replace(/\s+/g, ' ').trim() || 'Unknown';
+	const cut = clean.length > maxLength ? `${clean.slice(0, maxLength - 1).trimEnd()}…` : clean;
+	const text = escapeTrackText(cut);
+	if (!uri || uri.length > 512 || !/^https?:\/\/\S+$/i.test(uri)) return text;
+	return `[${text}](${uri.replace(/\(/g, '%28').replace(/\)/g, '%29')})`;
+}
+
+/**
+ * Now Playing card — compact block: `-#` eyebrow, `###` track link, artist · album, one `-#` meta
+ * line, artwork as the thumbnail, then the controls after a spacer.
  * No Unicode progress bars (Discord turns them into ugly scrubbers).
  */
 export function musicTrackCard(opts: {
+	/** Eyebrow text above the title, e.g. "Now playing" / "Paused". Defaults to "Now playing". */
 	header?: string;
 	color: number;
 	title: string;
@@ -504,43 +532,43 @@ export function musicTrackCard(opts: {
 }): ContainerBuilder {
 	const c = new ContainerBuilder().setAccentColor(opts.color);
 
-	const header = opts.header?.trim();
-	if (header) {
-		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${plainHeader(header)}`));
-		c.addSeparatorComponents(separator());
-	}
+	const eyebrow = plainHeader(opts.header?.trim() || 'Now playing');
+	const lines: string[] = [`-# ${eyebrow}`, `### ${trackLink(opts.title, opts.uri)}`];
 
-	const titleLine = opts.uri ? `**[${opts.title}](${opts.uri})**` : `**${opts.title}**`;
-	const lines: string[] = [titleLine];
+	const byline = [opts.author, opts.album]
+		.map((part) => part?.trim())
+		.filter((part): part is string => !!part)
+		.map((part) => escapeTrackText(part.length > 100 ? `${part.slice(0, 99).trimEnd()}…` : part));
+	if (byline.length) lines.push(escapeLineStart(byline.join(' · ')));
 
-	if (opts.author || opts.album) {
-		lines.push([opts.author, opts.album].filter(Boolean).join(' · '));
-	}
-
-	const timeLine =
+	// One quiet meta line: only positive / useful state — no "empty" / "off" noise
+	const metaBits: string[] = [];
+	const time =
 		opts.position && opts.duration ? `${opts.position} / ${opts.duration}` : (opts.duration ?? opts.position ?? null);
-	if (timeLine) lines.push(meta(timeLine));
-
-	// Footer: only positive / useful state — no "empty" / "off" noise
-	const stateBits: string[] = [];
-	if (opts.requesterMention) stateBits.push(`Requested by ${opts.requesterMention}`);
-	if (opts.queueSize && opts.queueSize > 0) {
-		stateBits.push(`${opts.queueSize} in queue`);
-	}
-	if (opts.autoPlay) stateBits.push('Autoplay');
-	if (stateBits.length) lines.push(meta(...stateBits));
+	if (time) metaBits.push(time);
+	if (opts.requesterMention) metaBits.push(`Requested by ${opts.requesterMention}`);
+	if (opts.queueSize && opts.queueSize > 0) metaBits.push(`${opts.queueSize} up next`);
+	if (opts.autoPlay) metaBits.push('Autoplay');
+	if (metaBits.length) lines.push(meta(...metaBits));
 
 	if (opts.body?.trim()) {
 		lines.push('');
 		lines.push(opts.body.trim());
 	}
 
-	const section = new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
-	if (opts.artworkUrl) section.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.artworkUrl));
-	c.addSectionComponents(section);
+	const text = new TextDisplayBuilder().setContent(lines.join('\n'));
+	if (opts.artworkUrl) {
+		c.addSectionComponents(
+			new SectionBuilder()
+				.addTextDisplayComponents(text)
+				.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.artworkUrl)),
+		);
+	} else {
+		c.addTextDisplayComponents(text);
+	}
 
 	if (opts.withControls) {
-		c.addSeparatorComponents(separator());
+		c.addSeparatorComponents(spacer());
 		const [row1, row2] = musicControlRows({ paused: opts.paused, loopMode: opts.loopMode });
 		c.addActionRowComponents(row1);
 		c.addActionRowComponents(row2);
@@ -551,12 +579,13 @@ export function musicTrackCard(opts: {
 
 /** Idle jukebox panel (no track playing). */
 export function idleJukeboxCard(): ContainerBuilder {
-	const c = makeContainer({ color: Colors.Voice, header: 'Jukebox' });
-	c.addSeparatorComponents(separator());
+	const c = new ContainerBuilder().setAccentColor(Colors.Voice);
 	c.addTextDisplayComponents(
-		new TextDisplayBuilder().setContent('Nothing playing.\nSend a **song name** or **link** in this channel to start.'),
+		new TextDisplayBuilder().setContent(
+			'-# Jukebox\n### Nothing playing\nSend a song name or link in this channel to start.',
+		),
 	);
-	c.addSeparatorComponents(separator());
+	c.addSeparatorComponents(spacer());
 	const [row1, row2] = musicControlRows();
 	c.addActionRowComponents(row1);
 	c.addActionRowComponents(row2);
@@ -565,7 +594,8 @@ export function idleJukeboxCard(): ContainerBuilder {
 
 /**
  * Icon transport row + options menu — matches how production music bots present controls.
- * Labels are omitted so the row stays compact; emoji carries meaning.
+ * Labels are omitted so the row stays compact; emoji carries meaning. Only play/pause (and loop
+ * while it is on) are Primary, so the active state stands out.
  */
 export function musicControlRows(
 	opts: { paused?: boolean; loopMode?: MusicLoopMode } = {},
@@ -582,22 +612,24 @@ export function musicControlRows(
 			.setCustomId('music:loop')
 			.setEmoji(opts.loopMode === 'track' ? '🔂' : '🔁')
 			.setStyle(looping ? ButtonStyle.Primary : ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId('music:stop').setEmoji('⏹').setStyle(ButtonStyle.Danger),
+		new ButtonBuilder().setCustomId('music:stop').setEmoji('⏹').setStyle(ButtonStyle.Secondary),
 	);
+	const option = (label: string, value: string, emoji: string, description: string) =>
+		new StringSelectMenuOptionBuilder().setLabel(label).setValue(value).setEmoji(emoji).setDescription(description);
 	const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
 		new StringSelectMenuBuilder()
 			.setCustomId('music:options')
-			.setPlaceholder('Options')
+			.setPlaceholder('More options')
 			.addOptions(
-				new StringSelectMenuOptionBuilder().setLabel('Queue').setValue('queue'),
-				new StringSelectMenuOptionBuilder().setLabel('Shuffle').setValue('shuffle'),
-				new StringSelectMenuOptionBuilder().setLabel('Autoplay').setValue('autoplay'),
-				new StringSelectMenuOptionBuilder().setLabel('Clear queue').setValue('clear_queue'),
-				new StringSelectMenuOptionBuilder().setLabel('Volume').setValue('volume_modal'),
-				new StringSelectMenuOptionBuilder().setLabel('Bassboost').setValue('filter_bassboost'),
-				new StringSelectMenuOptionBuilder().setLabel('Nightcore').setValue('filter_nightcore'),
-				new StringSelectMenuOptionBuilder().setLabel('Vaporwave').setValue('filter_vaporwave'),
-				new StringSelectMenuOptionBuilder().setLabel('Clear filters').setValue('filter_clear'),
+				option('Queue', 'queue', '📜', "See what's up next"),
+				option('Shuffle', 'shuffle', '🔀', 'Shuffle the queue'),
+				option('Autoplay', 'autoplay', '♾️', 'Keep playing similar songs'),
+				option('Clear queue', 'clear_queue', '🧹', 'Remove all upcoming tracks'),
+				option('Volume', 'volume_modal', '🔊', 'Set the volume'),
+				option('Bassboost', 'filter_bassboost', '🎚️', 'Boost the low end'),
+				option('Nightcore', 'filter_nightcore', '⏩', 'Faster, higher pitch'),
+				option('Vaporwave', 'filter_vaporwave', '🌊', 'Slower, lower pitch'),
+				option('Clear filters', 'filter_clear', '✖️', 'Back to the original sound'),
 			),
 	);
 	return [row1, row2];

@@ -1,7 +1,20 @@
 import { describe, expect, test } from 'bun:test';
 import { ComponentType, SectionBuilder, TextDisplayBuilder } from 'discord.js';
 import { BRAND_COLOR } from './brand.js';
-import { Colors, chips, errorReply, fields, formatStatus, headerSection, hint, spacer } from './components.js';
+import {
+	Colors,
+	chips,
+	errorReply,
+	escapeLineStart,
+	fields,
+	formatStatus,
+	headerSection,
+	hint,
+	musicControlRows,
+	musicTrackCard,
+	spacer,
+	trackLink,
+} from './components.js';
 
 describe('formatStatus', () => {
 	test('single line is unchanged', () => {
@@ -132,5 +145,108 @@ describe('helpers', () => {
 		expect(json.components[0]?.content).toBe('### Invites');
 		expect(json.accessory.type).toBe(ComponentType.Thumbnail);
 		expect(json.accessory.media.url).toBe('https://cdn.discordapp.com/avatar.png');
+	});
+});
+
+describe('music player', () => {
+	type Json = {
+		type: number;
+		content?: string;
+		components?: Json[];
+		style?: number;
+		custom_id?: string;
+		options?: Array<{ value: string; description?: string; emoji?: unknown }>;
+		placeholder?: string;
+	};
+
+	const card = () =>
+		musicTrackCard({
+			header: 'Paused',
+			color: Colors.Neutral,
+			title: 'Song [Live]',
+			uri: 'https://example.com/watch?v=1',
+			author: 'Artist',
+			album: 'Album',
+			requesterMention: '<@1>',
+			position: '1:24',
+			duration: '3:19',
+			queueSize: 2,
+			autoPlay: true,
+			artworkUrl: 'https://example.com/art.png',
+			withControls: true,
+			paused: true,
+		}).toJSON() as unknown as Json & { accent_color: number };
+
+	test('musicTrackCard has no header TextDisplay or divider at the top level', () => {
+		const json = card();
+		const types = (json.components ?? []).map((c) => c.type);
+		expect(types).toEqual([
+			ComponentType.Section,
+			ComponentType.Separator,
+			ComponentType.ActionRow,
+			ComponentType.ActionRow,
+		]);
+		expect((json.components?.[1] as { divider?: boolean } | undefined)?.divider).toBe(false);
+		expect(json.accent_color).toBe(Colors.Neutral);
+	});
+
+	test('musicTrackCard section text: eyebrow, linked title, byline, one meta line', () => {
+		const section = card().components?.[0];
+		expect(section?.components?.[0]?.content).toBe(
+			'-# Paused\n### [Song \\[Live\\]](https://example.com/watch?v=1)\nArtist · Album\n-# 1:24 / 3:19 · Requested by <@1> · 2 up next · Autoplay',
+		);
+	});
+
+	test('musicTrackCard eyebrow defaults to Now playing', () => {
+		const json = musicTrackCard({ color: Colors.Voice, title: 'X' }).toJSON() as unknown as Json;
+		expect(json.components?.[0]?.content?.split('\n')[0]).toBe('-# Now playing');
+	});
+
+	test('stop is Secondary, play/pause Primary', () => {
+		const row = card().components?.[2];
+		const stop = row?.components?.find((b) => b.custom_id === 'music:stop');
+		const toggle = row?.components?.find((b) => b.custom_id === 'music:toggle');
+		expect(stop?.style).toBe(2);
+		expect(toggle?.style).toBe(1);
+	});
+
+	test('musicControlRows option values are unchanged', () => {
+		const [, row2] = musicControlRows();
+		const select = (row2.toJSON() as unknown as Json).components?.[0];
+		expect(select?.custom_id).toBe('music:options');
+		expect(select?.placeholder).toBe('More options');
+		expect(select?.options?.map((o) => o.value)).toEqual([
+			'queue',
+			'shuffle',
+			'autoplay',
+			'clear_queue',
+			'volume_modal',
+			'filter_bassboost',
+			'filter_nightcore',
+			'filter_vaporwave',
+			'filter_clear',
+		]);
+		for (const o of select?.options ?? []) {
+			expect(o.description).toBeTruthy();
+			expect(o.emoji).toBeTruthy();
+		}
+	});
+
+	test('trackLink escapes brackets and truncates long titles', () => {
+		expect(trackLink('a]b', 'https://x.test/(1)')).toBe('[a\\]b](https://x.test/%281%29)');
+		expect(trackLink('t', 'not a url')).toBe('t');
+		expect(trackLink('x'.repeat(100), null).length).toBe(80);
+	});
+
+	test('byline escapes line-leading markdown markers', () => {
+		expect(escapeLineStart('# x')).toBe('\\# x');
+		expect(escapeLineStart('- x')).toBe('\\- x');
+		expect(escapeLineStart('> x')).toBe('\\> x');
+		expect(escapeLineStart('1. x')).toBe('1\\. x');
+		expect(escapeLineStart('Artist')).toBe('Artist');
+		const json = musicTrackCard({ color: Colors.Voice, title: 'T', author: '# Big' }).toJSON() as unknown as {
+			components: Array<{ content?: string }>;
+		};
+		expect(json.components[0]?.content?.split('\n')[2]).toBe('\\# Big');
 	});
 });

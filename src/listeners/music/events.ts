@@ -1,10 +1,10 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { container, Listener } from '@sapphire/framework';
-import { Events, type Message, SeparatorBuilder, SeparatorSpacingSize, TextDisplayBuilder } from 'discord.js';
+import { Events, type Message, TextDisplayBuilder } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import type { Player, Track } from 'moonlink.js';
 import { ensureAutoplayBuffer, isAutoplayOn, rememberAutoplaySeed } from '../../lib/AutoplayManager.js';
-import { Colors, CV2_FLAG, idleJukeboxCard, makeContainer, musicTrackCard, separator } from '../../lib/components.js';
+import { Colors, CV2_FLAG, idleJukeboxCard, makeContainer, musicTrackCard } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import { clearMusicQueue, formatDuration, saveMusicQueue, setVoiceChannelStatus } from '../../lib/MusicManager.js';
 import {
@@ -103,12 +103,8 @@ export function buildNpCard(player: Player) {
 	const album = (track.pluginInfo as Record<string, unknown> | undefined)?.albumName as string | undefined;
 	const loopMode = (player.loop as 'off' | 'track' | 'queue') ?? 'off';
 
-	let header = 'Now Playing';
-	let color: number = Colors.Voice;
-	if (player.paused) {
-		header = 'Paused';
-		color = Colors.Warning;
-	}
+	const header = player.paused ? 'Paused' : 'Now playing';
+	const color: number = player.paused ? Colors.Neutral : Colors.Voice;
 
 	return musicTrackCard({
 		header,
@@ -160,7 +156,9 @@ export class MusicListeners extends Listener {
 				if (!ch) return;
 
 				const c = makeContainer({ color: Colors.Neutral });
-				c.addTextDisplayComponents(new TextDisplayBuilder().setContent('Disconnected from voice — queue cleared.'));
+				c.addTextDisplayComponents(
+					new TextDisplayBuilder().setContent('Disconnected from voice, so I cleared the queue.'),
+				);
 				await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
 			} catch (err) {
 				logger.error('[music] Voice disconnect handling failed:', err);
@@ -322,10 +320,9 @@ export class MusicListeners extends Listener {
 				new TextDisplayBuilder().setContent(
 					isAutoplayOn(player.guildId)
 						? 'Autoplay couldn’t find another track. Add more with `/play`.'
-						: 'Queue finished. Add more tracks with `/play` or enable autoplay with the button below.',
+						: "Queue finished. Add more with `/play`, or turn on Autoplay from the player's **More options** menu.",
 				),
 			);
-			c.addSeparatorComponents(separator());
 			await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
 		});
 
@@ -340,8 +337,6 @@ export class MusicListeners extends Listener {
 
 			const c = makeContainer({ color: Colors.Neutral });
 			c.addTextDisplayComponents(new TextDisplayBuilder().setContent('Left the voice channel due to inactivity.'));
-			c.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
-
 			await (ch.send as (opts: unknown) => Promise<unknown>)({ components: [c], flags: CV2_FLAG }).catch(() => null);
 		});
 
@@ -386,7 +381,7 @@ export class MusicListeners extends Listener {
 						await notifyPlaybackFail(
 							player.guildId,
 							player.textChannelId,
-							`Couldn't play **${failedTitle}** from YouTube — playing ${label} instead.`,
+							`Couldn't play **${failedTitle}** from YouTube. Playing ${label} instead.`,
 							Colors.Warning,
 							true,
 						);
@@ -404,12 +399,22 @@ export class MusicListeners extends Listener {
 		music.on('trackException', (player: Player, track: Track, exception?: { message?: string; severity?: string }) => {
 			const detail = exception?.message ? ` (${exception.message})` : '';
 			logger.error(`[music] Track exception: ${track?.title} in guild ${player.guildId}${detail}`);
-			handlePlaybackFailure(player, track, `Couldn't play **${track?.title ?? 'Unknown'}** — skipping.`, Colors.Error);
+			handlePlaybackFailure(
+				player,
+				track,
+				`Couldn't play **${track?.title ?? 'Unknown'}**, so I skipped it.`,
+				Colors.Error,
+			);
 		});
 
 		music.on('trackStuck', (player: Player, track: Track) => {
 			logger.warn(`[music] Track stuck: ${track?.title} in guild ${player.guildId}`);
-			handlePlaybackFailure(player, track, `Track stuck — skipping **${track?.title ?? 'Unknown'}**.`, Colors.Warning);
+			handlePlaybackFailure(
+				player,
+				track,
+				`**${track?.title ?? 'Unknown'}** got stuck, so I skipped it.`,
+				Colors.Warning,
+			);
 		});
 	}
 }

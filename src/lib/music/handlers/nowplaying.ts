@@ -15,14 +15,14 @@ export class NowPlayingHandler {
 		const track = player.current;
 		const duration = track.isStream ? 'LIVE' : formatDuration(track.duration ?? 0);
 		const position = !track.isStream && track.duration != null ? formatDuration(track.position ?? 0) : null;
-		const requester = track.userData?.requester ? `<@${track.userData.requester}>` : 'Unknown';
+		const requester = track.userData?.requester ? `<@${track.userData.requester}>` : undefined;
 
 		const album = (track.pluginInfo as Record<string, unknown> | undefined)?.albumName as string | undefined;
 		const loopMode = (player.loop as 'off' | 'track' | 'queue') ?? 'off';
 
 		const card = musicTrackCard({
-			header: player.paused ? 'Paused' : 'Now Playing',
-			color: player.paused ? Colors.Warning : Colors.Voice,
+			header: player.paused ? 'Paused' : 'Now playing',
+			color: player.paused ? Colors.Neutral : Colors.Voice,
 			title: track.title ?? 'Unknown',
 			uri: track.uri,
 			author: track.author,

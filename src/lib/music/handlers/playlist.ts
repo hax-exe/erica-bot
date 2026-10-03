@@ -1,21 +1,14 @@
 import { container } from '@sapphire/framework';
 import type { Subcommand } from '@sapphire/plugin-subcommands';
-import { MessageFlags, TextDisplayBuilder } from 'discord.js';
+import { escapeMarkdown, MessageFlags, TextDisplayBuilder } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import type { Track } from 'moonlink.js';
 import type { PlaylistTrack } from '../../../db/schema.js';
-import {
-	Colors,
-	CV2_FLAG,
-	errorReply,
-	makeContainer,
-	separator,
-	successReply,
-	warningReply,
-} from '../../components.js';
+import { Colors, CV2_FLAG, errorReply, hint, makeContainer, successReply, warningReply } from '../../components.js';
 import { db, schema } from '../../database.js';
 import { formatDuration, inSameVC } from '../../MusicManager.js';
 import { safeJsonParse } from '../../safe.js';
+import { trackItemLines } from '../queueCard.js';
 
 const MAX_PLAYLISTS = 10;
 const MAX_TRACKS = 100;
@@ -142,16 +135,12 @@ export class PlaylistHandler {
 
 		const lines = playlists.map((pl) => {
 			const tracks = safeJsonParse<PlaylistTrack[]>(pl.tracks, []);
-			return `• **${pl.name}** — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
+			return `**${escapeMarkdown(pl.name)}**\n-# ${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
 		});
 
-		const c = makeContainer({ color: Colors.Info, header: 'Your Playlists' });
-		c.addSeparatorComponents(separator());
+		const c = makeContainer({ color: Colors.Info, header: 'Your playlists' });
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
-		c.addSeparatorComponents(separator());
-		c.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(`-# ${playlists.length}/${MAX_PLAYLISTS} playlists saved`),
-		);
+		c.addTextDisplayComponents(hint(`${playlists.length} of ${MAX_PLAYLISTS} playlists saved`));
 
 		// biome-ignore lint/suspicious/noExplicitAny: CV2 flag type gap
 		return interaction.editReply({ components: [c], flags: (CV2_FLAG | MessageFlags.Ephemeral) as any });
@@ -169,19 +158,16 @@ export class PlaylistHandler {
 		const tracks = safeJsonParse<PlaylistTrack[]>(pl.tracks, []);
 		if (!tracks.length) return interaction.editReply(warningReply('That playlist is empty.'));
 
-		const lines = tracks
-			.slice(0, 20)
-			.map((t, i) => `\`${i + 1}.\` **${t.title}** by ${t.author} — \`${formatDuration(t.duration)}\``);
-		if (tracks.length > 20) lines.push(`-# … and ${tracks.length - 20} more`);
+		const shown = tracks.slice(0, 20);
+		const lines = trackItemLines(shown).filter((line) => !line.startsWith('-# …'));
+		if (tracks.length > lines.length) lines.push(`-# … and ${tracks.length - lines.length} more`);
 
-		const c = makeContainer({ color: Colors.Info, header: name });
-		c.addSeparatorComponents(separator());
+		const totalMs = tracks.reduce((acc, t) => acc + (t.duration ?? 0), 0);
+		const c = makeContainer({ color: Colors.Info });
+		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${escapeMarkdown(name)}`));
 		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
-		c.addSeparatorComponents(separator());
 		c.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`-# ${tracks.length} track${tracks.length === 1 ? '' : 's'} • Total: ${formatDuration(tracks.reduce((acc, t) => acc + t.duration, 0))}`,
-			),
+			hint(`${tracks.length} track${tracks.length === 1 ? '' : 's'} · total ${formatDuration(totalMs)}`),
 		);
 
 		// biome-ignore lint/suspicious/noExplicitAny: CV2 flag type gap
