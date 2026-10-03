@@ -1,17 +1,15 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
+import { Events, type Interaction, MessageFlags, PermissionFlagsBits, userMention } from 'discord.js';
 import {
-	Events,
-	type Interaction,
-	MessageFlags,
-	type MessageMentionOptions,
-	PermissionFlagsBits,
-	TextDisplayBuilder,
-	userMention,
-} from 'discord.js';
-import { ANNOUNCE_COLOR_PRESETS } from '../../commands/moderation/mod.js';
+	ANNOUNCE_PING_PERMISSION_ERROR,
+	buildAnnouncementContainer,
+	buildAnnouncementPing,
+	canSendAnnouncePing,
+	resolveAnnounceColor,
+} from '../../lib/AnnouncementUtil.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
-import { CV2_FLAG, errorReply, makeContainer, separator, successReply } from '../../lib/components.js';
+import { CV2_FLAG, errorReply, successReply } from '../../lib/components.js';
 
 @ApplyOptions<Listener.Options>({
 	name: 'announceModalSubmit',
@@ -33,7 +31,7 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 
 		// Custom ID format: announce_modal:CHANNEL_ID:COLOR:PING_TYPE:PING_ID
 		const [, channelId, colorKey, pingType, pingId] = interaction.customId.split(':');
-		const color = ANNOUNCE_COLOR_PRESETS[colorKey] ?? ANNOUNCE_COLOR_PRESETS.blue;
+		const color = resolveAnnounceColor(colorKey);
 
 		const heading = interaction.fields.getTextInputValue('heading') || null;
 		const body = interaction.fields.getTextInputValue('body');
@@ -43,39 +41,17 @@ export class AnnounceModalListener extends Listener<typeof Events.InteractionCre
 			return interaction.editReply(errorReply('Could not find the target channel.'));
 		}
 
-		// Mirror Discord's own rule: @everyone and non-mentionable roles need Mention Everyone in that channel.
-		if (pingType === 'r' && pingId) {
-			const role = pingId === interaction.guildId ? null : interaction.guild.roles.cache.get(pingId);
-			const needsMentionEveryone = pingId === interaction.guildId || (role != null && !role.mentionable);
-			if (
-				needsMentionEveryone &&
-				!channel.permissionsFor(interaction.member)?.has(PermissionFlagsBits.MentionEveryone)
-			) {
-				return interaction.editReply(
-					errorReply('You need the **Mention @everyone, @here, and All Roles** permission to ping that role there.'),
-				);
-			}
+		if (!canSendAnnouncePing(interaction.member, channel, pingType, pingId)) {
+			return interaction.editReply(errorReply(ANNOUNCE_PING_PERMISSION_ERROR));
 		}
 
-		// Reconstruct the ping from the encoded type + ID, allowing exactly that one mention to notify.
-		// The @everyone role is only pinged by the literal `@everyone` text, not its `<@&id>` role mention.
-		let ping: { content: string; allowedMentions: MessageMentionOptions } | undefined;
-		if (pingType === 'r' && pingId === interaction.guildId) {
-			ping = { content: '@everyone', allowedMentions: { parse: ['everyone'] } };
-		} else if (pingType === 'r' && pingId) {
-			ping = { content: `<@&${pingId}>`, allowedMentions: { roles: [pingId] } };
-		} else if (pingType === 'u' && pingId) {
-			ping = { content: `<@${pingId}>`, allowedMentions: { users: [pingId] } };
-		}
-
-		const container = makeContainer({ color, header: heading ?? undefined });
-		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
-		container.addSeparatorComponents(separator());
-		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`-# Announced by ${userMention(interaction.user.id)} • <t:${Math.floor(Date.now() / 1000)}:f>`,
-			),
-		);
+		const ping = buildAnnouncementPing(interaction.guildId, pingType, pingId);
+		const container = buildAnnouncementContainer({
+			color,
+			heading,
+			body,
+			footer: `-# Announced by ${userMention(interaction.user.id)} • <t:${Math.floor(Date.now() / 1000)}:f>`,
+		});
 
 		try {
 			// Ping must be sent as plain content before the CV2 container (can't mix both).
