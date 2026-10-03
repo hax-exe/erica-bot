@@ -51,6 +51,22 @@ Unchanged core: music, afk, remind, birthday, poll, suggest, giveaway, tag, star
 
 ---
 
+## Community Essentials
+
+Seven quick-win features for community servers (all optional, toggled per guild):
+
+| Feature | Command | What it does |
+|---|---|---|
+| **Member Verification** | `/verification` | Gate member access with role assignment, optional CAPTCHA, min account age, and auto-assign unverified role on join |
+| **Role Persistence** | `/rolepersist` | Save roles on leave, restore on rejoin (filters managed roles, ignored list, permissions) |
+| **Invite Tracking** | `/invites` · `/invitesadmin` | Track joins by invite code, show who invited whom, reward roles at invite milestones, detect fake accounts |
+| **Phishing Filter** | `/automod toggle phishing` | New automod rule: delete messages containing known scam links (configurable timeout, list fetches automatically) |
+| **XP Multipliers** | `/leveling multiplier` · `/leveling boost` | Per-role and per-channel XP multipliers (10–500%), temporary server-wide boost (110–500%, up to 7 days) |
+| **Scheduled Announcements** | `/schedule` | Recurring or one-time announcements (create, list, delete) with optional pings and color |
+| **Highlights** | `/highlight` | Keyword alerts: DM when your keywords are mentioned in messages (max 10 keywords per member; at most one DM per channel every 5 minutes and 5 DMs every 10 minutes per member; at most 10 members alerted per message; messages with known scam links are never relayed) |
+
+---
+
 ## Bot owner
 
 `/admin` — blacklist, modules, **db** CRUD, info, guilds, leave, say, dm, reload, presence, invite, lookup, maintenance

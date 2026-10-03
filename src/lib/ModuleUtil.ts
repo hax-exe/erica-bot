@@ -22,6 +22,10 @@ export const MODULES = [
 	'economy',
 	'tts',
 	'autoresponder',
+	'verification',
+	'rolePersistence',
+	'inviteTracking',
+	'highlights',
 ] as const;
 
 export type Module = (typeof MODULES)[number];
@@ -47,6 +51,10 @@ export const MODULE_LABELS: Record<Module, string> = {
 	economy: 'Economy',
 	tts: 'Text-to-Speech (TTS)',
 	autoresponder: 'Autoresponder',
+	verification: 'Member Verification',
+	rolePersistence: 'Role Persistence',
+	inviteTracking: 'Invite Tracking',
+	highlights: 'Highlights',
 };
 
 type ModuleRow = typeof schema.guildModules.$inferSelect;
@@ -54,7 +62,8 @@ type GlobalModuleRow = typeof schema.globalModules.$inferSelect;
 
 /**
  * What a guild without a guild_modules row gets — the column defaults, so creating the row
- * (e.g. by viewing /module list) never changes behaviour. AutoMod is opt-in (default false).
+ * (e.g. by viewing /module list) never changes behaviour. AutoMod, Member Verification and
+ * Role Persistence are opt-in (default false).
  */
 const GUILD_MODULE_DEFAULTS = Object.fromEntries(
 	MODULES.map((m) => [m, getTableColumns(schema.guildModules)[m].default !== false]),

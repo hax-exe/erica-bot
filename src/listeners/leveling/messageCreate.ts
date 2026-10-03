@@ -2,7 +2,7 @@
 import { type Message, SectionBuilder, TextDisplayBuilder, ThumbnailBuilder } from 'discord.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { Colors, CV2_FLAG, makeContainer, separator } from '../../lib/components.js';
-import { getLevelRoles, getOrCreateLevelSettings, tryAddXp } from '../../lib/LevelingUtil.js';
+import { getLevelRoles, getOrCreateLevelSettings, getXpMultiplier, tryAddXp } from '../../lib/LevelingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 import { safeJsonParse } from '../../lib/safe.js';
 
@@ -28,7 +28,10 @@ export class LevelingMessageCreateListener extends Listener {
 		const member = message.member ?? (await message.guild.members.fetch(message.author.id).catch(() => null));
 		if (member && noXpRoles.some((r) => member.roles.cache.has(r))) return;
 
-		const result = await tryAddXp(message.guildId, message.author.id, settings);
+		// In a thread, the parent channel's multiplier applies when the thread has none of its own.
+		const parentChannelId = message.channel.isThread() ? message.channel.parentId : null;
+		const multiplier = await getXpMultiplier(message.guildId, member, message.channelId, settings, parentChannelId);
+		const result = await tryAddXp(message.guildId, message.author.id, settings, multiplier);
 		if (!result?.leveledUp) return;
 
 		const { newLevel } = result;

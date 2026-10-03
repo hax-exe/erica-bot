@@ -267,6 +267,10 @@ export async function handleGuildRoute(req: Request, guildId: string, sub: strin
 					economy: true,
 					tts: true,
 					autoresponder: true,
+					verification: false,
+					rolePersistence: false,
+					inviteTracking: true,
+					highlights: true,
 				},
 			);
 		}

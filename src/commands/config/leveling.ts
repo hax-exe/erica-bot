@@ -1,6 +1,14 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { PermissionFlagsBits } from 'discord.js';
+import { ChannelType, PermissionFlagsBits } from 'discord.js';
+import {
+	BOOST_MAX_DURATION_MS,
+	BOOST_PERCENT_MAX,
+	BOOST_PERCENT_MIN,
+	MULTIPLIER_PERCENT_MAX,
+	MULTIPLIER_PERCENT_MIN,
+} from '../../lib/LevelingUtil.js';
+import { humanDuration } from '../../lib/parseDuration.js';
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'leveling',
@@ -23,6 +31,24 @@ import { PermissionFlagsBits } from 'discord.js';
 		{ name: 'voice-xp', chatInputRun: 'chatInputLevelingVoiceXp' },
 		{ name: 'no-xp-voice-add', chatInputRun: 'chatInputLevelingNoXpVoiceAdd' },
 		{ name: 'no-xp-voice-remove', chatInputRun: 'chatInputLevelingNoXpVoiceRemove' },
+		{
+			name: 'multiplier',
+			type: 'group',
+			entries: [
+				{ name: 'set-role', chatInputRun: 'chatInputLevelingMultiplierSetRole' },
+				{ name: 'set-channel', chatInputRun: 'chatInputLevelingMultiplierSetChannel' },
+				{ name: 'remove', chatInputRun: 'chatInputLevelingMultiplierRemove' },
+				{ name: 'list', chatInputRun: 'chatInputLevelingMultiplierList' },
+			],
+		},
+		{
+			name: 'boost',
+			type: 'group',
+			entries: [
+				{ name: 'start', chatInputRun: 'chatInputLevelingBoostStart' },
+				{ name: 'stop', chatInputRun: 'chatInputLevelingBoostStop' },
+			],
+		},
 		{ name: 'view', chatInputRun: 'chatInputLevelingView' },
 	],
 })
@@ -149,6 +175,88 @@ export class ConfigLevelingCommand extends Subcommand {
 						.setDescription('Remove a voice channel from the no-XP list.')
 						.addChannelOption((o) => o.setName('channel').setDescription('Voice channel').setRequired(true)),
 				)
+				.addSubcommandGroup((group) =>
+					group
+						.setName('multiplier')
+						.setDescription('Give roles or channels an XP multiplier.')
+						.addSubcommand((sub) =>
+							sub
+								.setName('set-role')
+								.setDescription('Members with this role earn more (or less) XP.')
+								.addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true))
+								.addIntegerOption((o) =>
+									o
+										.setName('percent')
+										.setDescription('XP percent: 100 = normal, 150 = 1.5x, 50 = half')
+										.setMinValue(MULTIPLIER_PERCENT_MIN)
+										.setMaxValue(MULTIPLIER_PERCENT_MAX)
+										.setRequired(true),
+								),
+						)
+						.addSubcommand((sub) =>
+							sub
+								.setName('set-channel')
+								.setDescription('XP earned in this channel (and its threads) is multiplied.')
+								.addChannelOption((o) =>
+									o
+										.setName('channel')
+										.setDescription('Text, voice, stage or forum channel')
+										.addChannelTypes(
+											ChannelType.GuildText,
+											ChannelType.GuildAnnouncement,
+											ChannelType.GuildVoice,
+											ChannelType.GuildStageVoice,
+											ChannelType.GuildForum,
+											ChannelType.GuildMedia,
+										)
+										.setRequired(true),
+								)
+								.addIntegerOption((o) =>
+									o
+										.setName('percent')
+										.setDescription('XP percent: 100 = normal, 150 = 1.5x, 50 = half')
+										.setMinValue(MULTIPLIER_PERCENT_MIN)
+										.setMaxValue(MULTIPLIER_PERCENT_MAX)
+										.setRequired(true),
+								),
+						)
+						.addSubcommand((sub) =>
+							sub
+								.setName('remove')
+								.setDescription('Remove a role and/or channel multiplier.')
+								.addRoleOption((o) => o.setName('role').setDescription('Role to clear').setRequired(false))
+								.addChannelOption((o) => o.setName('channel').setDescription('Channel to clear').setRequired(false)),
+						)
+						.addSubcommand((sub) =>
+							sub.setName('list').setDescription('List all XP multipliers and the active boost.'),
+						),
+				)
+				.addSubcommandGroup((group) =>
+					group
+						.setName('boost')
+						.setDescription('Run a temporary server-wide XP boost.')
+						.addSubcommand((sub) =>
+							sub
+								.setName('start')
+								.setDescription('Start a timed XP boost (replaces any running boost).')
+								.addIntegerOption((o) =>
+									o
+										.setName('percent')
+										.setDescription('XP percent while boosted: 150 = 1.5x, 200 = double')
+										.setMinValue(BOOST_PERCENT_MIN)
+										.setMaxValue(BOOST_PERCENT_MAX)
+										.setRequired(true),
+								)
+								.addStringOption((o) =>
+									o
+										.setName('duration')
+										.setDescription(`How long, e.g. 2h or 1d (max ${humanDuration(BOOST_MAX_DURATION_MS)})`)
+										.setMaxLength(50)
+										.setRequired(true),
+								),
+						)
+						.addSubcommand((sub) => sub.setName('stop').setDescription('Stop the running XP boost.')),
+				)
 				.addSubcommand((sub) => sub.setName('view').setDescription('Show the current leveling configuration.'));
 		});
 	}
@@ -213,6 +321,30 @@ export class ConfigLevelingCommand extends Subcommand {
 	public async chatInputLevelingNoXpVoiceRemove(interaction: Subcommand.ChatInputCommandInteraction) {
 		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
 		return new LevelConfigHandler().chatInputNoXpVoiceRemove(interaction);
+	}
+	public async chatInputLevelingMultiplierSetRole(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputMultiplierSetRole(interaction);
+	}
+	public async chatInputLevelingMultiplierSetChannel(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputMultiplierSetChannel(interaction);
+	}
+	public async chatInputLevelingMultiplierRemove(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputMultiplierRemove(interaction);
+	}
+	public async chatInputLevelingMultiplierList(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputMultiplierList(interaction);
+	}
+	public async chatInputLevelingBoostStart(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputBoostStart(interaction);
+	}
+	public async chatInputLevelingBoostStop(interaction: Subcommand.ChatInputCommandInteraction) {
+		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');
+		return new LevelConfigHandler().chatInputBoostStop(interaction);
 	}
 	public async chatInputLevelingView(interaction: Subcommand.ChatInputCommandInteraction) {
 		const { LevelConfigHandler } = await import('../../lib/config/handlers/levelconfig.js');

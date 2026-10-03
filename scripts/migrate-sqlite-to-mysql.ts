@@ -93,7 +93,11 @@ const TABLES = [
 	'honeypot_channels',
 ] as const;
 
-/** Retired columns that may still exist in older SQLite (or MySQL) schemas; never copied. */
+/**
+ * Columns never copied from SQLite. `verification` belonged to the retired Minecraft verification
+ * module (default on); the opt-in Member Verification module reuses the name, so it keeps its
+ * MySQL default (off) instead of inheriting the old value.
+ */
 const SKIPPED_COLUMNS: Partial<Record<(typeof TABLES)[number], readonly string[]>> = {
 	guild_modules: ['verification'],
 	global_modules: ['verification'],
@@ -154,11 +158,17 @@ async function main() {
 				continue;
 			}
 
+			// Columns added to MySQL after the SQLite era are left out so they get their MySQL defaults
+			// (inserting NULL into a NOT NULL column would fail).
+			const sqliteCols = new Set(
+				(sqlite.query(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map((c) => c.name),
+			);
+
 			let cols: MySqlColumn[];
 			try {
 				const [colRows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
 				const skipped = SKIPPED_COLUMNS[table] ?? [];
-				cols = (colRows as MySqlColumn[]).filter((c) => !skipped.includes(c.Field));
+				cols = (colRows as MySqlColumn[]).filter((c) => !skipped.includes(c.Field) && sqliteCols.has(c.Field));
 			} catch {
 				console.log(`[skip] ${table} (missing in MySQL — run bun src/migrate.ts first)`);
 				continue;

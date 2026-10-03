@@ -72,7 +72,7 @@ config/
 drizzle/             # SQL migrations + meta/ (journal + snapshots — always commit)
 ```
 
-Toggleable modules include `autoresponder` (`/autoresponder` + message listener).
+Toggleable modules include `autoresponder`, `verification`, `rolePersistence`, `inviteTracking`, and `highlights` (`/module` to toggle; see FEATURES.md for descriptions).
 
 ### Shared helpers
 

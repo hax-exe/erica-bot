@@ -9,17 +9,15 @@ import {
 	ContainerBuilder,
 	type GuildMember,
 	MessageFlags,
-	ModalBuilder,
 	PermissionFlagsBits,
 	Role,
 	SeparatorBuilder,
 	SeparatorSpacingSize,
 	TextDisplayBuilder,
-	TextInputBuilder,
-	TextInputStyle,
 	userMention,
 } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
+import { ANNOUNCE_COLOR_CHOICES, buildAnnouncementModal } from '../../lib/AnnouncementUtil.js';
 import {
 	Colors,
 	CV2_FLAG,
@@ -36,16 +34,6 @@ import { sendModLog } from '../../lib/LoggingUtil.js';
 import { checkHierarchy, createNote, deleteNote, handleReasonAutocomplete } from '../../lib/ModerationUtil.js';
 import { humanDuration, parseDuration } from '../../lib/parseDuration.js';
 import { buildNotesPage } from '../../listeners/paginationInteractions.js';
-
-export const ANNOUNCE_COLOR_PRESETS: Record<string, number> = {
-	blue: 0x5865f2,
-	green: 0x57f287,
-	yellow: 0xfee75c,
-	red: 0xed4245,
-	purple: 0x9b59b6,
-	teal: 0x1abc9c,
-	white: 0xffffff,
-};
 
 // Presets for timeout durations
 const _TIMEOUT_DURATION_PRESETS: Record<string, number> = {
@@ -735,15 +723,7 @@ export class ModCommand extends Subcommand {
 								.setName('color')
 								.setDescription('Accent color for the container (default: blue).')
 								.setRequired(false)
-								.addChoices(
-									{ name: 'Blue', value: 'blue' },
-									{ name: 'Green', value: 'green' },
-									{ name: 'Yellow', value: 'yellow' },
-									{ name: 'Red', value: 'red' },
-									{ name: 'Purple', value: 'purple' },
-									{ name: 'Teal', value: 'teal' },
-									{ name: 'White', value: 'white' },
-								),
+								.addChoices(...ANNOUNCE_COLOR_CHOICES),
 						),
 				)
 				// ── honeypot ───────────────────────────────────────────────────────────
@@ -1787,26 +1767,9 @@ export class ModCommand extends Subcommand {
 		const pingType = ping instanceof Role ? 'r' : ping ? 'u' : 'none';
 		const pingId = ping && 'id' in ping ? ping.id : '';
 
-		const modal = new ModalBuilder()
-			.setCustomId(`announce_modal:${channel.id}:${colorKey}:${pingType}:${pingId}`)
-			.setTitle('New Announcement')
-			.addComponents(
-				new ActionRowBuilder<TextInputBuilder>().addComponents(
-					new TextInputBuilder()
-						.setCustomId('heading')
-						.setLabel('Heading (optional)')
-						.setStyle(TextInputStyle.Short)
-						.setRequired(false)
-						.setMaxLength(100),
-				),
-				new ActionRowBuilder<TextInputBuilder>().addComponents(
-					new TextInputBuilder()
-						.setCustomId('body')
-						.setLabel('Message')
-						.setStyle(TextInputStyle.Paragraph)
-						.setRequired(true),
-				),
-			);
+		const modal = buildAnnouncementModal({
+			customId: `announce_modal:${channel.id}:${colorKey}:${pingType}:${pingId}`,
+		});
 
 		return interaction.showModal(modal);
 	}

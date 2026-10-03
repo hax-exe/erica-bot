@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, datetime, int, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
+import { bigint, boolean, datetime, index, int, mysqlTable, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 
 // Per-guild configuration
 export const guilds = mysqlTable('guilds', {
@@ -306,6 +306,8 @@ export const levelSettings = mysqlTable('level_settings', {
 	voiceXpPerMinute: int('voice_xp_per_minute').notNull().default(3),
 	voiceMinMembers: int('voice_min_members').notNull().default(1),
 	noXpVoiceChannelIds: text('no_xp_voice_channel_ids').notNull().default('[]'),
+	boostPercent: int('boost_percent').notNull().default(100), // XP boost; 150 = 1.5x, applies while boostEndsAt > now
+	boostEndsAt: bigint('boost_ends_at', { mode: 'number' }), // unix ms, null = no boost
 });
 
 export const levelRoles = mysqlTable(
@@ -356,6 +358,10 @@ export const guildModules = mysqlTable('guild_modules', {
 	economy: boolean('economy').notNull().default(true),
 	tts: boolean('tts').notNull().default(true),
 	autoresponder: boolean('autoresponder').notNull().default(true),
+	verification: boolean('verification').notNull().default(false),
+	rolePersistence: boolean('role_persistence').notNull().default(false),
+	inviteTracking: boolean('invite_tracking').notNull().default(true),
+	highlights: boolean('highlights').notNull().default(true),
 });
 
 // Global module overrides — singleton row (id=1)
@@ -381,6 +387,10 @@ export const globalModules = mysqlTable('global_modules', {
 	economy: boolean('economy').notNull().default(true),
 	tts: boolean('tts').notNull().default(true),
 	autoresponder: boolean('autoresponder').notNull().default(true),
+	verification: boolean('verification').notNull().default(true),
+	rolePersistence: boolean('role_persistence').notNull().default(true),
+	inviteTracking: boolean('invite_tracking').notNull().default(true),
+	highlights: boolean('highlights').notNull().default(true),
 });
 
 // Maintenance mode — singleton row (id=1)
@@ -496,6 +506,9 @@ export const automodSettings = mysqlTable('automod_settings', {
 	newAccountAgeDays: int('new_account_age_days').notNull().default(7),
 	newAccountAction: varchar('new_account_action', { length: 255 }).notNull().default('delete'),
 	newAccountTimeoutMinutes: int('new_account_timeout_minutes').notNull().default(10),
+	phishingEnabled: boolean('phishing_enabled').notNull().default(false),
+	phishingAction: varchar('phishing_action', { length: 255 }).notNull().default('delete_timeout'),
+	phishingTimeoutMinutes: int('phishing_timeout_minutes').notNull().default(60),
 	exemptRoles: text('exempt_roles').notNull().default('[]'),
 	exemptChannels: text('exempt_channels').notNull().default('[]'),
 });
@@ -911,3 +924,119 @@ export const honeypotChannels = mysqlTable('honeypot_channels', {
 	messageId: varchar('message_id', { length: 64 }), // The warning message ID posted in that channel
 	createdAt: datetime('created_at', { mode: 'date' }).notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+// ─── Member Verification ──────────────────────────────────────────────────────
+
+export const verificationSettings = mysqlTable('verification_settings', {
+	guildId: varchar('guild_id', { length: 64 }).primaryKey(),
+	roleId: varchar('role_id', { length: 64 }), // granted on verify
+	unverifiedRoleId: varchar('unverified_role_id', { length: 64 }), // added on join, removed on verify
+	captchaEnabled: boolean('captcha_enabled').notNull().default(false),
+	minAccountAgeDays: int('min_account_age_days').notNull().default(0),
+	panelChannelId: varchar('panel_channel_id', { length: 64 }),
+	panelMessageId: varchar('panel_message_id', { length: 64 }),
+});
+
+// ─── Role Persistence ─────────────────────────────────────────────────────────
+
+export const rolePersistenceSettings = mysqlTable('role_persistence_settings', {
+	guildId: varchar('guild_id', { length: 64 }).primaryKey(),
+	ignoredRoleIds: text('ignored_role_ids').notNull().default('[]'), // JSON: string[]
+	restoreNickname: boolean('restore_nickname').notNull().default(false),
+});
+
+// Roles (and nickname) saved when a member leaves, restored on rejoin
+export const memberRoleSnapshots = mysqlTable(
+	'member_role_snapshots',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		guildId: varchar('guild_id', { length: 64 }).notNull(),
+		userId: varchar('user_id', { length: 64 }).notNull(),
+		roleIds: text('role_ids').notNull().default('[]'), // JSON: string[]
+		nickname: varchar('nickname', { length: 64 }),
+		savedAt: bigint('saved_at', { mode: 'number' }).notNull(), // unix ms
+	},
+	(t) => [uniqueIndex('member_role_snapshots_guild_user_uniq').on(t.guildId, t.userId)],
+);
+
+// ─── Invite Tracking ──────────────────────────────────────────────────────────
+
+export const inviteJoins = mysqlTable(
+	'invite_joins',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		guildId: varchar('guild_id', { length: 64 }).notNull(),
+		userId: varchar('user_id', { length: 64 }).notNull(),
+		inviterId: varchar('inviter_id', { length: 64 }), // null = unknown or vanity
+		inviteCode: varchar('invite_code', { length: 64 }),
+		joinedAt: bigint('joined_at', { mode: 'number' }).notNull(), // unix ms
+		leftAt: bigint('left_at', { mode: 'number' }), // unix ms, null while still in the guild
+		fake: boolean('fake').notNull().default(false), // account younger than 7 days at join
+	},
+	(t) => [
+		index('invite_joins_guild_inviter_idx').on(t.guildId, t.inviterId),
+		index('invite_joins_guild_user_idx').on(t.guildId, t.userId),
+	],
+);
+
+// Role granted once an inviter reaches `invites` effective invites
+export const inviteRewards = mysqlTable(
+	'invite_rewards',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		guildId: varchar('guild_id', { length: 64 }).notNull(),
+		invites: int('invites').notNull(),
+		roleId: varchar('role_id', { length: 64 }).notNull(),
+	},
+	(t) => [uniqueIndex('invite_rewards_uniq').on(t.guildId, t.invites, t.roleId)],
+);
+
+// ─── XP Multipliers ───────────────────────────────────────────────────────────
+
+export type LevelMultiplierTargetType = 'role' | 'channel';
+
+export const levelMultipliers = mysqlTable(
+	'level_multipliers',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		guildId: varchar('guild_id', { length: 64 }).notNull(),
+		targetType: varchar('target_type', { length: 16 }).$type<LevelMultiplierTargetType>().notNull(),
+		targetId: varchar('target_id', { length: 64 }).notNull(),
+		percent: int('percent').notNull(), // 150 = 1.5x
+	},
+	(t) => [uniqueIndex('level_multipliers_uniq').on(t.guildId, t.targetType, t.targetId)],
+);
+
+// ─── Scheduled Announcements ──────────────────────────────────────────────────
+
+export type AnnouncementPingType = 'r' | 'u'; // role | user
+
+export const scheduledAnnouncements = mysqlTable('scheduled_announcements', {
+	id: int('id').autoincrement().primaryKey(),
+	guildId: varchar('guild_id', { length: 64 }).notNull(),
+	channelId: varchar('channel_id', { length: 64 }).notNull(),
+	createdBy: varchar('created_by', { length: 64 }).notNull(),
+	heading: varchar('heading', { length: 256 }),
+	body: text('body').notNull(),
+	color: varchar('color', { length: 32 }).notNull().default('blue'),
+	pingType: varchar('ping_type', { length: 1 }).$type<AnnouncementPingType>(),
+	pingId: varchar('ping_id', { length: 64 }),
+	nextRunAt: bigint('next_run_at', { mode: 'number' }).notNull(), // unix ms
+	intervalMs: bigint('interval_ms', { mode: 'number' }), // non-null = recurring
+	active: boolean('active').notNull().default(true),
+	lastSentAt: bigint('last_sent_at', { mode: 'number' }), // unix ms
+	createdAt: bigint('created_at', { mode: 'number' }).notNull(), // unix ms
+});
+
+// ─── Highlights ───────────────────────────────────────────────────────────────
+
+export const highlights = mysqlTable(
+	'highlights',
+	{
+		id: int('id').autoincrement().primaryKey(),
+		guildId: varchar('guild_id', { length: 64 }).notNull(),
+		userId: varchar('user_id', { length: 64 }).notNull(),
+		keyword: varchar('keyword', { length: 64 }).notNull(), // trimmed + lowercase
+	},
+	(t) => [uniqueIndex('highlights_uniq').on(t.guildId, t.userId, t.keyword)],
+);
