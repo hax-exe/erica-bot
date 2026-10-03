@@ -1,7 +1,13 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
 import { Events, type GuildMember, type VoiceState } from 'discord.js';
-import { addVoiceXp, getLevelRoles, getOrCreateLevelSettings, type LevelSettingsRow } from '../../lib/LevelingUtil.js';
+import {
+	addVoiceXp,
+	getLevelRoles,
+	getOrCreateLevelSettings,
+	getXpMultiplier,
+	type LevelSettingsRow,
+} from '../../lib/LevelingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 import { safeJsonParse } from '../../lib/safe.js';
 
@@ -65,11 +71,7 @@ export class LevelingVoiceListener extends Listener<typeof Events.VoiceStateUpda
 			voiceJoinTimestamps.delete(key);
 			if (!joinedAt) return;
 
-			const minutes = (Date.now() - joinedAt) / 60_000;
-			const result = await addVoiceXp(guildId, userId, minutes, settings);
-			if (result?.leveledUp) {
-				await this.onLevelUp(member, result.newLevel, settings);
-			}
+			await this.awardVoiceXp(member, oldState.channelId, (Date.now() - joinedAt) / 60_000, settings);
 			return;
 		}
 
@@ -78,11 +80,7 @@ export class LevelingVoiceListener extends Listener<typeof Events.VoiceStateUpda
 			// Award XP for time in old channel
 			const joinedAt = voiceJoinTimestamps.get(key);
 			if (joinedAt) {
-				const minutes = (Date.now() - joinedAt) / 60_000;
-				const result = await addVoiceXp(guildId, userId, minutes, settings);
-				if (result?.leveledUp) {
-					await this.onLevelUp(member, result.newLevel, settings);
-				}
+				await this.awardVoiceXp(member, oldState.channelId, (Date.now() - joinedAt) / 60_000, settings);
 			}
 
 			// Start fresh timer in new channel (check min members)
@@ -95,6 +93,23 @@ export class LevelingVoiceListener extends Listener<typeof Events.VoiceStateUpda
 					voiceJoinTimestamps.delete(key);
 				}
 			}
+		}
+	}
+
+	// ─── XP award ─────────────────────────────────────────────────────────────────
+
+	/** Award voice XP for time spent in `channelId`, applying the member's multiplier for that channel. */
+	private async awardVoiceXp(
+		member: GuildMember,
+		channelId: string | null,
+		minutes: number,
+		settings: LevelSettingsRow,
+	) {
+		if (!channelId) return;
+		const multiplier = await getXpMultiplier(member.guild.id, member, channelId, settings);
+		const result = await addVoiceXp(member.guild.id, member.id, minutes, settings, multiplier);
+		if (result?.leveledUp) {
+			await this.onLevelUp(member, result.newLevel, settings);
 		}
 	}
 
@@ -117,7 +132,7 @@ export class LevelingVoiceListener extends Listener<typeof Events.VoiceStateUpda
 			.replace('{user}', member.user.username)
 			.replace('{level}', String(newLevel));
 
-		// biome-ignore lint/suspicious/noExplicitAny: TextBasedChannel send type gap
+		// TextBasedChannel send type gap
 		await (channel as any).send({ content: text }).catch(() => null);
 	}
 }
