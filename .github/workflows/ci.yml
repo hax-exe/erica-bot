@@ -23,3 +23,43 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run verify
       - run: bun run evals
+
+  migrations:
+    # Applies every drizzle migration to a fresh MySQL, the same way the bot
+    # does on startup, so a broken migration fails here instead of in prod.
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: erica
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/erica
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Check schema.ts matches the committed migrations
+        run: |
+          bunx drizzle-kit generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            echo "::error::src/db/schema.ts has changes with no migration. Run 'bun run db:generate' and commit drizzle/."
+            git status --porcelain drizzle
+            exit 1
+          fi
+      - name: Apply migrations to a fresh database
+        run: bun run db:migrate
+      - name: Re-run migrations (must be a no-op)
+        run: bun run db:migrate
+      - name: Build bundle
+        run: bun run build
