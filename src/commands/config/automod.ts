@@ -15,6 +15,7 @@ import { Colors, CV2_FLAG, errorReply, makeContainer, successReply, warningReply
 import { joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
 import { isModuleEnabled, setModule } from '../../lib/ModuleUtil.js';
+import { getPhishingListState } from '../../lib/PhishingUtil.js';
 import { safeJsonParse } from '../../lib/safe.js';
 
 const RULE_CHOICES = AUTOMOD_RULES.map((r) => ({ name: AUTOMOD_RULE_LABELS[r], value: r }));
@@ -37,6 +38,7 @@ function ruleFields(rule: AutomodRule): {
 			action: 'newAccountAction',
 			timeoutKey: 'newAccountTimeoutMinutes',
 		},
+		phishing: { enabled: 'phishingEnabled', action: 'phishingAction', timeoutKey: 'phishingTimeoutMinutes' },
 	};
 	return map[rule];
 }
@@ -206,6 +208,12 @@ export class AutomodCommand extends Subcommand {
 		const line = (enabled: boolean, label: string, detail: string) =>
 			`${enabled ? '🟢' : '🔴'} **${label}**${detail ? `\n-# ${detail}` : ''}`;
 
+		const phishingList = getPhishingListState();
+		const phishingListText =
+			phishingList.refreshedAt === null
+				? 'List: not loaded yet (the rule does nothing until it is)'
+				: `List: ${phishingList.size.toLocaleString('en-US')} domains, refreshed <t:${Math.floor(phishingList.refreshedAt / 1000)}:R>`;
+
 		const lines = [
 			line(
 				s.wordFilterEnabled,
@@ -237,6 +245,11 @@ export class AutomodCommand extends Subcommand {
 				s.newAccountEnabled,
 				'New Account Filter',
 				`Min account age: ${s.newAccountAgeDays}d · Action: ${AUTOMOD_ACTION_LABELS[s.newAccountAction as AutomodAction]}`,
+			),
+			line(
+				s.phishingEnabled,
+				AUTOMOD_RULE_LABELS.phishing,
+				`Action: ${AUTOMOD_ACTION_LABELS[s.phishingAction as AutomodAction]}${s.phishingAction === 'delete_timeout' ? ` · ${s.phishingTimeoutMinutes}m` : ''} · ${phishingListText}`,
 			),
 		];
 

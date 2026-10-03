@@ -10,13 +10,22 @@ import { db, schema } from './database.js';
 import { logFields, sendModLog } from './LoggingUtil.js';
 import { createInfraction, getModActionRow } from './ModerationUtil.js';
 import { isModuleEnabled } from './ModuleUtil.js';
+import { findPhishingDomain, getPhishingDomains } from './PhishingUtil.js';
 import { safeJsonParse } from './safe.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AutomodAction = 'delete' | 'delete_warn' | 'delete_timeout';
 
-export type AutomodRule = 'word-filter' | 'spam' | 'caps' | 'links' | 'invites' | 'mentions' | 'new-account';
+export type AutomodRule =
+	| 'word-filter'
+	| 'spam'
+	| 'caps'
+	| 'links'
+	| 'invites'
+	| 'mentions'
+	| 'new-account'
+	| 'phishing';
 
 export const AUTOMOD_RULES: AutomodRule[] = [
 	'word-filter',
@@ -26,6 +35,7 @@ export const AUTOMOD_RULES: AutomodRule[] = [
 	'invites',
 	'mentions',
 	'new-account',
+	'phishing',
 ];
 
 export const AUTOMOD_RULE_LABELS: Record<AutomodRule, string> = {
@@ -36,6 +46,7 @@ export const AUTOMOD_RULE_LABELS: Record<AutomodRule, string> = {
 	invites: 'Invite Filter',
 	mentions: 'Mass Mention Filter',
 	'new-account': 'New Account Filter',
+	phishing: 'Scam / Phishing Links',
 };
 
 export const AUTOMOD_ACTIONS: AutomodAction[] = ['delete', 'delete_warn', 'delete_timeout'];
@@ -201,6 +212,27 @@ export async function runAutomod(message: Message<true>): Promise<void> {
 		if (exemptRoles.some((r) => member.roles.cache.has(r))) return;
 
 		const content = message.content;
+
+		// ── Scam / phishing link filter ───────────────────────────────────────────
+		// First, so a known scam link gets its own (stricter) action and reason even from a new account or
+		// a spammer. With no list loaded (yet) the rule never fires.
+		if (settings.phishingEnabled) {
+			const phishingDomains = getPhishingDomains();
+			if (phishingDomains.size > 0) {
+				const whitelist = safeJsonParse<string[]>(settings.linkWhitelist, []);
+				const hit = findPhishingDomain(content, phishingDomains, whitelist);
+				if (hit) {
+					return applyAction(
+						message,
+						member,
+						settings.phishingAction as AutomodAction,
+						settings.phishingTimeoutMinutes,
+						// Backticks keep the domain from turning into a clickable link in the DM and the mod log.
+						`Message contained a known scam link (\`${hit}\`)`,
+					);
+				}
+			}
+		}
 
 		// ── New account filter ────────────────────────────────────────────────────
 		if (settings.newAccountEnabled) {
