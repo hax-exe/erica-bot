@@ -9,7 +9,7 @@ import {
 } from 'discord.js';
 import { and, asc, eq } from 'drizzle-orm';
 import { highlights } from '../db/schema.js';
-import { Colors, makeContainer, separator } from './components.js';
+import { Colors, makeContainer } from './components.js';
 import { isDuplicateKeyError } from './safe.js';
 
 /**
@@ -493,7 +493,7 @@ export function formatQuote(content: string, max = QUOTE_MAX_CHARS): string {
 		.join('\n');
 }
 
-/** CV2 DM: header, "keyword was mentioned in channel by author", the quoted message and a jump button. */
+/** CV2 DM: the keyword as header, "mentioned by author in channel", the quoted message and a jump button. */
 export function buildHighlightDm(opts: {
 	keyword: string;
 	channelId: string;
@@ -501,12 +501,12 @@ export function buildHighlightDm(opts: {
 	content: string;
 	url: string;
 }) {
-	const container = makeContainer({ color: Colors.Info, header: 'Highlight' });
-	container.addSeparatorComponents(separator());
+	// The header is added directly rather than through makeContainer's `header`, whose plainHeader() would
+	// strip a keyword's leading emoji.
+	const container = makeContainer({ color: Colors.Info });
 	container.addTextDisplayComponents(
-		new TextDisplayBuilder().setContent(
-			`**${escapeMarkdown(opts.keyword)}** was mentioned in <#${opts.channelId}> by <@${opts.authorId}>`,
-		),
+		new TextDisplayBuilder().setContent(`### ${escapeMarkdown(opts.keyword)}`),
+		new TextDisplayBuilder().setContent(`-# Mentioned by <@${opts.authorId}> in <#${opts.channelId}>`),
 		new TextDisplayBuilder().setContent(formatQuote(opts.content)),
 	);
 	container.addActionRowComponents(

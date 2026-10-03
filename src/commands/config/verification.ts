@@ -5,8 +5,10 @@ import {
 	Colors,
 	CV2_FLAG,
 	errorReply,
-	field,
+	fields,
+	hint,
 	makeContainer,
+	spacer,
 	successReply,
 	warningReply,
 } from '../../lib/components.js';
@@ -26,18 +28,27 @@ const MODULE_HINT =
 const GLOBAL_OFF_HINT =
 	'Member Verification is disabled globally by the bot owner, so it will not run until it is re-enabled.';
 
-function describeSettings(settings: VerificationSettings): string {
-	return [
-		field('Verified role', settings.roleId ? `<@&${settings.roleId}>` : '*(not set)*'),
-		field('Unverified role', settings.unverifiedRoleId ? `<@&${settings.unverifiedRoleId}>` : '*(none)*'),
-		field('Captcha', settings.captchaEnabled ? 'On' : 'Off'),
-		field(
+function describeRoles(settings: VerificationSettings): string {
+	return fields([
+		['Verified role', settings.roleId ? `<@&${settings.roleId}>` : '*(not set)*'],
+		['Unverified role', settings.unverifiedRoleId ? `<@&${settings.unverifiedRoleId}>` : '*(none)*'],
+	]);
+}
+
+function describeChecks(settings: VerificationSettings): string {
+	return fields([
+		['Captcha', settings.captchaEnabled ? 'On' : 'Off'],
+		[
 			'Minimum account age',
 			settings.minAccountAgeDays > 0
 				? `${settings.minAccountAgeDays} day${settings.minAccountAgeDays === 1 ? '' : 's'}`
 				: 'None',
-		),
-	].join('\n');
+		],
+	]);
+}
+
+function describeSettings(settings: VerificationSettings): string {
+	return `${describeRoles(settings)}\n${describeChecks(settings)}`;
 }
 
 @ApplyOptions<Subcommand.Options>({
@@ -143,7 +154,7 @@ export class VerificationCommand extends Subcommand {
 
 		return interaction.editReply(
 			successReply(
-				`Verification is set up.\n${describeSettings(settings)}\n-# Post the Verify button with \`/verification panel\`.${note}`,
+				`Verification is set up\n${describeSettings(settings)}\n-# Post the Verify button with \`/verification panel\`.${note}`,
 			),
 		);
 	}
@@ -204,11 +215,18 @@ export class VerificationCommand extends Subcommand {
 		const container = makeContainer({ color: Colors.Info, header: 'Verification' });
 		container.addTextDisplayComponents(
 			new TextDisplayBuilder().setContent(
-				[describeSettings(settings), field('Panel', panelText), field('Module', moduleText)].join('\n'),
+				fields([
+					['Module', moduleText],
+					['Panel', panelText],
+				]),
 			),
 		);
+		container.addSeparatorComponents(spacer());
+		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(describeRoles(settings)));
+		container.addSeparatorComponents(spacer());
+		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(describeChecks(settings)));
 		if (moduleState === 'guild-off') {
-			container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${MODULE_HINT}`));
+			container.addTextDisplayComponents(hint(MODULE_HINT));
 		}
 
 		return interaction.editReply({ components: [container], flags: CV2_FLAG });

@@ -8,7 +8,7 @@ import {
 	TextDisplayBuilder,
 } from 'discord.js';
 import { and, asc, count, countDistinct, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { Colors, cv2Reply, errorReply, makeContainer, pageNavRow, separator } from './components.js';
+import { Colors, cv2Reply, errorReply, hint, makeContainer, pageNavRow } from './components.js';
 import { db, schema } from './database.js';
 import {
 	countInviteRows,
@@ -162,6 +162,13 @@ export async function getInviteLeaderboard(
 }
 
 /** One leaderboard page as a CV2 reply (ephemeral). Out-of-range pages are clamped. */
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+/** Medal for the top three, `**N.**` below that. */
+function rankLabel(rank: number): string {
+	return RANK_MEDALS[rank - 1] ?? `**${rank}.**`;
+}
+
 export async function buildInviteLeaderboardPage(guildId: string, page: number): Promise<InteractionEditReplyOptions> {
 	const first = await getInviteLeaderboard(
 		guildId,
@@ -181,16 +188,15 @@ export async function buildInviteLeaderboardPage(guildId: string, page: number):
 		return cv2Reply(card, true);
 	}
 
-	card.addSeparatorComponents(separator());
 	const offset = clamped * INVITE_LEADERBOARD_PAGE_SIZE;
 	const lines = rows.map(
 		(r, i) =>
-			`**${offset + i + 1}.** <@${r.inviterId}> — **${r.effective.toLocaleString()}** invite${r.effective === 1 ? '' : 's'}\n` +
+			`${rankLabel(offset + i + 1)} <@${r.inviterId}> · **${r.effective.toLocaleString()}** invite${r.effective === 1 ? '' : 's'}\n` +
 			`-# ${r.joins.toLocaleString()} joins · ${r.left.toLocaleString()} left · ${r.fake.toLocaleString()} fake`,
 	);
 	card.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
-	card.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Page ${clamped + 1} of ${totalPages}`));
+	card.addTextDisplayComponents(hint(`Page ${clamped + 1} of ${totalPages}`));
 	if (totalPages > 1) {
 		card.addActionRowComponents(
 			pageNavRow(`${INVITE_LEADERBOARD_PREFIX}${clamped - 1}`, `${INVITE_LEADERBOARD_PREFIX}${clamped + 1}`, {

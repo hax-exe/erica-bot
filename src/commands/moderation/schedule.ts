@@ -1,6 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Subcommand } from '@sapphire/plugin-subcommands';
-import { ChannelType, MessageFlags, PermissionFlagsBits, Role, TextDisplayBuilder } from 'discord.js';
+import { ChannelType, escapeMarkdown, MessageFlags, PermissionFlagsBits, Role, TextDisplayBuilder } from 'discord.js';
 import { and, asc, count, eq } from 'drizzle-orm';
 import {
 	ANNOUNCE_COLOR_CHOICES,
@@ -17,7 +17,16 @@ import {
 	SCHEDULE_MIN_INTERVAL_MS,
 	storePendingSchedule,
 } from '../../lib/AnnouncementUtil.js';
-import { Colors, cv2Reply, errorReply, makeContainer, separator, successReply } from '../../lib/components.js';
+import {
+	Colors,
+	cv2Reply,
+	errorReply,
+	hint,
+	makeContainer,
+	spacer,
+	successReply,
+	warningReply,
+} from '../../lib/components.js';
 import { clip, joinLinesCapped } from '../../lib/config/listFormat.js';
 import { db, schema } from '../../lib/database.js';
 import { autocompleteDuration, DURATION_HINT, humanDuration, parseDuration } from '../../lib/parseDuration.js';
@@ -230,23 +239,21 @@ export class ScheduleCommand extends Subcommand {
 
 		if (!rows.length) {
 			return interaction.editReply(
-				errorReply('There are no active scheduled announcements. Create one with `/schedule create`.'),
+				warningReply('There are no active scheduled announcements. Create one with `/schedule create`.'),
 			);
 		}
 
 		const lines = rows.map((r) => {
 			const next = Math.floor(r.nextRunAt / 1000);
-			const repeat = r.intervalMs ? `every ${humanDuration(r.intervalMs)}` : 'once';
-			return `\`#${r.id}\` <#${r.channelId}> · <t:${next}:f> (<t:${next}:R>) · ${repeat}\n-# ${scheduleTitle(r.heading, r.body)}`;
+			const repeat = r.intervalMs ? `repeats every ${humanDuration(r.intervalMs)}` : 'once';
+			return `**${escapeMarkdown(scheduleTitle(r.heading, r.body))}** \`#${r.id}\`\n-# <#${r.channelId}> · <t:${next}:f> (<t:${next}:R>) · ${repeat}`;
 		});
 
 		const container = makeContainer({ color: Colors.Info, header: 'Scheduled Announcements' });
 		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(joinLinesCapped(lines, 3500)));
-		container.addSeparatorComponents(separator());
+		container.addSeparatorComponents(spacer());
 		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`-# ${rows.length}/${MAX_ACTIVE_SCHEDULES} active · Use \`/schedule delete <id>\` to remove one`,
-			),
+			hint(`${rows.length} of ${MAX_ACTIVE_SCHEDULES} active · remove one with \`/schedule delete\``),
 		);
 
 		return interaction.editReply(cv2Reply(container, true));

@@ -48,7 +48,14 @@ import {
 import { handTotal } from '../../lib/BlackjackUtil.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
 import { BOT_NAME } from '../../lib/brand.js';
-import { Colors, CV2_FLAG, makeContainer, separator as makeSeparator } from '../../lib/components.js';
+import {
+	Colors,
+	CV2_FLAG,
+	errorReply,
+	makeContainer,
+	separator as makeSeparator,
+	successReply,
+} from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
 import {
 	type C4Game,
@@ -137,10 +144,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			if (!interaction.inCachedGuild()) return;
 			if (!(await isModuleEnabled(interaction.guildId, 'fun'))) {
 				if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-					await interaction.reply({
-						content: '❌ The Fun & Games module is disabled on this server.',
-						flags: MessageFlags.Ephemeral,
-					});
+					await interaction.reply(errorReply('The Fun & Games module is disabled on this server.') as any);
 				}
 				return;
 			}
@@ -200,14 +204,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'accept' || action === 'decline') {
 			const pending = pendingGames.get(msgId);
 			if (!pending || pending.type !== 'c4') {
-				return interaction.reply({ content: '❌ This challenge has expired.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('This challenge has expired.') as any);
 			}
 
 			if (interaction.user.id !== pending.targetId) {
-				return interaction.reply({
-					content: '❌ Only the challenged player can respond.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('Only the challenged player can respond.') as any);
 			}
 
 			clearTimeout(pending.timeout);
@@ -257,26 +258,23 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'move') {
 			const game = c4Games.get(msgId);
 			if (!game) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This game has ended or does not exist.') as any);
 			}
 
 			const currentPlayerId = game.players[game.currentTurn];
 			if (interaction.user.id !== currentPlayerId) {
-				return interaction.reply({ content: "❌ It's not your turn!", flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply("It's not your turn!") as any);
 			}
 
 			const col = parseInt(extra ?? '0', 10);
 			if (Number.isNaN(col) || col < 0 || col >= COLS) {
-				return interaction.reply({ content: '❌ Invalid column.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('Invalid column.') as any);
 			}
 
 			const playerNum = game.currentTurn + 1;
 			const placed = dropPiece(game.board, col, playerNum);
 			if (!placed) {
-				return interaction.reply({ content: '❌ That column is full! Choose another.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('That column is full! Choose another.') as any);
 			}
 
 			// Check win
@@ -342,14 +340,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'resign') {
 			const game = c4Games.get(msgId);
 			if (!game) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This game has ended or does not exist.') as any);
 			}
 
 			if (!game.players.includes(interaction.user.id)) {
-				return interaction.reply({ content: '❌ You are not part of this game.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('You are not part of this game.') as any);
 			}
 
 			clearTimeout(game.timeout);
@@ -388,14 +383,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'accept' || action === 'decline') {
 			const pending = pendingGames.get(msgId);
 			if (!pending || pending.type !== 'ttt') {
-				return interaction.reply({ content: '❌ This challenge has expired.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('This challenge has expired.') as any);
 			}
 
 			if (interaction.user.id !== pending.targetId) {
-				return interaction.reply({
-					content: '❌ Only the challenged player can respond.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('Only the challenged player can respond.') as any);
 			}
 
 			clearTimeout(pending.timeout);
@@ -444,24 +436,21 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'move') {
 			const game = tttGames.get(msgId);
 			if (!game) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This game has ended or does not exist.') as any);
 			}
 
 			const currentPlayerId = game.players[game.currentTurn];
 			if (interaction.user.id !== currentPlayerId) {
-				return interaction.reply({ content: "❌ It's not your turn!", flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply("It's not your turn!") as any);
 			}
 
 			const cellIdx = parseInt(extra ?? '0', 10);
 			if (Number.isNaN(cellIdx) || cellIdx < 0 || cellIdx > 8) {
-				return interaction.reply({ content: '❌ Invalid cell.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('Invalid cell.') as any);
 			}
 
 			if (game.board[cellIdx] !== 0) {
-				return interaction.reply({ content: '❌ That cell is already taken!', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('That cell is already taken!') as any);
 			}
 
 			const playerNum = game.currentTurn + 1;
@@ -539,28 +528,22 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 		const resolved = resolveGame(triviaGames, interaction.message.id, msgId);
 		if (!resolved) {
-			return interaction.reply({ content: '❌ This trivia game has expired.', flags: MessageFlags.Ephemeral });
+			return interaction.reply(errorReply('This trivia game has expired.') as any);
 		}
 		const game = resolved.game;
 		msgId = resolved.key;
 
 		if (interaction.user.id !== game.userId) {
-			return interaction.reply({
-				content: '❌ Only the person who started this trivia can answer.',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('Only the person who started this trivia can answer.') as any);
 		}
 
 		if (game.answered) {
-			return interaction.reply({
-				content: '❌ This question has already been answered.',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('This question has already been answered.') as any);
 		}
 
 		const answerIdx = parseInt(extra ?? '0', 10);
 		if (Number.isNaN(answerIdx) || answerIdx < 0 || answerIdx >= game.answers.length) {
-			return interaction.reply({ content: '❌ Invalid answer.', flags: MessageFlags.Ephemeral });
+			return interaction.reply(errorReply('Invalid answer.') as any);
 		}
 
 		clearTimeout(game.timeout);
@@ -670,14 +653,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'accept' || action === 'decline') {
 			const pending = pendingGames.get(msgId);
 			if (!pending || pending.type !== 'rps') {
-				return interaction.reply({ content: '❌ This challenge has expired.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('This challenge has expired.') as any);
 			}
 
 			if (interaction.user.id !== pending.targetId) {
-				return interaction.reply({
-					content: '❌ Only the challenged player can respond.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('Only the challenged player can respond.') as any);
 			}
 
 			clearTimeout(pending.timeout);
@@ -733,32 +713,26 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		if (action === 'move') {
 			const game = rpsGames.get(msgId);
 			if (!game) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This game has ended or does not exist.') as any);
 			}
 
 			const playerIdx = game.players.indexOf(interaction.user.id);
 			if (playerIdx === -1) {
-				return interaction.reply({ content: '❌ You are not part of this game.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('You are not part of this game.') as any);
 			}
 
 			if (game.choices[playerIdx] !== null) {
-				return interaction.reply({ content: '❌ You have already made your choice!', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('You have already made your choice!') as any);
 			}
 
 			const choice = extra;
 			if (!choice || !['rock', 'paper', 'scissors'].includes(choice)) {
-				return interaction.reply({ content: '❌ Invalid move.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('Invalid move.') as any);
 			}
 
 			game.choices[playerIdx] = choice;
 
-			await interaction.reply({
-				content: `✅ You selected **${choice}**!`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await interaction.reply(successReply(`You selected **${choice}**!`) as any);
 
 			if (game.choices[0] !== null && game.choices[1] !== null) {
 				clearTimeout(game.timeout);
@@ -847,10 +821,9 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			const o1 = raw.match(/🔵 \*\*Option 1\*\*: ([^\\"]+)/)?.[1]?.trim();
 			const o2 = raw.match(/🔴 \*\*Option 2\*\*: ([^\\"]+)/)?.[1]?.trim();
 			if (!o1 || !o2) {
-				return interaction.reply({
-					content: '❌ This Would You Rather poll has expired. Start a new one with `/fun wouldyourather`.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(
+					errorReply('This Would You Rather poll has expired. Start a new one with `/fun wouldyourather`.') as any,
+				);
 			}
 			const game: WYRGame = {
 				option1: new Set(),
@@ -933,17 +906,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			try {
 				imageUrl = await fetchAnimalImage(type);
 			} catch (_err) {
-				return interaction.reply({
-					content: '❌ Failed to fetch another cute animal image.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('Failed to fetch another cute animal image.') as any);
 			}
 
 			if (!imageUrl) {
-				return interaction.reply({
-					content: '❌ Could not retrieve another image.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('Could not retrieve another image.') as any);
 			}
 
 			const animalLabels: Record<string, string> = {
@@ -989,19 +956,15 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 	) {
 		const resolved = resolveGame(games2048, interaction.message.id, msgId);
 		if (!resolved) {
-			return interaction.reply({
-				content: '❌ This game has ended or does not exist. Start a new one with `/fun games 2048`.',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(
+				errorReply('This game has ended or does not exist. Start a new one with `/fun games 2048`.') as any,
+			);
 		}
 		const game = resolved.game;
 		msgId = resolved.key;
 
 		if (interaction.user.id !== game.userId) {
-			return interaction.reply({
-				content: '❌ This is not your game!',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('This is not your game!') as any);
 		}
 
 		if (action === 'quit') {
@@ -1031,7 +994,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			else if (dir === 'down') moveRes = slideDown(game.board, scoreObj);
 			else if (dir === 'right') moveRes = slideRight(game.board, scoreObj);
 			else {
-				return interaction.reply({ content: '❌ Invalid move.', flags: MessageFlags.Ephemeral });
+				return interaction.reply(errorReply('Invalid move.') as any);
 			}
 
 			if (moveRes.changed) {
@@ -1091,19 +1054,15 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 		const resolved = resolveGame(findTheEmojiGames, interaction.message.id, msgId);
 		if (!resolved) {
-			return interaction.reply({
-				content: '❌ This game has ended or does not exist. Start a new one with `/fun games findtheemoji`.',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(
+				errorReply('This game has ended or does not exist. Start a new one with `/fun games findtheemoji`.') as any,
+			);
 		}
 		const game = resolved.game;
 		msgId = resolved.key;
 
 		if (game.wrongGuessers.has(interaction.user.id)) {
-			return interaction.reply({
-				content: '❌ You already guessed wrong this round — wait for the next one!',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('You already guessed wrong this round — wait for the next one!') as any);
 		}
 
 		const clickedIdx = parseInt(extra ?? '0', 10);
@@ -1135,10 +1094,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 		// Wrong guess — lock this player out, keep the race open for everyone else
 		game.wrongGuessers.add(interaction.user.id);
-		return interaction.reply({
-			content: `❌ Not that one — you're out for this round. Keep watching!`,
-			flags: MessageFlags.Ephemeral,
-		});
+		return interaction.reply(errorReply(`Not that one — you're out for this round. Keep watching!`) as any);
 	}
 
 	private async handleWordle(interaction: Interaction, action: string, msgId: string) {
@@ -1147,10 +1103,9 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		const resolved = resolveGame(wordleGames, messageId, msgId);
 		if (!resolved) {
 			if (interaction.isRepliable()) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist. Start a new one with `/fun games wordle`.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(
+					errorReply('This game has ended or does not exist. Start a new one with `/fun games wordle`.') as any,
+				);
 			}
 			return;
 		}
@@ -1159,10 +1114,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 		if (interaction.user.id !== game.userId) {
 			if (interaction.isRepliable()) {
-				return interaction.reply({
-					content: '❌ This is not your game!',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This is not your game!') as any);
 			}
 			return;
 		}
@@ -1210,17 +1162,11 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				const guess = guessInput.trim().toLowerCase();
 
 				if (!/^[a-z]{5}$/.test(guess)) {
-					return interaction.reply({
-						content: '❌ Your guess must be exactly 5 alphabetical letters.',
-						flags: MessageFlags.Ephemeral,
-					});
+					return interaction.reply(errorReply('Your guess must be exactly 5 alphabetical letters.') as any);
 				}
 
 				if (game.guesses.includes(guess)) {
-					return interaction.reply({
-						content: '❌ You already guessed that word!',
-						flags: MessageFlags.Ephemeral,
-					});
+					return interaction.reply(errorReply('You already guessed that word!') as any);
 				}
 
 				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -1297,10 +1243,9 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		const resolved = resolveGame(hangmanGames, messageId, msgId);
 		if (!resolved) {
 			if (interaction.isRepliable()) {
-				return interaction.reply({
-					content: '❌ This game has ended or does not exist. Start a new one with `/fun games hangman`.',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(
+					errorReply('This game has ended or does not exist. Start a new one with `/fun games hangman`.') as any,
+				);
 			}
 			return;
 		}
@@ -1309,10 +1254,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 		if (interaction.user.id !== game.userId) {
 			if (interaction.isRepliable()) {
-				return interaction.reply({
-					content: '❌ This is not your game!',
-					flags: MessageFlags.Ephemeral,
-				});
+				return interaction.reply(errorReply('This is not your game!') as any);
 			}
 			return;
 		}
@@ -1361,18 +1303,12 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 				const guess = guessInput.trim().toLowerCase();
 
 				if (!/^[a-z]+$/.test(guess)) {
-					return interaction.reply({
-						content: '❌ Your guess must contain only alphabetical letters.',
-						flags: MessageFlags.Ephemeral,
-					});
+					return interaction.reply(errorReply('Your guess must contain only alphabetical letters.') as any);
 				}
 
 				// Validate before touching the inactivity timer, so a rejected guess leaves it running.
 				if (guess.length === 1 && game.guesses.includes(guess)) {
-					return interaction.reply({
-						content: '❌ You already guessed that letter!',
-						flags: MessageFlags.Ephemeral,
-					});
+					return interaction.reply(errorReply('You already guessed that letter!') as any);
 				}
 
 				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -1476,10 +1412,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 
 	private async handleTruthordare(interaction: import('discord.js').ButtonInteraction, action: string, msgId: string) {
 		if (interaction.user.id !== msgId) {
-			return interaction.reply({
-				content: '❌ Only the player who ran the command can choose!',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('Only the player who ran the command can choose!') as any);
 		}
 
 		let promptText = '';
@@ -1492,7 +1425,7 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 			promptText = getRandomDare();
 			title = '⚡ Dare';
 		} else {
-			return interaction.reply({ content: '❌ Invalid action.', flags: MessageFlags.Ephemeral });
+			return interaction.reply(errorReply('Invalid action.') as any);
 		}
 
 		const c = makeContainer({ color: Colors.Info, header: `Truth or Dare — ${title}` });
@@ -1589,19 +1522,15 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 	private async handleFunBlackjack(interaction: import('discord.js').ButtonInteraction, action: string, msgId: string) {
 		const resolved = resolveGame(funBlackjackGames, interaction.message.id, msgId);
 		if (!resolved) {
-			return interaction.reply({
-				content: '❌ This game has ended or does not exist. Start a new one with `/fun games blackjack`.',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(
+				errorReply('This game has ended or does not exist. Start a new one with `/fun games blackjack`.') as any,
+			);
 		}
 		const game = resolved.game;
 		msgId = resolved.key;
 
 		if (interaction.user.id !== game.userId) {
-			return interaction.reply({
-				content: '❌ This is not your game!',
-				flags: MessageFlags.Ephemeral,
-			});
+			return interaction.reply(errorReply('This is not your game!') as any);
 		}
 
 		clearTimeout(game.timeout);
@@ -1739,10 +1668,10 @@ export class GameInteractionsListener extends Listener<typeof Events.Interaction
 		const current = Number(parts[4]);
 		const next = Number(parts[5]);
 		if (interaction.user.id !== userId) {
-			return interaction.reply({ content: 'This isn’t your game.', flags: MessageFlags.Ephemeral });
+			return interaction.reply(errorReply('This isn’t your game.') as any);
 		}
 		if (![current, next].every((n) => Number.isFinite(n) && n >= 1 && n <= 13)) {
-			return interaction.reply({ content: 'This round expired.', flags: MessageFlags.Ephemeral });
+			return interaction.reply(errorReply('This round expired.') as any);
 		}
 
 		const won =

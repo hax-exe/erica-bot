@@ -18,7 +18,7 @@ import {
 	TextInputStyle,
 } from 'discord.js';
 import { rejectBlacklistedInteraction } from '../../lib/BlacklistUtil.js';
-import { Colors, CV2_FLAG, errorReply, makeContainer, successReply, warningReply } from '../../lib/components.js';
+import { Colors, CV2_FLAG, errorReply, hint, makeContainer, successReply, warningReply } from '../../lib/components.js';
 import { logFields } from '../../lib/LoggingUtil.js';
 import { isModuleEnabled } from '../../lib/ModuleUtil.js';
 import {
@@ -122,7 +122,7 @@ export class VerificationInteractionListener extends Listener<typeof Events.Inte
 			);
 			return interaction.editReply(
 				errorReply(
-					`Your Discord account must be at least **${minAge} day${minAge === 1 ? '' : 's'}** old to verify here. You can try again <t:${eligibleAt}:R>.`,
+					`Your account is too new to verify here\nDiscord accounts must be at least **${minAge} day${minAge === 1 ? '' : 's'}** old. You can try again <t:${eligibleAt}:R>.`,
 				),
 			);
 		}
@@ -132,15 +132,14 @@ export class VerificationInteractionListener extends Listener<typeof Events.Inte
 		const code = createPendingCaptcha(interaction.guildId, interaction.user.id);
 		const image = new AttachmentBuilder(renderCaptcha(code), { name: 'captcha.png' });
 
-		const captchaCard = makeContainer({ color: Colors.Info, header: 'Verification' });
+		const captchaCard = makeContainer({ color: Colors.Info, header: 'Enter the code' });
 		captchaCard.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`Type the ${CAPTCHA_LENGTH} characters shown below. The code is not case-sensitive and expires in ${CAPTCHA_TTL_MS / 60_000} minutes.`,
-			),
+			new TextDisplayBuilder().setContent(`Type the ${CAPTCHA_LENGTH} characters from the image below.`),
 		);
 		captchaCard.addMediaGalleryComponents(
 			new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL('attachment://captcha.png')),
 		);
+		captchaCard.addTextDisplayComponents(hint(`Not case-sensitive · expires in ${CAPTCHA_TTL_MS / 60_000} minutes`));
 		captchaCard.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder().setCustomId(CODE_BUTTON_ID).setLabel('Enter code').setStyle(ButtonStyle.Primary),

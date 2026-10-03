@@ -2,7 +2,10 @@
  * Components V2 design system.
  *
  * Design principles:
- *  - Accent bar signals status (no emoji prefix on every reply)
+ *  - Accent bar signals status (no emoji prefix on every reply); informational cards and
+ *    panels use the brand accent (`BRAND_COLOR`) so they read as one consistent family
+ *  - Every card follows title -> body -> hint: a ### header (also on multi-line status replies),
+ *    the content, then any -# hint lines at the very end
  *  - ### for section headers (lighter weight than ##); leading emoji stripped via plainHeader()
  *  - **Label** value fields (no trailing colon)
  *  - -# for all metadata / footer lines
@@ -16,6 +19,7 @@ import {
 	ButtonStyle,
 	ContainerBuilder,
 	EmbedBuilder,
+	escapeMarkdown,
 	type InteractionEditReplyOptions,
 	MessageFlags,
 	SectionBuilder,
@@ -27,6 +31,7 @@ import {
 	ThumbnailBuilder,
 	type User,
 } from 'discord.js';
+import { BRAND_COLOR } from './brand.js';
 
 /** The flag required for all Components V2 messages. */
 export const CV2_FLAG = MessageFlags.IsComponentsV2;
@@ -34,24 +39,24 @@ export const CV2_FLAG = MessageFlags.IsComponentsV2;
 // ─── Colour palette ────────────────────────────────────────────────────────────
 
 export const Colors = {
-	/** Invisible / Neutral — default embed background */
-	Info: 0x2b2d31,
-	/** Sleek Green — success / join */
-	Success: 0x43b581,
-	/** Soft Amber — warning / caution */
-	Warning: 0xfaa61a,
-	/** Soft Red — error / ban / destructive */
-	Error: 0xf04747,
+	/** Brand accent (soft violet) — informational cards and panels */
+	Info: BRAND_COLOR,
+	/** Green — success / join */
+	Success: 0x23a55a,
+	/** Amber — warning / caution */
+	Warning: 0xf0b232,
+	/** Red — error / ban / destructive */
+	Error: 0xf23f43,
 	/** Orange — kick / timeout */
 	Moderation: 0xeb6434,
-	/** Invisible Neutral — minor events */
+	/** Invisible Neutral — minor events / loading states */
 	Neutral: 0x2b2d31,
 	/** Purple — ticket events */
 	Ticket: 0x9b59b6,
 	/** Teal — message events */
 	Message: 0x1abc9c,
 	/** Blurple — voice events */
-	Voice: 0x7289da,
+	Voice: 0x5865f2,
 } as const;
 
 /** Strip leading emoji / pictographs so accent color carries status, not decoration. */
@@ -82,6 +87,49 @@ export function meta(...parts: string[]): string {
 	return `-# ${parts.join(' · ')}`;
 }
 
+/** Several `**Label** value` lines in one block — one `field()` per pair. */
+export function fields(pairs: Array<[string, string]>): string {
+	return pairs.map(([label, value]) => field(label, value)).join('\n');
+}
+
+/** Hint block — one `-# ` line per argument (not one dotted run-on line). Goes last in a card. */
+export function hint(...lines: string[]): TextDisplayBuilder {
+	return new TextDisplayBuilder().setContent(lines.map((line) => `-# ${line}`).join('\n'));
+}
+
+/** Breathing room inside a card without a visible divider. */
+export function spacer(): SeparatorBuilder {
+	return new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small);
+}
+
+/**
+ * Card header: `### title` with an optional `-# subtitle` line.
+ * With a thumbnail URL it is a Section with a thumbnail accessory (e.g. a user's avatar);
+ * otherwise a plain TextDisplay, since a Section requires an accessory.
+ */
+export function headerSection(opts: {
+	title: string;
+	subtitle?: string;
+	thumbnailUrl?: string | null;
+}): SectionBuilder | TextDisplayBuilder {
+	let content = `### ${plainHeader(opts.title)}`;
+	if (opts.subtitle) content += `\n-# ${opts.subtitle}`;
+	const text = new TextDisplayBuilder().setContent(content);
+	if (!opts.thumbnailUrl) return text;
+	return new SectionBuilder()
+		.addTextDisplayComponents(text)
+		.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.thumbnailUrl));
+}
+
+/** Inline code chips for short keyword lists: `` `a` `b` ``. Backticks in items are stripped. */
+export function chips(items: string[]): string {
+	return items
+		.map((item) => item.replace(/`/g, ''))
+		.filter((item) => item.length > 0)
+		.map((item) => `\`${item}\``)
+		.join(' ');
+}
+
 // ─── Container factory ─────────────────────────────────────────────────────────
 
 /**
@@ -109,27 +157,73 @@ export function cv2Reply(container: ContainerBuilder, ephemeral = false): Intera
 	};
 }
 
+const HINT_PREFIX = '-#';
+
+/**
+ * Status reply structure: title -> body -> hint.
+ * A single non-empty line is returned unchanged. Otherwise `-#` hint lines move to the end
+ * after one blank line, and the other lines keep their order. The first line becomes a
+ * `### title` (one trailing `.` or `:` dropped, ellipses kept) only when at least one non-hint body
+ * line follows it and it contains no `**` (titling would invert the caller's emphasis).
+ * Adds at most a few characters.
+ */
+export function formatStatus(message: string): string {
+	const lines = message.split('\n');
+	if (lines.filter((line) => line.trim().length > 0).length <= 1) return message;
+
+	const isHint = (line: string) => line.trim().startsWith(HINT_PREFIX);
+	const [first = '', ...rest] = lines;
+	const main: string[] = [];
+	const hints: string[] = [];
+
+	const firstTrimmed = first.trim();
+	const hasBody = rest.some((line) => line.trim().length > 0 && !isHint(line));
+	if (isHint(first)) {
+		hints.push(firstTrimmed);
+	} else if (hasBody && firstTrimmed.length > 0 && !firstTrimmed.includes('**')) {
+		const title =
+			firstTrimmed.endsWith(':') || (firstTrimmed.endsWith('.') && !firstTrimmed.endsWith('..'))
+				? firstTrimmed.slice(0, -1)
+				: firstTrimmed;
+		main.push(`### ${title}`);
+	} else {
+		main.push(first);
+	}
+
+	for (const line of rest) {
+		if (isHint(line)) hints.push(line.trim());
+		else main.push(line);
+	}
+
+	while (main.length > 0 && main[main.length - 1]?.trim() === '') main.pop();
+	while (main.length > 0 && main[0]?.trim() === '') main.shift();
+
+	if (hints.length === 0) return main.join('\n');
+	if (main.length === 0) return hints.join('\n');
+	return `${main.join('\n')}\n\n${hints.join('\n')}`;
+}
+
 export function errorReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Error);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function successReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Success);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function warningReply(message: string, ephemeral = true): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Warning);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c, ephemeral);
 }
 
 export function loadingReply(message: string): InteractionEditReplyOptions {
 	const c = new ContainerBuilder().setAccentColor(Colors.Neutral);
-	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(plainHeader(message)));
+	c.addTextDisplayComponents(new TextDisplayBuilder().setContent(formatStatus(plainHeader(message))));
 	return cv2Reply(c);
 }
 
@@ -380,11 +474,38 @@ export function confirmCancelRow(confirmId: string, cancelId: string): ActionRow
 
 export type MusicLoopMode = 'off' | 'track' | 'queue';
 
+/** Longest track title shown in music cards and lists before it is cut with `…`. */
+export const TRACK_TITLE_MAX = 80;
+
+/** Escape markdown, including `[` / `]`, so user-provided text can't break a masked link. */
+export function escapeTrackText(text: string): string {
+	return escapeMarkdown(text).replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+/** Backslash-escape a line-leading block marker (`#`, `-`, `>`, `*`, `+`, `1.`) so it can't become a heading/list/quote. */
+export function escapeLineStart(text: string): string {
+	return text.replace(/^(\s*)([#>+*-])/, '$1\\$2').replace(/^(\s*\d+)\./, '$1\\.');
+}
+
 /**
- * Now Playing card — title + artwork, quiet meta, icon transport controls.
+ * Track title as a masked link (`[title](uri)`), or the escaped title when there is no usable
+ * http(s) URI. The title is cut to `maxLength` characters before escaping.
+ */
+export function trackLink(title: string, uri?: string | null, maxLength = TRACK_TITLE_MAX): string {
+	const clean = title.replace(/\s+/g, ' ').trim() || 'Unknown';
+	const cut = clean.length > maxLength ? `${clean.slice(0, maxLength - 1).trimEnd()}…` : clean;
+	const text = escapeTrackText(cut);
+	if (!uri || uri.length > 512 || !/^https?:\/\/\S+$/i.test(uri)) return text;
+	return `[${text}](${uri.replace(/\(/g, '%28').replace(/\)/g, '%29')})`;
+}
+
+/**
+ * Now Playing card — compact block: `-#` eyebrow, `###` track link, artist · album, one `-#` meta
+ * line, artwork as the thumbnail, then the controls after a spacer.
  * No Unicode progress bars (Discord turns them into ugly scrubbers).
  */
 export function musicTrackCard(opts: {
+	/** Eyebrow text above the title, e.g. "Now playing" / "Paused". Defaults to "Now playing". */
 	header?: string;
 	color: number;
 	title: string;
@@ -411,43 +532,43 @@ export function musicTrackCard(opts: {
 }): ContainerBuilder {
 	const c = new ContainerBuilder().setAccentColor(opts.color);
 
-	const header = opts.header?.trim();
-	if (header) {
-		c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${plainHeader(header)}`));
-		c.addSeparatorComponents(separator());
-	}
+	const eyebrow = plainHeader(opts.header?.trim() || 'Now playing');
+	const lines: string[] = [`-# ${eyebrow}`, `### ${trackLink(opts.title, opts.uri)}`];
 
-	const titleLine = opts.uri ? `**[${opts.title}](${opts.uri})**` : `**${opts.title}**`;
-	const lines: string[] = [titleLine];
+	const byline = [opts.author, opts.album]
+		.map((part) => part?.trim())
+		.filter((part): part is string => !!part)
+		.map((part) => escapeTrackText(part.length > 100 ? `${part.slice(0, 99).trimEnd()}…` : part));
+	if (byline.length) lines.push(escapeLineStart(byline.join(' · ')));
 
-	if (opts.author || opts.album) {
-		lines.push([opts.author, opts.album].filter(Boolean).join(' · '));
-	}
-
-	const timeLine =
+	// One quiet meta line: only positive / useful state — no "empty" / "off" noise
+	const metaBits: string[] = [];
+	const time =
 		opts.position && opts.duration ? `${opts.position} / ${opts.duration}` : (opts.duration ?? opts.position ?? null);
-	if (timeLine) lines.push(meta(timeLine));
-
-	// Footer: only positive / useful state — no "empty" / "off" noise
-	const stateBits: string[] = [];
-	if (opts.requesterMention) stateBits.push(`Requested by ${opts.requesterMention}`);
-	if (opts.queueSize && opts.queueSize > 0) {
-		stateBits.push(`${opts.queueSize} in queue`);
-	}
-	if (opts.autoPlay) stateBits.push('Autoplay');
-	if (stateBits.length) lines.push(meta(...stateBits));
+	if (time) metaBits.push(time);
+	if (opts.requesterMention) metaBits.push(`Requested by ${opts.requesterMention}`);
+	if (opts.queueSize && opts.queueSize > 0) metaBits.push(`${opts.queueSize} up next`);
+	if (opts.autoPlay) metaBits.push('Autoplay');
+	if (metaBits.length) lines.push(meta(...metaBits));
 
 	if (opts.body?.trim()) {
 		lines.push('');
 		lines.push(opts.body.trim());
 	}
 
-	const section = new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
-	if (opts.artworkUrl) section.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.artworkUrl));
-	c.addSectionComponents(section);
+	const text = new TextDisplayBuilder().setContent(lines.join('\n'));
+	if (opts.artworkUrl) {
+		c.addSectionComponents(
+			new SectionBuilder()
+				.addTextDisplayComponents(text)
+				.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.artworkUrl)),
+		);
+	} else {
+		c.addTextDisplayComponents(text);
+	}
 
 	if (opts.withControls) {
-		c.addSeparatorComponents(separator());
+		c.addSeparatorComponents(spacer());
 		const [row1, row2] = musicControlRows({ paused: opts.paused, loopMode: opts.loopMode });
 		c.addActionRowComponents(row1);
 		c.addActionRowComponents(row2);
@@ -458,12 +579,13 @@ export function musicTrackCard(opts: {
 
 /** Idle jukebox panel (no track playing). */
 export function idleJukeboxCard(): ContainerBuilder {
-	const c = makeContainer({ color: Colors.Voice, header: 'Jukebox' });
-	c.addSeparatorComponents(separator());
+	const c = new ContainerBuilder().setAccentColor(Colors.Voice);
 	c.addTextDisplayComponents(
-		new TextDisplayBuilder().setContent('Nothing playing.\nSend a **song name** or **link** in this channel to start.'),
+		new TextDisplayBuilder().setContent(
+			'-# Jukebox\n### Nothing playing\nSend a song name or link in this channel to start.',
+		),
 	);
-	c.addSeparatorComponents(separator());
+	c.addSeparatorComponents(spacer());
 	const [row1, row2] = musicControlRows();
 	c.addActionRowComponents(row1);
 	c.addActionRowComponents(row2);
@@ -472,7 +594,8 @@ export function idleJukeboxCard(): ContainerBuilder {
 
 /**
  * Icon transport row + options menu — matches how production music bots present controls.
- * Labels are omitted so the row stays compact; emoji carries meaning.
+ * Labels are omitted so the row stays compact; emoji carries meaning. Only play/pause (and loop
+ * while it is on) are Primary, so the active state stands out.
  */
 export function musicControlRows(
 	opts: { paused?: boolean; loopMode?: MusicLoopMode } = {},
@@ -489,22 +612,24 @@ export function musicControlRows(
 			.setCustomId('music:loop')
 			.setEmoji(opts.loopMode === 'track' ? '🔂' : '🔁')
 			.setStyle(looping ? ButtonStyle.Primary : ButtonStyle.Secondary),
-		new ButtonBuilder().setCustomId('music:stop').setEmoji('⏹').setStyle(ButtonStyle.Danger),
+		new ButtonBuilder().setCustomId('music:stop').setEmoji('⏹').setStyle(ButtonStyle.Secondary),
 	);
+	const option = (label: string, value: string, emoji: string, description: string) =>
+		new StringSelectMenuOptionBuilder().setLabel(label).setValue(value).setEmoji(emoji).setDescription(description);
 	const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
 		new StringSelectMenuBuilder()
 			.setCustomId('music:options')
-			.setPlaceholder('Options')
+			.setPlaceholder('More options')
 			.addOptions(
-				new StringSelectMenuOptionBuilder().setLabel('Queue').setValue('queue'),
-				new StringSelectMenuOptionBuilder().setLabel('Shuffle').setValue('shuffle'),
-				new StringSelectMenuOptionBuilder().setLabel('Autoplay').setValue('autoplay'),
-				new StringSelectMenuOptionBuilder().setLabel('Clear queue').setValue('clear_queue'),
-				new StringSelectMenuOptionBuilder().setLabel('Volume').setValue('volume_modal'),
-				new StringSelectMenuOptionBuilder().setLabel('Bassboost').setValue('filter_bassboost'),
-				new StringSelectMenuOptionBuilder().setLabel('Nightcore').setValue('filter_nightcore'),
-				new StringSelectMenuOptionBuilder().setLabel('Vaporwave').setValue('filter_vaporwave'),
-				new StringSelectMenuOptionBuilder().setLabel('Clear filters').setValue('filter_clear'),
+				option('Queue', 'queue', '📜', "See what's up next"),
+				option('Shuffle', 'shuffle', '🔀', 'Shuffle the queue'),
+				option('Autoplay', 'autoplay', '♾️', 'Keep playing similar songs'),
+				option('Clear queue', 'clear_queue', '🧹', 'Remove all upcoming tracks'),
+				option('Volume', 'volume_modal', '🔊', 'Set the volume'),
+				option('Bassboost', 'filter_bassboost', '🎚️', 'Boost the low end'),
+				option('Nightcore', 'filter_nightcore', '⏩', 'Faster, higher pitch'),
+				option('Vaporwave', 'filter_vaporwave', '🌊', 'Slower, lower pitch'),
+				option('Clear filters', 'filter_clear', '✖️', 'Back to the original sound'),
 			),
 	);
 	return [row1, row2];

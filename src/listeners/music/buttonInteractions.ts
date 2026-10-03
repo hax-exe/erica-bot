@@ -1,28 +1,13 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Listener } from '@sapphire/framework';
-import { Events, GuildMember, type Interaction, MessageFlags, TextDisplayBuilder } from 'discord.js';
+import { Events, GuildMember, type Interaction, MessageFlags } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { ensureAutoplayBuffer, isAutoplayOn, setAutoplay } from '../../lib/AutoplayManager.js';
 import { isBotBlacklisted } from '../../lib/BlacklistUtil.js';
-import {
-	Colors,
-	CV2_FLAG,
-	cv2Reply,
-	errorReply,
-	makeContainer,
-	meta,
-	pageNavRow,
-	successReply,
-	warningReply,
-} from '../../lib/components.js';
+import { CV2_FLAG, cv2Reply, errorReply, pageNavRow, successReply, warningReply } from '../../lib/components.js';
 import { db, schema } from '../../lib/database.js';
-import {
-	clearMusicQueue,
-	formatDuration,
-	inSameVC,
-	saveMusicQueue,
-	setVoiceChannelStatus,
-} from '../../lib/MusicManager.js';
+import { clearMusicQueue, inSameVC, saveMusicQueue, setVoiceChannelStatus } from '../../lib/MusicManager.js';
+import { buildQueueCard } from '../../lib/music/queueCard.js';
 import { buildNpCard, clearNpMessage, npMessages, resetJukeboxUI, updatePlaybackState } from './events.js';
 
 const LOOP_MODES = ['off', 'track', 'queue'] as const;
@@ -267,14 +252,6 @@ export class MusicButtonListener extends Listener<typeof Events.InteractionCreat
 			}
 			case 'music:queue': {
 				const tracks = player.queue.tracks ?? [];
-				const current = player.current;
-				const lines: string[] = [];
-				if (current) {
-					const dur = current.isStream ? 'LIVE' : formatDuration(current.duration ?? 0);
-					const label = player.paused ? 'Paused' : 'Now Playing';
-					lines.push(`**${label}**\n[${current.title}](${current.uri}) — \`${dur}\``);
-				}
-
 				const PAGE_SIZE = 10;
 				let page = parseInt(actionArg, 10);
 				if (Number.isNaN(page) || page < 0) page = 0;
@@ -282,41 +259,15 @@ export class MusicButtonListener extends Listener<typeof Events.InteractionCreat
 				const totalPages = Math.ceil(tracks.length / PAGE_SIZE) || 1;
 				if (page >= totalPages) page = totalPages - 1;
 
-				const slice = (tracks as Array<{ title?: string; uri?: string; duration?: number; isStream?: boolean }>).slice(
-					page * PAGE_SIZE,
-					(page + 1) * PAGE_SIZE,
-				);
-
-				if (slice.length > 0) {
-					lines.push('');
-					lines.push(`**Up next (page ${page + 1}/${totalPages})**`);
-					for (const [i, t] of slice.entries()) {
-						const dur = t.isStream ? 'LIVE' : formatDuration(t.duration ?? 0);
-						lines.push(`\`${page * PAGE_SIZE + i + 1}.\` [${t.title}](${t.uri}) — \`${dur}\``);
-					}
-				} else if (!current) {
-					lines.push('The queue is empty.');
-				}
-
-				if (tracks.length > 0 || current) {
-					const queueMs = (tracks as Array<{ duration?: number }>).reduce((acc, t) => acc + (t.duration ?? 0), 0);
-					const currentMs = !current?.isStream && current?.duration ? current.duration - (current.position ?? 0) : 0;
-					lines.push('');
-					lines.push(
-						`-# ${tracks.length} track${tracks.length === 1 ? '' : 's'} queued · ${formatDuration(queueMs + currentMs)} remaining`,
-					);
-				}
-
-				const statusBits: string[] = [];
-				if (player.loop === 'track') statusBits.push('Loop: Track');
-				else if (player.loop === 'queue') statusBits.push('Loop: Queue');
-				if (isAutoplayOn(interaction.guildId)) statusBits.push('Autoplay');
-
-				const container = makeContainer({ color: Colors.Voice, header: `Queue` });
-				if (statusBits.length > 0) {
-					container.addTextDisplayComponents(new TextDisplayBuilder().setContent(meta(...statusBits)));
-				}
-				container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
+				const container = buildQueueCard({
+					current: player.current,
+					paused: player.paused,
+					tracks,
+					page,
+					pageSize: PAGE_SIZE,
+					loopMode: player.loop,
+					autoPlay: isAutoplayOn(interaction.guildId),
+				});
 
 				if (totalPages > 1) {
 					container.addActionRowComponents(
