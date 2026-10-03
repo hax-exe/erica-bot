@@ -4,27 +4,24 @@ Erica, a Discord bot. Bun runtime + Sapphire Framework v5 + Drizzle ORM + MySQL 
 
 ## Workflow (AI-native SDLC)
 
-Pipeline: intent -> spec -> plan -> build -> verify -> review. Artifacts live in `docs/work/<slug>/{intent,spec,plan}.md` (templates in `docs/work/_templates/`).
+Pipeline: plan -> build -> verify -> review. Artifacts live in `docs/work/<slug>/plan.md` (templates in `docs/work/_templates/`).
 
 | Stage | Agent |
 |---|---|
-| Intent | `intent-writer` |
-| Spec | `spec-writer` |
-| Plan | `Plan` agent (tasks, file sets, tier per task) |
+| Plan | Claude Code native plan mode (tasks, file sets, tier per task), saved to `plan.md` |
 | Build | `implementer-small` (trivial) / `implementer` (normal) / `implementer-heavy` (multi-file, schema, overhauls) |
 | Verify | `verifier` |
-| Review | `discord-interaction-reviewer`, `migration-reviewer`, `spec-compliance-reviewer` |
+| Review | `discord-interaction-reviewer`, `migration-reviewer` |
 
 Rules:
 - The orchestrator (main session) does not write code; it delegates.
 - Parallelize implementers only on disjoint file sets.
-- `implementer` and `implementer-heavy` need an approved `plan.md` task. Trivial tasks skip intent/spec/plan (`implementer-small` only; it bounces anything non-trivial).
+- `implementer` and `implementer-heavy` need an approved `plan.md` task. Trivial tasks skip plan (`implementer-small` only; it bounces anything non-trivial).
 - Run `verifier` before reporting done.
 - Reviewers are never the implementer.
-- A human approves intent, spec, plan, and every commit/PR.
+- A human approves the plan and every commit/PR.
 - `REVIEW.md` governs reviews.
 - `CLAUDE_FIX_MODE=1`: the human exports it before launching the session; the hooks then block edits to existing test files (fix the code, not the tests).
-- Writer agents (intent-writer, spec-writer) are restricted to `docs/work/<slug>/`. The hook can only enforce this if its input exposes an agent name (best-effort); the agent prompts enforce it too.
 
 ## Things Claude gets wrong
 

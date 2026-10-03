@@ -3,26 +3,11 @@
 # Also:
 #  - CLAUDE_FIX_MODE=1 (set when fixing a failing test/bug): existing *.test.ts / *.spec.ts
 #    are immutable, so the fix must change source, not the test. New test files are allowed.
-#  - Writer agents (agent_type/agent_name containing intent-writer or spec-writer) may only
-#    write under docs/work/. This relies on the hook JSON carrying an agent name; if the
-#    field is absent (older Claude Code, or main session) the check is a silent no-op.
 input=$(cat)
 file=$(jq -r '.tool_input.file_path // empty' <<<"$input")
 [ -z "$file" ] && exit 0
 base=$(basename "$file")
 block() { echo "Blocked: $1 ($file). $2" >&2; exit 2; }
-
-agent=$(jq -r '.agent_type // .agent_name // .subagent_type // empty' <<<"$input")
-case "$agent" in
-  *intent-writer*|*spec-writer*)
-    case "/$file/" in
-      */../*) block "$agent: path with '..' segments rejected" "Use a clean docs/work/<slug>/ path." ;;
-    esac
-    case "$file" in
-      */docs/work/*|docs/work/*) ;;
-      *) block "$agent may only write under docs/work/" "Write intent.md/spec.md to docs/work/<slug>/." ;;
-    esac ;;
-esac
 
 if [ "$base" = ".env" ]; then
   block "never edit .env" "Edit .env.example or ask the user."
